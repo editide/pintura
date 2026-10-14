@@ -64,6 +64,11 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      # The ARM image lacks Arial, and the starter deck's title overflows in the fallback font.
+      - if: runner.os == 'Linux'
+        run: |
+          echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | sudo debconf-set-selections
+          sudo apt-get update -q && sudo apt-get install -y -q ttf-mscorefonts-installer
       - if: runner.os != 'Windows'
         run: |
           PINTURA_RELEASE_URL="file://${PWD}/dist" sh install.sh
