@@ -4,7 +4,7 @@ A presentation is a folder of YAML files, and your browser shows it live as you 
 Pintura checks every slide for what a reviewer would catch, such as text spilling out of its box or a title sitting lower than on the other slides.
 When the deck is ready, it exports to PowerPoint as a deck people keep working in, with real layouts, theme colors and fonts, and native charts and tables.
 
-https://github.com/user-attachments/assets/3055287a-5562-4bee-9d1c-0c8fa39b822d
+https://github.com/user-attachments/assets/7333fb90-3236-4850-bb38-3779dab2d1b5
 
 ## How it works
 
