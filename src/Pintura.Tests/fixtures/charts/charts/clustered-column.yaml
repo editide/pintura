@@ -1,0 +1,9 @@
+type: clustered_column
+title: Segment adjusted EBITDA
+data: segment-ebitda.csv
+value_axis: { format: billions_of_dollars }
+data_labels: { show: value, format: billions_of_dollars, position: outside }
+series:
+  AI:
+    points:
+      "2025": { color: accent6, data_labels: { color: accent6, bold: true } }

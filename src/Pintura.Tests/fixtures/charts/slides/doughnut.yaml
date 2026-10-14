@@ -1,0 +1,7 @@
+layout: content
+title: A doughnut
+
+elements:
+  - id: left
+    chart: doughnut
+    frame: left

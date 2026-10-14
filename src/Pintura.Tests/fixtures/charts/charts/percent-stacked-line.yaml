@@ -1,0 +1,5 @@
+type: percent_stacked_line
+title: Share of revenue
+data: segment-revenue.csv
+legend: left
+category_axis: { visible: false }

@@ -1,0 +1,21 @@
+layout: content
+title: Capital spending ran six times adjusted EBITDA
+placeholders:
+  subtitle: Adjusted EBITDA and capital expenditures by segment, first half of 2026, $B
+
+elements:
+  - id: chart
+    chart: ebitda-and-capex
+    frame: left
+  - id: takeaway
+    frame: right
+    text: |
+      {.heading}
+      $28.5B of capital expenditures against $4.7B of adjusted EBITDA
+      - AI took $23.6B, up from $3.3B in the first half of 2025
+      - Connectivity's $4.7B of adjusted EBITDA covered its own $2.7B
+      - Space spent $2.2B on a loss of $0.6B
+  - id: source
+    text: "Source: Acme Q2 2026 10-Q, reportable segments"
+    style: source
+    frame: [40, 486, 880, 16]

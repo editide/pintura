@@ -1,0 +1,10 @@
+layout: content
+title: Clustered and stacked columns
+
+elements:
+  - id: left
+    chart: clustered-column
+    frame: left
+  - id: right
+    chart: stacked-column
+    frame: right

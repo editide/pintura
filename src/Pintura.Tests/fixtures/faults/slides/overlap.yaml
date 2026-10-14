@@ -1,0 +1,16 @@
+layout: content
+title: Elements that overlap
+elements:
+  - id: body
+    text: Body text.
+    frame: left
+  - id: note
+    text: A note.
+    align: right
+    frame: [490, 400, 430, 40]
+  - id: first
+    shape: rectangle
+    frame: [490, 100, 200, 100]
+  - id: second
+    shape: rectangle
+    frame: [640, 160, 200, 100]

@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Without this dotnet run switches to the project folder, breaking presentation paths typed relative
+         to wherever the command was actually invoked. -->
+    <RunWorkingDirectory>$(MSBuildStartupDirectory)</RunWorkingDirectory>
+    <!-- UseStaticFiles serves wwwroot as it is, so precompressed copies would ship unread. -->
+    <CompressionEnabled>false</CompressionEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A trimmed release keeps these whole: YAML and JSON (de)serialization reach their types only by reflection,
+         as Playwright's protocol does. -->
+    <TrimmerRootAssembly Include="Pintura" />
+    <TrimmerRootAssembly Include="YamlDotNet" />
+    <TrimmerRootAssembly Include="Microsoft.Playwright" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="../../docs/topics/*.md" LogicalName="Pintura.Docs.%(Filename).md" />
+    <EmbeddedResource Include="Resources/blank.pptx" LogicalName="Pintura.blank.pptx" />
+    <!-- Copied into each new presentation, so the theme every default comes from is a file. -->
+    <EmbeddedResource Include="../../themes/default/**/*.yaml" LogicalName="Pintura.Starter.%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets a running app find the wwwroot it was built from and serve that instead of its own copy,
+         so editing the interface behaves like editing a presentation rather than needing a rebuild. -->
+    <AssemblyMetadata Include="SourceRoot" Value="$(MSBuildProjectDirectory)" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+
+</Project>

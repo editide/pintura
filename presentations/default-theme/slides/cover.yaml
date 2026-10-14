@@ -1,0 +1,5 @@
+layout: title
+title: Acme financial results
+
+placeholders:
+  subtitle: Board update, ${date}

@@ -1,0 +1,5 @@
+type: stacked_bar
+title: Revenue by year
+data: segment-revenue.csv
+value_axis: { format: billions_of_dollars }
+data_labels: { show: value, format: billions_of_dollars, position: inside }

@@ -1,0 +1,18 @@
+layout: content
+title: An element running off the slide
+elements:
+  - id: body
+    text: Body text.
+    frame: left
+  - id: note
+    text: A note.
+    align: right
+    frame: [490, 400, 430, 40]
+  - id: badge
+    shape: rectangle
+    frame: [880, 180, 120, 60]
+  - id: pointer
+    shape: callout
+    frame: [490, 260, 200, 60]
+    tail: [600, 360]
+    text: Look here.

@@ -1,0 +1,9 @@
+name: Comparison
+
+placeholders:
+  left_heading: { frame: [40, 100, 430, 32], style: column_heading }
+  right_heading: { frame: [490, 100, 430, 32], style: column_heading }
+
+areas:
+  left: [40, 140, 430, 340]
+  right: [490, 140, 430, 340]

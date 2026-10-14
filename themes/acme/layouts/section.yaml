@@ -1,0 +1,23 @@
+name: Section
+background: accent1
+theme_elements: false
+
+title: { frame: [60, 200, 640, 70], style: display, color: light1 }
+
+placeholders:
+  summary: { frame: [60, 280, 640, 80], style: subtitle, color: light1 }
+
+elements:
+  - id: chevron
+    shape: chevron
+    direction: right
+    frame: [740, 150, 160, 240]
+    fill: light1
+    opacity: 15
+    stroke: none
+  - id: page
+    text: ${slide}
+    style: caption
+    color: light2
+    align: right
+    frame: [860, 508, 60, 22]

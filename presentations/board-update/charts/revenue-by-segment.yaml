@@ -1,0 +1,6 @@
+type: stacked_column
+style: segments
+data: segment-revenue.csv
+data_labels: { format: billions_of_dollars }
+series:
+  Total: { type: total, data_labels: { bold: true } }

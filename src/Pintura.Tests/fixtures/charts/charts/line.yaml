@@ -1,0 +1,11 @@
+type: line
+title: Revenue by segment
+data: segment-revenue.csv
+value_axis: { format: billions_of_dollars }
+data_labels: { show: value, format: billions_of_dollars, position: above }
+markers: { shape: diamond, size: 6 }
+series:
+  Space:
+    data_labels: { show: none }
+    points:
+      "2025": { data_labels: { show: value } }

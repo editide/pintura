@@ -1,0 +1,9 @@
+layout: content
+title: Text over a chart's labels
+elements:
+  - id: chart
+    chart: revenue
+    frame: content
+  - id: note
+    text: A note laid over the category axis.
+    frame: [40, 440, 880, 30]

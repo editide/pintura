@@ -1,0 +1,26 @@
+layout: content
+title: First-half revenue rose to $12.5B as losses widened
+
+elements:
+  - id: h1-2025
+    text: |
+      {.lead}
+      First half of 2025
+      - Revenue: $8.1B
+      - Research and development: $3.5B
+      - Operating loss: $0.9B
+      - Net loss: $1.5B
+    frame: left
+  - id: h1-2026
+    text: |
+      {.lead}
+      First half of 2026
+      - Revenue: [$12.5B]{.positive}
+      - Research and development: $7.1B
+      - Operating loss: [$2.1B]{.negative}
+      - Net loss: [$4.8B]{.negative}
+    frame: right
+  - id: source
+    text: "Source: Acme 10-Q filed August 4, 2026, consolidated statements of operations."
+    style: source
+    frame: [40, 482, 600, 20]

@@ -1,0 +1,14 @@
+layout: content
+title: Text shrunk below the theme's threshold
+elements:
+  - id: body
+    text: Body text.
+    frame: left
+  - id: squeezed
+    text: |
+      One line of text.
+      Another line of text.
+      A third line of text.
+      A fourth line of text.
+    fit: shrink
+    frame: [490, 100, 430, 40]

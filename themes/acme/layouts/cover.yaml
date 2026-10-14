@@ -1,0 +1,19 @@
+name: Cover
+background: dark2
+theme_elements: false
+
+title: { frame: [60, 190, 840, 90], style: display, color: light1 }
+
+placeholders:
+  kicker: { frame: [60, 160, 840, 20], style: kicker, color: accent3 }
+  subtitle: { frame: [60, 290, 840, 40], style: subtitle, color: light2 }
+
+elements:
+  - id: logo
+    picture: ../media/logo-white.svg
+    frame: [60, 60, 120, 40]
+  - id: bar
+    shape: rectangle
+    frame: [60, 140, 80, 4]
+    fill: accent3
+    stroke: none

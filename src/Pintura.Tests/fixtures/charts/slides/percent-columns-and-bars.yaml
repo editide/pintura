@@ -1,0 +1,10 @@
+layout: content
+title: Percent stacked columns and clustered bars
+
+elements:
+  - id: left
+    chart: percent-stacked-column
+    frame: left
+  - id: right
+    chart: clustered-bar
+    frame: right

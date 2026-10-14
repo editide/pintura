@@ -1,0 +1,22 @@
+# Each slide seeds the fault it is named for; FaultTests and a --check --export run by hand expect each finding.
+name: Seeded faults
+theme: ../../../../themes/default
+
+fields:
+  footer: Seeded faults
+
+slides:
+  - overflow
+  - shrunk
+  - missing-font
+  - long-table
+  - section: Geometry
+  - off-slide
+  - overlap
+  - chart-label
+  - near-miss
+  - wide-table
+  - section: Consistency
+  - moved-title
+  - small-body
+  - broken

@@ -1,0 +1,7 @@
+type: stacked_column
+title: Revenue by segment, with its total
+data: segment-revenue-total.csv
+value_axis: { format: billions_of_dollars }
+data_labels: { show: value, format: billions_of_dollars, position: center, color: light1 }
+series:
+  Total: { type: total, data_labels: { bold: true }, points: { "2023": { data_labels: { show: none } } } }

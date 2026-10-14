@@ -1,0 +1,5 @@
+data: segments.csv
+style: plain
+header_rows: 1
+rows:
+  2: { height: 120 }

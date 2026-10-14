@@ -1,0 +1,6 @@
+layout: content
+title: Table rows growing past its frame
+elements:
+  - id: table
+    table: long
+    frame: [40, 100, 880, 150]

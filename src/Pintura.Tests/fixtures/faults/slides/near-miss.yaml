@@ -1,0 +1,6 @@
+layout: content
+title: An edge that nearly meets an area
+elements:
+  - id: body
+    text: Body text.
+    frame: [42, 100, 430, 380]

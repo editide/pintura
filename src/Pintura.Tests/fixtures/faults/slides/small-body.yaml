@@ -1,0 +1,7 @@
+layout: content
+title: Body text at another size
+elements:
+  - id: body
+    text: Body text.
+    size: 14
+    frame: left

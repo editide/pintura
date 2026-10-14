@@ -1,0 +1,25 @@
+Pintura
+Copyright 2026 EDITIDE LLC
+
+Licensed under the Apache License, Version 2.0; see LICENSE.
+
+The editide and Pintura names and logos, including the files in src/Pintura/wwwroot/brand, are trademarks of EDITIDE LLC.
+You may use them, in a fork included, as long as you do not present Pintura as your own work or suggest EDITIDE LLC
+made or endorses something it did not.
+
+Pintura includes or ships with the following, each under its own license:
+
+- Inter, the interface's font (src/Pintura/wwwroot/fonts), copyright 2016 The Inter Project Authors, under the SIL
+  Open Font License 1.1, in src/Pintura/wwwroot/fonts/OFL.txt.
+- The .NET runtime and ASP.NET Core, which release builds bundle, copyright the .NET Foundation and Contributors,
+  under the MIT License.
+- YamlDotNet, copyright Antoine Aubry and contributors, under the MIT License.
+- Microsoft.Playwright for .NET, copyright Microsoft Corporation, under the MIT License.
+- System.Security.Cryptography.ProtectedData, Microsoft.Bcl.AsyncInterfaces, and System.ComponentModel.Annotations,
+  copyright the .NET Foundation and Contributors, under the MIT License.
+- Playwright and Node.js, which Microsoft.Playwright installs beside the program in .playwright, each with its own
+  LICENSE, NOTICE, and third-party notices there: Playwright, copyright Microsoft Corporation, under the Apache License
+  2.0, and Node.js under the MIT License with the licenses of what it bundles.
+
+Pintura fetches a headless Chromium on its first screenshot or check where no Edge or Chrome is installed; Chromium is
+downloaded under its own licenses, not distributed with Pintura.

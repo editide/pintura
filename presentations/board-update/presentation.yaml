@@ -1,0 +1,16 @@
+name: Acme Q2 2026 Board Update
+theme: ../../themes/meridian
+size: [960, 540]
+
+fields:
+  footer: Strictly confidential. Prepared for board discussion.
+  date: August 2026
+
+slides:
+  - cover
+  - section: Financial performance
+  - segments
+  - revenue
+  - h1-results
+  - section: Capital allocation
+  - capital

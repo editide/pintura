@@ -1,0 +1,11 @@
+layout: content
+title: Revenue rose 54% in H1; the operating loss doubled
+
+elements:
+  - id: results
+    table: h1-results
+    frame: content
+  - id: source
+    text: "Source: Acme Q2 2026 10-Q, reportable segments. $ in millions."
+    style: source
+    frame: [40, 482, 600, 20]

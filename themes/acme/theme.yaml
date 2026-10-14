@@ -1,0 +1,56 @@
+name: Acme
+
+colors:
+  dark1: "#1B1B1B"
+  light1: "#FFFFFF"
+  dark2: "#1F3A5F"
+  light2: "#E9EDF2"
+  accent1: "#1F4E79"
+  accent2: "#2E86AB"
+  accent3: "#F2A541"
+  accent4: "#6C757D"
+  accent5: "#A23B72"
+  accent6: "#3B8F5A"
+  hyperlink: "#0563C1"
+  followed_hyperlink: "#954F72"
+
+named_colors:
+  positive: accent6
+  negative: "#C0392B"
+  muted: dark1 lighter 50
+
+fonts:
+  heading: Georgia
+  body: Arial
+
+background: light1
+
+title: { frame: [40, 36, 800, 44], style: title }
+
+areas:
+  content: [40, 100, 880, 380]
+  left: [40, 100, 430, 380]
+  right: [490, 100, 430, 380]
+
+elements:
+  - id: section
+    text: ${section}
+    style: kicker
+    frame: [40, 14, 600, 22]
+  - id: logo
+    picture: media/logo.svg
+    frame: [856, 44, 64, 24]
+  - id: rule
+    line: { from: [40, 88], to: [920, 88] }
+    stroke: { color: accent1, width: 1.5 }
+  - id: footer
+    text: ${footer}
+    style: caption
+    frame: [40, 508, 600, 22]
+  - id: page
+    text: ${slide}
+    style: caption
+    align: right
+    frame: [860, 508, 60, 22]
+
+checks: { shrink: 70 }

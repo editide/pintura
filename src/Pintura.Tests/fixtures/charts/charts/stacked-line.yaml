@@ -1,0 +1,4 @@
+type: stacked_line
+title: Cumulative revenue
+data: segment-revenue.csv
+value_axis: { format: billions_of_dollars, min: 0, max: 20000 }

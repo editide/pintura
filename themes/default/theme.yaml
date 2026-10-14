@@ -1,0 +1,46 @@
+name: Default
+
+colors:
+  dark1: "#000000"
+  light1: "#FFFFFF"
+  dark2: "#44546A"
+  light2: "#E7E6E6"
+  accent1: "#4472C4"
+  accent2: "#ED7D31"
+  accent3: "#A5A5A5"
+  accent4: "#FFC000"
+  accent5: "#5B9BD5"
+  accent6: "#70AD47"
+  hyperlink: "#0563C1"
+  followed_hyperlink: "#954F72"
+
+named_colors:
+  positive: accent6 darker 25
+  negative: "#C00000"
+  muted: dark1 lighter 50
+
+fonts:
+  heading: Arial
+  body: Arial
+
+background: light1
+
+title: { frame: [40, 24, 880, 56], style: title }
+
+areas:
+  content: [40, 100, 880, 380]
+  left: [40, 100, 430, 380]
+  right: [490, 100, 430, 380]
+
+elements:
+  - id: footer
+    text: ${footer}
+    style: caption
+    frame: [40, 508, 600, 22]
+  - id: page
+    text: ${slide}
+    style: caption
+    align: right
+    frame: [860, 508, 60, 22]
+
+checks: { shrink: 70 }

@@ -1,0 +1,5 @@
+type: doughnut
+title: Revenue, 2023 inside and 2025 outside
+data: segment-revenue.csv
+series_in: columns
+data_labels: { show: value, format: billions_of_dollars }

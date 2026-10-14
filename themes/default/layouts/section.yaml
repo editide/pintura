@@ -1,0 +1,6 @@
+name: Section
+
+title: { frame: [60, 200, 840, 70], style: display }
+
+placeholders:
+  summary: { frame: [60, 280, 840, 60], style: subtitle }

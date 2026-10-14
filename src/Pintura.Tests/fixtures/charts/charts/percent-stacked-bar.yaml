@@ -1,0 +1,5 @@
+type: percent_stacked_bar
+title: Share of revenue by year
+data: segment-revenue.csv
+legend: top
+data_labels: { show: value, format: billions_of_dollars, position: center }

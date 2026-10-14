@@ -1,0 +1,7 @@
+layout: content
+title: A slide naming a style the theme lacks
+elements:
+  - id: body
+    text: Body text.
+    style: nonexistent
+    frame: left

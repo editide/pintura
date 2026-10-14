@@ -1,0 +1,15 @@
+# One slide per pair of chart types, so every type renders, and one of a total and a line over columns; the figures are Acme's, a made-up company's.
+name: Every chart type
+theme: ../../../../themes/default
+
+fields:
+  footer: Every chart type
+
+slides:
+  - columns
+  - percent-columns-and-bars
+  - stacked-bars
+  - lines
+  - percent-lines-and-pie
+  - doughnut
+  - combinations

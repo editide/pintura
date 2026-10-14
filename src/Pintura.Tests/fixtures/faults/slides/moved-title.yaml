@@ -1,0 +1,12 @@
+layout: content
+title:
+  text: A title moved off its layout frame
+  frame: [40, 30, 880, 56]
+elements:
+  - id: body
+    text: Body text.
+    frame: left
+  - id: note
+    text: A note.
+    align: right
+    frame: [490, 400, 430, 40]

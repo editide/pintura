@@ -1,0 +1,48 @@
+/* The page Playwright drives: slides at their own size with nothing around them, or a contact sheet of them all. */
+body.headless {
+  display: block;
+  height: auto;
+  background: #fff;
+}
+
+#root {
+  display: inline-block;
+}
+
+/* Printed, a slide is a page, and an inline root's line box would spill a blank one after the last. */
+@media print {
+  #root {
+    display: block;
+  }
+
+  #root > .stage:not(:last-child) {
+    break-after: page;
+  }
+}
+
+.sheet {
+  display: grid;
+  gap: 24px;
+  padding: 24px;
+  background: #e4e5e8;
+  color: #3a3c42;
+}
+
+.sheet-section {
+  grid-column: 1 / -1;
+  margin-bottom: -12px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sheet-frame {
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+}
+
+.sheet-caption {
+  margin-top: 6px;
+  font-size: 13px;
+}

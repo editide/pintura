@@ -1,0 +1,7 @@
+name: Title
+theme_elements: false
+
+title: { frame: [60, 180, 840, 90], style: display, align: center }
+
+placeholders:
+  subtitle: { frame: [60, 280, 840, 40], style: subtitle, align: center }

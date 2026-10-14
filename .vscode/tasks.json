@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "watch",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["watch", "--project", "src/Pintura", "run", "--", "presentations/example"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": { "DOTNET_USE_POLLING_FILE_WATCHER": "1" }
+      },
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ]
+}

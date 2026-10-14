@@ -1,0 +1,11 @@
+layout: content
+title: The June 2026 IPO lifted cash to $93.5B
+
+elements:
+  - id: balance-sheet
+    table: balance-sheet
+    frame: content
+  - id: source
+    text: "Source: Acme S-1/A (December 2024 and 2025) and 10-Q (June 30, 2026, unaudited). The IPO converted all preferred stock into common stock."
+    style: source
+    frame: [40, 482, 880, 20]

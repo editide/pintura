@@ -1,0 +1,31 @@
+layout: content
+title: Connectivity revenue nearly tripled in two years
+
+elements:
+  - id: chart
+    chart: revenue-by-segment
+    frame: left
+  - id: takeaway
+    shape: rounded_rectangle
+    adjust: { corner: 8 }
+    frame: [490, 100, 430, 170]
+    fill: accent1 lighter 80
+    stroke: none
+    style: callout
+    align: left
+    valign: top
+    text: |
+      {.lead}
+      2025 revenue by segment
+      - Connectivity: [$11.4B]{.emphasis}
+      - Space: $4.1B
+      - AI: $3.2B
+  - id: total
+    text: |
+      Total revenue of **$18.7B** in 2025, up 33% on 2024.
+      *First half of 2026:* $12.5B, up 54% on the first half of 2025.
+    frame: [490, 290, 430, 80]
+  - id: source
+    text: "Source: [Acme S-1/A](https://example.com/acme/s-1a), reportable segments"
+    style: source
+    frame: [40, 482, 600, 20]

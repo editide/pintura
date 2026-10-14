@@ -1,0 +1,6 @@
+type: clustered_bar
+data: cash-flow-by-activity.csv
+series_in: columns
+series_colors: [accent1 lighter 60, accent1 lighter 30, accent1]
+value_axis: { format: billions_of_dollars }
+data_labels: { show: value, format: billions_of_dollars, position: outside }

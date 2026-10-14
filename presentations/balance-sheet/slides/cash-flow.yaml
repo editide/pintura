@@ -1,0 +1,22 @@
+layout: content
+title: Capital raising, not operations, funded the capex ramp
+
+elements:
+  - id: chart
+    chart: cash-flow-by-activity
+    frame: left
+  - id: takeaways
+    frame: right
+    text: |
+      {.lead}
+      Net cash by activity, 2023 to 2025
+      - Operating cash flow grew from $4.5B to $6.8B
+      - Purchases of property, plant and equipment rose from $4.4B to [$20.7B]{.emphasis}
+      - 2025 financing brought in $26.4B
+        - $18.8B from issuing capital stock
+        - $16.1B of new debt, less $6.9B repaid
+      - Cash and restricted cash ended 2025 at $25.1B
+  - id: source
+    text: "Source: Acme S-1/A, consolidated statements of cash flows"
+    style: source
+    frame: [40, 482, 880, 20]

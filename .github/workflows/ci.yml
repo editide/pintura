@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # A hung test fails with its name rather than holding the job until it times out.
+      - run: dotnet test src/Pintura.Tests --blame-hang-timeout 3m --logger "console;verbosity=normal"
+      # The blame's sequence names the tests running when one hung, and the dump shows where.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.os }}
+          path: src/Pintura.Tests/TestResults
+          retention-days: 7
+      - run: node --test src/Pintura.Tests/*.js
+      - name: Build a Release
+        if: runner.os == 'Linux'
+        run: dotnet build src/Pintura --configuration Release
+      - name: Load every presentation
+        run: |
+          for presentation in presentations/*/; do
+            dotnet run --project src/Pintura -- "$presentation" --list
+          done

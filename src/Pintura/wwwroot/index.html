@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>editide</title>
+  <link rel="icon" href="brand/icon.png" type="image/png">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="error" hidden></div>
+  <div id="export-findings" role="status" hidden>
+    <p></p>
+    <ul></ul>
+    <button type="button" class="export-findings-close">Dismiss</button>
+  </div>
+  <div class="layout" id="layout">
+    <nav class="sidebar" aria-label="Slides">
+      <div class="sidebar-head">
+        <img class="logo logo-light" src="brand/logo.svg" alt="editide">
+        <img class="logo logo-dark" src="brand/logo-dark.svg" alt="editide">
+        <div class="sidebar-tools">
+          <button type="button" class="icon-button" id="strip-toggle">
+            <svg class="icon icon-strip" viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect>
+              <path d="M2.5 12.5h15"></path>
+            </svg>
+            <svg class="icon icon-side" viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect>
+              <path d="M7.5 3v14"></path>
+            </svg>
+          </button>
+          <button type="button" class="icon-button" id="nav-hide" title="Hide slides (\)" aria-label="Hide slides">
+            <svg class="icon icon-side" viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect>
+              <path d="M7.5 3v14"></path>
+            </svg>
+            <svg class="icon icon-strip" viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect>
+              <path d="M2.5 12.5h15"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="resizer end" id="sidebar-resizer" role="separator" aria-orientation="vertical"
+           aria-label="Slides width" tabindex="0" title="Drag to resize, double-click to reset"></div>
+      <div class="resizer rows" id="strip-resizer" role="separator" aria-orientation="horizontal"
+           aria-label="Slides height" tabindex="0" title="Drag to resize, double-click to reset"></div>
+      <div class="comment-summary" id="comment-summary" hidden></div>
+      <div class="sidebar-scroll">
+        <div id="thumbnails"></div>
+        <div id="removed"></div>
+        <div id="stray-comments"></div>
+      </div>
+      <footer class="sidebar-foot">
+        <button type="button" class="status" id="status" title="Redraws whenever a file is saved" disabled>
+          <span class="status-indicator" id="status-dot"></span>
+          <span id="status-text">Connecting</span>
+        </button>
+        <button type="button" class="icon-button" id="theme-toggle">
+          <svg class="icon theme-light" viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="3.5"></circle>
+            <path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"></path>
+          </svg>
+          <svg class="icon theme-dark" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"></path>
+          </svg>
+        </button>
+        <button type="button" class="icon-button" id="shortcuts-button" title="Keyboard shortcuts (?)"
+                aria-label="Keyboard shortcuts">?</button>
+      </footer>
+    </nav>
+    <div class="toolbar" role="toolbar" aria-label="View">
+      <div class="group">
+        <button type="button" class="icon-button" id="nav-show" title="Show slides (\)" aria-label="Show slides">
+          <svg class="icon icon-side" viewBox="0 0 20 20" aria-hidden="true">
+            <rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect>
+            <path d="M7.5 3v14"></path>
+          </svg>
+          <svg class="icon icon-strip" viewBox="0 0 20 20" aria-hidden="true">
+            <rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect>
+            <path d="M2.5 12.5h15"></path>
+          </svg>
+        </button>
+        <div class="segmented">
+          <button type="button" data-action="slide" title="One slide (S)">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="5" width="15" height="10" rx="1.5"></rect></svg>
+            <span class="label">Slide</span>
+          </button>
+          <button type="button" data-action="grid" title="All slides (G)">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="2.5" y="4" width="6.5" height="5" rx="1"></rect>
+              <rect x="11" y="4" width="6.5" height="5" rx="1"></rect>
+              <rect x="2.5" y="11" width="6.5" height="5" rx="1"></rect>
+              <rect x="11" y="11" width="6.5" height="5" rx="1"></rect>
+            </svg>
+            <span class="label">Grid</span>
+          </button>
+          <button type="button" data-action="theme" title="The theme's colors, fonts, styles, and layouts (T)">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M10 2.5a7.5 7.5 0 1 0 0 15c1.2 0 1.8-.8 1.8-1.6 0-1.2-1-1.6-1-2.6 0-.9.7-1.5 1.7-1.5h2c1.7 0 3-1.4 3-3.1C17.5 5.3 14.2 2.5 10 2.5z"></path>
+              <circle cx="6.5" cy="9" r="1"></circle>
+              <circle cx="9" cy="6" r="1"></circle>
+              <circle cx="12.8" cy="6.8" r="1"></circle>
+            </svg>
+            <span class="label">Theme</span>
+          </button>
+        </div>
+      </div>
+      <div class="group heading">
+        <span class="deck-title" id="deck-title"></span>
+        <div class="group compare" id="compare">
+          <button type="button" class="tool" data-action="before" data-compare="Flip to the revision (B)">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7.5h11.5l-3-3M16 12.5H4.5l3 3"></path></svg>
+            <span class="label">Before</span>
+          </button>
+          <button type="button" class="tool" data-action="changes" data-compare="Mark the changes since the revision (C)">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="3" y="3" width="14" height="14" rx="2" stroke-dasharray="3 2"></rect>
+              <circle cx="10" cy="10" r="2.5"></circle>
+            </svg>
+            <span class="label">Changes</span>
+          </button>
+          <button type="button" class="tool versions-button" id="versions-button" popovertarget="versions-menu"
+                  aria-haspopup="menu" aria-expanded="false" title="Compare with an earlier version">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3.5 10a6.5 6.5 0 1 0 1.9-4.6M3.5 3.5v3h3"></path>
+              <path d="M10 6.5V10l2.5 1.5"></path>
+            </svg>
+            <span class="label" id="versions-label">Since last save</span>
+            <svg class="icon caret" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 8l4 4 4-4"></path></svg>
+          </button>
+        </div>
+      </div>
+      <div class="group">
+        <button type="button" class="tool" data-action="inspector" title="Inspector (I)">
+          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+            <rect x="2.5" y="3" width="15" height="14" rx="1.5"></rect>
+            <path d="M12.5 3v14"></path>
+          </svg>
+          <span class="label">Inspector</span>
+          <span class="badge" id="issue-badge" hidden></span>
+        </button>
+        <button type="button" class="tool export-button" id="export-button" popovertarget="export-menu"
+                aria-haspopup="menu" aria-expanded="false" title="Export the presentation">
+          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9.5M6 8.5l4 4 4-4M4 16.5h12"></path></svg>
+          <span class="label">Export</span>
+        </button>
+        <button type="button" class="tool primary" data-action="present" title="Present (P)">
+          <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5l8 5-8 5z"></path></svg>
+          <span class="label">Present</span>
+        </button>
+      </div>
+    </div>
+    <main id="view" tabindex="-1">
+      <div class="slide-view" id="slide-view">
+        <div class="slide-canvas">
+          <div class="slide-frame" id="slide-frame"></div>
+          <div class="slide-caption" id="slide-caption"></div>
+        </div>
+        <div class="notice" id="notice" role="status" hidden></div>
+      </div>
+      <div class="grid" id="grid" hidden></div>
+      <div class="theme-view" id="theme-view" hidden></div>
+    </main>
+    <aside class="inspector" id="inspector" aria-label="Inspector" hidden>
+      <div class="resizer" id="inspector-resizer" role="separator" aria-orientation="vertical"
+           aria-label="Inspector width" tabindex="0" title="Drag to resize, double-click to reset"></div>
+      <div class="inspector-panel" id="inspector-panel" tabindex="-1"></div>
+    </aside>
+  </div>
+  <div class="present" id="present" hidden></div>
+  <div class="book" id="book">
+    <div class="book-bar">
+      <button type="button" id="book-back"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10H4.5M9 5l-5 5 5 5"></path></svg><span id="book-back-label"></span></button>
+      <button type="button" id="book-pop-out" title="Open the book in a Libreta tab of its own"><span>Open in a tab</span><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M11 4h5v5M16 4l-7 7M14 12v4H4V6h4"></path></svg></button>
+    </div>
+    <iframe id="book-frame" title="Book"></iframe>
+  </div>
+  <div class="versions-menu" id="versions-menu" popover role="menu" aria-label="Compare with an earlier version">
+  </div>
+  <div class="export-menu" id="export-menu" popover role="menu" aria-label="Export the presentation">
+    <button type="button" role="menuitem" data-format="pptx">PowerPoint<span>.pptx</span></button>
+    <button type="button" role="menuitem" data-format="pdf">PDF<span>.pdf</span></button>
+    <button type="button" role="menuitem" data-format="html">Web page<span>.html</span></button>
+  </div>
+  <dialog class="shortcuts" id="shortcuts" aria-labelledby="shortcuts-title">
+    <div class="shortcuts-head">
+      <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+      <button type="button" class="icon-button" id="shortcuts-close" aria-label="Close">×</button>
+    </div>
+    <h3>Navigate</h3>
+    <dl>
+      <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></dt><dd>Previous or next slide</dd>
+      <dt><kbd>Home</kbd> <kbd>End</kbd></dt><dd>First or last slide</dd>
+      <dt>Mouse wheel</dt><dd>Previous or next slide over the slide or in present mode, or scroll a zoomed slide</dd>
+      <dt><kbd>S</kbd> <kbd>G</kbd> <kbd>T</kbd></dt><dd>One slide, every slide, or the theme</dd>
+      <dt><kbd>\</kbd></dt><dd>Show or hide the slides</dd>
+      <dt><kbd>|</kbd></dt><dd>Show the slides beside or below the slide</dd>
+      <dt><kbd>P</kbd> <kbd>F5</kbd></dt><dd>Present</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Clear the selection, or stop presenting</dd>
+    </dl>
+    <h3>View</h3>
+    <dl>
+      <dt><kbd>I</kbd></dt><dd>Show or hide the inspector</dd>
+      <dt><kbd>O</kbd></dt><dd>Show areas and placeholders</dd>
+      <dt><kbd>Ctrl</kbd> + wheel, pinch</dt><dd>Zoom the slide or grid about the pointer</dd>
+      <dt><kbd>Ctrl</kbd> + <kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom the slide or grid in, out, or back to fit</dd>
+      <dt><kbd>Ctrl</kbd> + click</dt><dd>Open a linked number in Libreta</dd>
+    </dl>
+    <h3>Edit</h3>
+    <dl>
+      <dt><kbd>Tab</kbd> <kbd>Shift</kbd> + <kbd>Tab</kbd></dt><dd>Select the next or previous element</dd>
+      <dt>Double-click</dt><dd>Reword text in place</dd>
+      <dt><kbd>Ctrl</kbd> + <kbd>B</kbd> <kbd>I</kbd> <kbd>U</kbd></dt><dd>Bold, italic, or underline the selected words while rewording</dd>
+      <dt><kbd>Shift</kbd> + <kbd>Arrow</kbd></dt><dd>Nudge the selected element 10 pt</dd>
+      <dt><kbd>Delete</kbd></dt><dd>Remove the selected element, or the slide focused in the sidebar or grid</dd>
+      <dt><kbd>Ctrl</kbd> + <kbd>Z</kbd></dt><dd>Undo the last mouse edit</dd>
+    </dl>
+    <h3>Comments</h3>
+    <dl>
+      <dt>Right-click</dt><dd>Comment on the slide, or the element under the pointer</dd>
+      <dt><kbd>M</kbd></dt><dd>Show or hide comments</dd>
+      <dt><kbd>N</kbd> <kbd>Shift</kbd> + <kbd>N</kbd></dt><dd>Next or previous slide with comments</dd>
+    </dl>
+    <h3>Changes</h3>
+    <dl>
+      <dt><kbd>D</kbd></dt><dd>Show only the changed slides, or every slide</dd>
+      <dt><kbd>B</kbd></dt><dd>Flip to the revision compared against</dd>
+      <dt><kbd>C</kbd></dt><dd>Mark the changes since it</dd>
+    </dl>
+    <p class="shortcuts-foot"><kbd>?</kbd> Show this list</p>
+  </dialog>
+  <script src="shapes.js"></script>
+  <script src="render.js"></script>
+  <script src="charts.js"></script>
+  <script src="edit.js"></script>
+  <script src="comments.js"></script>
+  <script src="compare.js"></script>
+  <script src="inspector.js"></script>
+  <script src="theme.js"></script>
+  <script src="book.js"></script>
+  <script src="navigation.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+layout: content
+title: Capital spending ran six times adjusted EBITDA
+
+elements:
+  - id: ebitda_heading
+    text: Adjusted EBITDA by segment
+    style: caption
+    frame: [40, 100, 200, 22]
+  - id: connectivity
+    shape: rounded_rectangle
+    adjust: { corner: 6 }
+    frame: [40, 124, 200, 72]
+    fill: light2
+    stroke: none
+    text: |
+      Connectivity
+      [$4.7B]{.figure .positive}
+  - id: ai
+    shape: rounded_rectangle
+    adjust: { corner: 6 }
+    frame: [40, 228, 200, 72]
+    fill: light2
+    stroke: none
+    text: |
+      AI
+      [$0.5B]{.figure}
+  - id: space
+    shape: rounded_rectangle
+    adjust: { corner: 6 }
+    frame: [40, 332, 200, 72]
+    fill: light2
+    stroke: none
+    text: |
+      Space
+      [($0.6B)]{.figure .negative}
+  - id: brace
+    shape: brace
+    direction: right
+    frame: [252, 124, 20, 280]
+    fill: none
+    stroke: { color: muted, width: 1.5 }
+  - id: to_total
+    line: { from: [276, 264], to: [340, 264] }
+    stroke: { color: muted, width: 1.5 }
+    end: triangle
+  - id: total
+    shape: ellipse
+    frame: [344, 204, 200, 120]
+    fill: accent1 lighter 80
+    stroke: { color: accent1, width: 1 }
+    text: |
+      Total
+      [$4.7B]{.figure}
+  - id: gap
+    shape: arrow
+    direction: right
+    frame: [556, 244, 52, 40]
+    fill: accent3
+    stroke: none
+  - id: capex
+    shape: rectangle
+    frame: [620, 124, 300, 280]
+    fill: accent1
+    stroke: none
+    color: light1
+    align: left
+    valign: top
+    insets: [16, 16, 16, 16]
+    text: |
+      Capital expenditures
+      **[$28.5B]{size=40 font=heading}**
+      - AI: $23.6B
+      - Connectivity: $2.7B
+      - Space: $2.2B
+  - id: ai_growth
+    shape: callout
+    frame: [344, 380, 220, 66]
+    tail: [640, 290]
+    fill: light1
+    stroke: { color: accent3, width: 1.5 }
+    style: callout
+    text: AI capital spending rose from $3.3B in the first half of 2025.
+  - id: source
+    text: "Source: Acme Q2 2026 10-Q, reportable segments"
+    style: source
+    frame: [40, 482, 600, 20]

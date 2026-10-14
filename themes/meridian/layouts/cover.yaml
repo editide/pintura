@@ -1,0 +1,14 @@
+name: Cover
+theme_elements: false
+
+title: { frame: [40, 216, 880, 50], style: display }
+
+placeholders:
+  kicker: { frame: [40, 196, 880, 20], style: kicker }
+  subtitle: { frame: [40, 270, 880, 26], style: cover_subtitle }
+
+elements:
+  - id: rule_top
+    line: { from: [40, 30], to: [920, 30] }
+  - id: rule_bottom
+    line: { from: [40, 508], to: [920, 508] }

@@ -1,0 +1,10 @@
+layout: content
+title: A font that isn't installed
+elements:
+  - id: body
+    text: Body text.
+    frame: left
+  - id: branded
+    text: Set in a font nobody has.
+    font: Nonexistent Sans
+    frame: [490, 100, 430, 40]

@@ -1,0 +1,83 @@
+layout: content
+title: Financing covered 2025 investing; cash more than doubled
+
+elements:
+  - id: operating
+    shape: rounded_rectangle
+    adjust: { corner: 8 }
+    frame: [40, 140, 240, 90]
+    fill: accent6 lighter 60
+    stroke: none
+    text: |
+      **Operating**
+      $6.8B
+  - id: financing
+    shape: rounded_rectangle
+    adjust: { corner: 8 }
+    frame: [40, 290, 240, 90]
+    fill: accent6 lighter 60
+    stroke: none
+    text: |
+      **Financing**
+      $26.4B
+  - id: year
+    shape: ellipse
+    frame: [380, 215, 160, 90]
+    fill: dark2
+    stroke: none
+    color: light1
+    bold: true
+    text: "2025"
+  - id: investing
+    shape: rounded_rectangle
+    adjust: { corner: 8 }
+    frame: [640, 140, 280, 90]
+    fill: accent2 lighter 60
+    stroke: none
+    text: |
+      **Investing**
+      ($19.6B)
+  - id: net-change
+    shape: rounded_rectangle
+    adjust: { corner: 8 }
+    frame: [640, 290, 280, 90]
+    fill: accent1
+    stroke: none
+    color: light1
+    text: |
+      **Net change in cash**
+      $13.6B
+  - id: operating-in
+    line: { from: [280, 185], to: [380, 250] }
+    stroke: { color: muted, width: 1.5 }
+    end: triangle
+  - id: financing-in
+    line: { from: [280, 335], to: [380, 270] }
+    stroke: { color: muted, width: 1.5 }
+    end: triangle
+  - id: investing-out
+    line: { from: [540, 250], to: [640, 185] }
+    stroke: { color: muted, width: 1.5 }
+    start: oval
+    end: triangle
+  - id: net-change-out
+    line: { from: [540, 270], to: [640, 335] }
+    stroke: { color: muted, width: 1.5 }
+    start: oval
+    end: triangle
+  - id: capex-note
+    shape: callout
+    frame: [300, 100, 260, 50]
+    tail: [640, 160]
+    fill: light1
+    stroke: { color: accent2, width: 1.5 }
+    size: 14
+    text: Purchases of PP&E alone were $20.7B
+  - id: fx-note
+    text: Net change includes a $63M exchange-rate effect.
+    style: caption
+    frame: [640, 390, 280, 20]
+  - id: source
+    text: "Source: Acme S-1/A, consolidated statements of cash flows"
+    style: source
+    frame: [40, 482, 880, 20]

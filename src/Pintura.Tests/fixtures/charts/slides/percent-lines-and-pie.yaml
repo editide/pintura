@@ -1,0 +1,10 @@
+layout: content
+title: Percent stacked lines and a pie
+
+elements:
+  - id: left
+    chart: percent-stacked-line
+    frame: left
+  - id: right
+    chart: pie
+    frame: right

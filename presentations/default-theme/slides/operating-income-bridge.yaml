@@ -1,0 +1,59 @@
+layout: content
+title: Connectivity profit did not cover AI losses in 2025
+
+elements:
+  - id: space
+    shape: rounded_rectangle
+    adjust: { corner: 8 }
+    frame: [40, 120, 260, 70]
+    fill: accent3 lighter 60
+    stroke: none
+    text: |
+      **Space**
+      [–$0.7B]{.negative}
+  - id: connectivity
+    shape: rounded_rectangle
+    adjust: { corner: 8 }
+    frame: [40, 220, 260, 70]
+    fill: accent1
+    stroke: none
+    color: light1
+    text: |
+      **Connectivity**
+      $4.4B
+  - id: ai
+    shape: rounded_rectangle
+    adjust: { corner: 8 }
+    frame: [40, 320, 260, 70]
+    fill: accent3 lighter 60
+    stroke: none
+    text: |
+      **AI**
+      [–$6.4B]{.negative}
+  - id: space-link
+    line: { from: [310, 155], to: [590, 245] }
+    stroke: { color: muted, width: 1.5 }
+    start: oval
+    end: triangle
+  - id: connectivity-link
+    line: { from: [310, 255], to: [590, 255] }
+    stroke: { color: accent1, width: 2.5 }
+    start: oval
+    end: triangle
+  - id: ai-link
+    line: { from: [310, 355], to: [590, 265] }
+    stroke: { color: negative, width: 1.5, dash: dash }
+    start: oval
+    end: stealth
+  - id: total
+    shape: hexagon
+    frame: [600, 200, 320, 110]
+    fill: light2
+    stroke: { color: dark1, width: 1 }
+    text: |
+      **Operating loss**
+      [–$2.6B]{.negative size=24}
+  - id: source
+    text: "Source: Acme S-1/A, reportable segments, fiscal 2025 operating income (loss)."
+    style: source
+    frame: [40, 482, 600, 20]

@@ -1,0 +1,46 @@
+name: Meridian
+
+colors:
+  dark1: "#000000"
+  light1: "#FFFFFF"
+  dark2: "#0059A3"
+  light2: "#E7E6E6"
+  accent1: "#0059A3"
+  accent2: "#00A0E2"
+  accent3: "#3AC3A2"
+  accent4: "#6668B4"
+  accent5: "#CDC063"
+  accent6: "#92949A"
+  hyperlink: "#0563C1"
+  followed_hyperlink: "#954F72"
+
+named_colors:
+  muted: accent6
+
+fonts:
+  heading: Arial
+  body: Arial
+
+background: light1
+
+title: { frame: [40, 38, 880, 34], style: title }
+
+areas:
+  content: [40, 116, 880, 356]
+  left: [40, 116, 500, 356]
+  right: [572, 116, 348, 356]
+
+elements:
+  - id: rule_top
+    line: { from: [40, 30], to: [920, 30] }
+  - id: rule_bottom
+    line: { from: [40, 508], to: [920, 508] }
+  - id: footer
+    text: ${footer}
+    style: caption
+    frame: [40, 512, 600, 14]
+  - id: page
+    text: ${slide}
+    style: caption
+    align: right
+    frame: [860, 512, 60, 14]

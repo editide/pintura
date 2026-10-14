@@ -1,0 +1,5 @@
+type: clustered_column
+data: ebitda-and-capex.csv
+series_colors: [accent2, accent1]
+gap_width: 80
+data_labels: { show: value, format: billions }

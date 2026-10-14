@@ -1,0 +1,18 @@
+name: Comparison
+
+placeholders:
+  subtitle: { frame: [40, 76, 880, 20], style: subtitle }
+  left_heading: { frame: [40, 116, 424, 20], style: heading }
+  right_heading: { frame: [496, 116, 424, 20], style: heading }
+
+areas:
+  left: [40, 148, 424, 324]
+  right: [496, 148, 424, 324]
+
+elements:
+  - id: left_rule
+    line: { from: [40, 140], to: [464, 140] }
+    stroke: { color: accent1, width: 1 }
+  - id: right_rule
+    line: { from: [496, 140], to: [920, 140] }
+    stroke: { color: accent1, width: 1 }

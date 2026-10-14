@@ -1,0 +1,17 @@
+name: Acme Balance Sheet and Cash Flow
+theme: ../../themes/default
+size: [960, 540]
+
+fields:
+  footer: Acme board update. USD millions unless noted.
+  date: September 28, 2026
+
+slides:
+  - cover
+  - section: Balance sheet
+  - balance-sheet-divider
+  - balance-sheet
+  - section: Cash flow
+  - cash-flow-divider
+  - cash-flow
+  - funding-2025

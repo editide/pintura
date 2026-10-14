@@ -1,0 +1,4 @@
+# Tests compare files with strings written in the sources, so every platform checks both out with LF.
+* text=auto eol=lf
+*.pptx binary
+*.woff2 binary

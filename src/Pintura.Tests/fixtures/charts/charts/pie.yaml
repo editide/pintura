@@ -1,0 +1,6 @@
+type: pie
+title: 2025 revenue
+data: revenue-2025.csv
+series_in: columns
+legend: right
+data_labels: { show: percent, position: outside }

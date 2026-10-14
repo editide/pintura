@@ -1,0 +1,15 @@
+data: h1-results.csv
+style: financial
+header_rows: 1
+columns:
+  - { width: 180 }
+  - { width: 220 }
+  - { width: 160, align: right, format: millions_of_dollars }
+  - { width: 160, align: right, format: millions_of_dollars }
+  - { width: 160, align: right, format: percent }
+rows:
+  5: { style: total }
+  9: { style: total }
+merge:
+  - { row: 2, column: 1, rows: 4 }
+  - { row: 6, column: 1, rows: 4 }

@@ -1,0 +1,4 @@
+name: Content
+
+placeholders:
+  subtitle: { frame: [40, 76, 880, 20], style: subtitle }

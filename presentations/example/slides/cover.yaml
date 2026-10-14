@@ -1,0 +1,5 @@
+layout: cover
+title: Q2 2026 Board Update
+placeholders:
+  kicker: Acme Corporation
+  subtitle: ${date}

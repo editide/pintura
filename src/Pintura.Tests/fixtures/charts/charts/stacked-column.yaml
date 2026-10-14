@@ -1,0 +1,5 @@
+type: stacked_column
+title: Revenue by segment
+data: segment-revenue.csv
+value_axis: { format: billions_of_dollars }
+data_labels: { show: value, format: billions_of_dollars, position: center }

@@ -1,0 +1,10 @@
+layout: content
+title: Stacked and percent stacked bars
+
+elements:
+  - id: left
+    chart: stacked-bar
+    frame: left
+  - id: right
+    chart: percent-stacked-bar
+    frame: right

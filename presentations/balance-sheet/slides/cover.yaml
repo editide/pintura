@@ -1,0 +1,5 @@
+layout: title
+title: Acme balance sheet and cash flow
+
+placeholders:
+  subtitle: Board update, ${date}

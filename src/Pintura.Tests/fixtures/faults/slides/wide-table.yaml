@@ -1,0 +1,6 @@
+layout: content
+title: Table columns wider than its frame
+elements:
+  - id: table
+    table: wide
+    frame: content

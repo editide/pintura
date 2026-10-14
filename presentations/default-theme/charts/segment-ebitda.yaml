@@ -1,0 +1,4 @@
+type: clustered_column
+data: segment-ebitda.csv
+data_labels: { show: value, format: billions_of_dollars, position: outside }
+value_axis: { format: billions_of_dollars }

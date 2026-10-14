@@ -1,0 +1,4 @@
+type: percent_stacked_column
+title: Share of revenue
+data: segment-revenue.csv
+legend: right

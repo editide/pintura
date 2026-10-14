@@ -1,0 +1,10 @@
+layout: content
+title: Lines and stacked lines
+
+elements:
+  - id: left
+    chart: line
+    frame: left
+  - id: right
+    chart: stacked-line
+    frame: right

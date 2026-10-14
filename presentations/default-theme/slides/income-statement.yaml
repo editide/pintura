@@ -1,0 +1,11 @@
+layout: content
+title: Revenue rose $4.7B in 2025 while costs rose $7.7B
+
+elements:
+  - id: table
+    table: income-statement
+    frame: [40, 100, 880, 370]
+  - id: source
+    text: "Source: Acme S-1/A, consolidated statements of operations. USD millions."
+    style: source
+    frame: [40, 482, 600, 20]

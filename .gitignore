@@ -1,0 +1,5 @@
+bin/
+obj/
+out/
+.playwright-cli/
+CLAUDE.local.md

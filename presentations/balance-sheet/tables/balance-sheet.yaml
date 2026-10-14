@@ -1,0 +1,17 @@
+data: balance-sheet.csv
+style: plain
+header_rows: 2
+columns:
+  - { width: 400 }
+  - { width: 160, align: right, format: millions_of_dollars }
+  - { width: 160, align: right, format: millions_of_dollars }
+  - { width: 160, align: right, format: millions_of_dollars }
+rows:
+  4: { style: subtotal }
+  6: { style: total }
+  10: { style: total }
+cells:
+  - { row: 1, column: 2, align: center }
+  - { row: 2, column: 1, color: muted, bold: false }
+merge:
+  - { row: 1, column: 2, columns: 2 }

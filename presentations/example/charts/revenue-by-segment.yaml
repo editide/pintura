@@ -1,0 +1,4 @@
+type: stacked_column
+style: minimal
+data: segment-revenue.csv
+data_labels: { format: billions_of_dollars }

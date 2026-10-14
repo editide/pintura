@@ -1,0 +1,67 @@
+text:
+  font: body
+  size: 16
+  color: dark1
+  align: left
+  valign: top
+  insets: [7.2, 3.6, 7.2, 3.6]
+  levels:
+    1: { bullet: "•", indent: 18, space_before: 6 }
+    2: { bullet: "–", size: 14, indent: 36, space_before: 3 }
+    3: { bullet: "·", size: 12, indent: 54 }
+
+shape_text: { align: center, valign: middle }
+
+picture: { fit: contain }
+
+shape: { fill: light2, stroke: { color: dark1 lighter 50, width: 1 } }
+
+line: { stroke: { color: dark1, width: 1 } }
+
+styles:
+  title: { font: heading, size: 28, color: dark2 }
+  display: { font: heading, size: 40, bold: true }
+  subtitle: { size: 18, color: muted }
+  kicker: { size: 11, bold: true, color: accent2 }
+  column_heading: { font: heading, size: 20, color: dark2 }
+  lead: { size: 18, bold: true, space_after: 6 }
+  figure: { font: heading, size: 28, bold: true }
+  callout: { size: 16, color: dark2 }
+  caption: { size: 11, color: muted }
+  source: { size: 9, italic: true, color: muted }
+  emphasis: { bold: true, color: accent1 }
+  positive: { color: positive }
+  negative: { color: negative }
+
+tables:
+  financial:
+    header: { bold: true, border_bottom: { color: dark1, width: 1 } }
+    subtotal: { bold: true, border_top: { color: muted, width: 0.75 } }
+    total: { bold: true, border_top: { color: dark1, width: 1 }, border_bottom: { color: dark1, width: 2 } }
+    supplemental: { italic: true, color: muted }
+    indent: 12
+  plain:
+    header: { bold: true, fill: light2 }
+    banded: light2 lighter 50
+
+chart:
+  series_colors: [accent1, accent2, accent3, accent4, accent5, accent6]
+  text: { size: 11, color: dark1 }
+  gap_width: 80
+  value_axis: { gridlines: false }
+  legend: bottom
+
+charts:
+  minimal:
+    series_colors: [accent4 lighter 40, accent1, accent3]
+    text: { size: 10, color: muted }
+    value_axis: { visible: false }
+    legend: bottom
+    data_labels: { show: value, color: light1 }
+
+formats:
+  millions_of_dollars: { decimals: 0, separator: true, negative: parentheses, negative_style: negative }
+  billions_of_dollars: { scale: 0.001, decimals: 1, prefix: "$", suffix: B, negative: parentheses }
+  millions_of_shares: { decimals: 0, separator: true }
+  ratio: { decimals: 2, suffix: x }
+  percent: { scale: 100, decimals: 0, suffix: "%", negative: minus, negative_style: negative }

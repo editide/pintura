@@ -1,0 +1,62 @@
+/* The exported file's viewer: the preview's sidebar beside a toolbar above one slide at fit. */
+body.exported {
+  overflow: hidden;
+}
+
+body.exported #view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.export-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 45px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.export-bar #present-button {
+  margin-left: auto;
+}
+
+.export-bar button:not(.icon-button) {
+  padding: 4px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.export-bar button:not(.icon-button):hover {
+  border-color: var(--accent);
+}
+
+.export-slide {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  margin: 24px;
+}
+
+.export-slide .slide-frame {
+  overflow: hidden;
+  user-select: none;
+  box-shadow: var(--shadow-slide);
+}
+
+body.tracing .export-slide [data-trace] {
+  cursor: pointer;
+}
+
+/* A run's inline style sets its own decoration. */
+body.tracing .export-slide [data-trace]:hover {
+  text-decoration: underline dotted !important;
+}

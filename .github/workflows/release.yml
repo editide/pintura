@@ -1,0 +1,106 @@
+name: Release
+
+# Run by hand, it builds and installs without publishing, to try the packages on every platform before a tag.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { runtime: linux-x64, os: ubuntu-latest }
+          - { runtime: linux-arm64, os: ubuntu-latest }
+          # Built on macOS so Apple's own codesign signs the binary, which Apple Silicon requires before it will run it.
+          - { runtime: osx-arm64, os: macos-latest }
+          - { runtime: osx-x64, os: macos-latest }
+          - { runtime: win-x64, os: ubuntu-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      # Multi-file, since Playwright finds its driver beside the binary and single-file hides it. Trimming discards the
+      # runtime's precompiled code, so ReadyToRun restores it or startup doubles; trimming also turns off
+      # reflection-based JSON, which the payloads rely on.
+      - run: >
+          dotnet publish src/Pintura --configuration Release --runtime ${{ matrix.runtime }} --self-contained
+          -p:DebugType=none -p:PublishTrimmed=true -p:PublishReadyToRun=true
+          -p:JsonSerializerIsReflectionEnabledByDefault=true
+          --output out/pintura
+          ${{ github.ref_type == 'tag' && format('-p:InformationalVersion={0}', github.ref_name) || '' }}
+      - name: Package
+        run: |
+          cd out
+          if [[ "${{ matrix.runtime }}" == win-* ]]; then
+            zip -qr "pintura-${{ matrix.runtime }}.zip" pintura
+          else
+            mv pintura/Pintura pintura/pintura
+            tar -czf "pintura-${{ matrix.runtime }}.tar.gz" pintura
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pintura-${{ matrix.runtime }}
+          path: out/pintura-${{ matrix.runtime }}.*
+
+  # Installs each archive the way a customer would, from local files standing in for the release, then creates
+  # a presentation in an empty folder and checks it, with no editide account, which fetches or finds the headless
+  # browser. Windows serves them over HTTP; curl reads file:// URLs directly.
+  install:
+    needs: build
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - if: runner.os != 'Windows'
+        run: |
+          PINTURA_RELEASE_URL="file://${PWD}/dist" sh install.sh
+          cd "$(mktemp -d)"
+          ~/.local/bin/pintura --version
+          ~/.local/bin/pintura --new deck
+          ~/.local/bin/pintura deck --list
+          ~/.local/bin/pintura deck --check
+      # Under the headless server's five idle minutes, so a command that waits for it, as P6 did, fails.
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 4
+        env:
+          PINTURA_RELEASE_URL: http://localhost:8000
+        run: |
+          Start-Process python -ArgumentList '-m', 'http.server', '8000', '--directory', 'dist'
+          Start-Sleep 2
+          ./install.ps1
+          $pintura = "$env:LOCALAPPDATA\Programs\pintura\Pintura.exe"
+          Set-Location (New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'starter'))
+          foreach ($arguments in @(@('--version'), @('--new', 'deck'), @('deck', '--list'), @('deck', '--check'))) {
+            & $pintura @arguments
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+  # The install scripts fetch the archives from the latest release.
+  publish:
+    needs: install
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - run: gh release create "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

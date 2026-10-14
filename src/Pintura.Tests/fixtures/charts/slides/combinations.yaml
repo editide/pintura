@@ -1,0 +1,10 @@
+layout: content
+title: A stack's total, and a line over columns
+
+elements:
+  - id: left
+    chart: stacked-total
+    frame: left
+  - id: right
+    chart: column-and-line
+    frame: right

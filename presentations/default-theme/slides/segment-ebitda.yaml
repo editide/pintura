@@ -1,0 +1,19 @@
+layout: content
+title: Connectivity carries adjusted EBITDA as AI turns negative
+
+elements:
+  - id: chart
+    chart: segment-ebitda
+    frame: left
+  - id: commentary
+    text: |
+      {.lead}
+      Adjusted EBITDA of $6.6B in 2025, from $3.8B in 2023
+      - Connectivity: [$7.2B]{.emphasis}, from $1.6B in 2023
+      - Space: $0.7B, down from $1.2B in 2024
+      - AI: [–$1.2B]{.negative}, from $1.2B in 2023
+    frame: right
+  - id: source
+    text: "Source: Acme S-1/A, segment adjusted EBITDA."
+    style: source
+    frame: [40, 482, 430, 20]

@@ -1,0 +1,13 @@
+type: clustered_column
+title: Revenue and adjusted EBITDA margin
+data: revenue-margin.csv
+legend: bottom
+value_axis: { format: billions_of_dollars }
+secondary_axis: { min: 0, max: 0.5, format: percent }
+data_labels: { show: value, format: billions_of_dollars, position: inside, color: light1 }
+series:
+  Adjusted EBITDA margin:
+    type: line
+    axis: secondary
+    data_labels: { format: percent, color: dark1 }
+    markers: { shape: circle, size: 7, fill: light1 }
