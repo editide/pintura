@@ -312,6 +312,74 @@ public class BookTests
   }
 
   [Fact]
+  public void A_chart_column_with_a_label_names_its_category_and_still_traces_to_the_book_column()
+  {
+    // Arrange
+    using DeckFixture deck = Deck("""
+      layout: content
+      elements:
+        - id: chart
+          chart: revenue
+          frame: left
+      """);
+    deck.Write("deck/charts/revenue.yaml", """
+      type: clustered_column
+      data:
+        book: acme
+        columns: [{ column: "2024", label: Prior year }, "2025"]
+        series:
+          - { line: historical.segments.ai_revenue }
+      """);
+
+    // Act
+    Presentation presentation = deck.Load();
+    ChartPayload payload = PayloadBuilder.Build(presentation, 1, (path, _) => path).Slides[0].Items!
+      .Single(item => item.Id == "chart").Chart!;
+
+    // Assert
+    Chart chart = presentation.Charts["revenue"];
+    chart.Categories.ShouldBe(["Prior year", "2025"]);
+    chart.Series.Single().Values.ShouldBe([2620.0, null]);
+    payload.Series.Single().Traces.ShouldBe([
+      new TracePayload("acme", "historical.segments.ai_revenue", "2024"),
+      new TracePayload("acme", "historical.segments.ai_revenue", "2025")
+    ]);
+  }
+
+  [Fact]
+  public void A_chart_with_series_in_columns_names_a_series_by_its_columns_label()
+  {
+    // Arrange
+    using DeckFixture deck = Deck("""
+      layout: content
+      elements:
+        - id: chart
+          chart: revenue
+          frame: left
+      """);
+    deck.Write("deck/charts/revenue.yaml", """
+      type: pie
+      series_in: columns
+      data:
+        book: acme
+        columns: [{ column: "2024", label: Last year }]
+        series:
+          - { line: historical.segments.connectivity_revenue }
+      """);
+
+    // Act
+    Presentation presentation = deck.Load();
+    ChartPayload payload = PayloadBuilder.Build(presentation, 1, (path, _) => path).Slides[0].Items!
+      .Single(item => item.Id == "chart").Chart!;
+
+    // Assert
+    presentation.Charts["revenue"].Series.Single().Name.ShouldBe("Last year");
+    payload.Series.Single().Traces.ShouldBe([
+      new TracePayload("acme", "historical.segments.connectivity_revenue", "2024")
+    ]);
+  }
+
+  [Fact]
   public void A_chart_line_the_book_lacks_fails_the_slide_placing_it()
   {
     // Arrange

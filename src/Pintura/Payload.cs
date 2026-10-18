@@ -473,8 +473,8 @@ public static class PayloadBuilder
       {
         List<TracePayload>? traces = chart.Book is not string book ? null
           : chart.SeriesIn == "columns"
-            ? chart.Lines!.Select(line => new TracePayload(book, line, series.Name)).ToList()
-            : chart.Categories.Select(column => new TracePayload(book, chart.Lines![index], column)).ToList();
+            ? chart.Lines!.Select(line => new TracePayload(book, line, chart.Columns![index])).ToList()
+            : chart.Columns!.Select(column => new TracePayload(book, chart.Lines![index], column)).ToList();
         if (!chart.SeriesOptions.ContainsKey(series.Name))
         {
           return new SeriesPayload(series.Name, series.Values, chart.Family, false, Labels(""),
