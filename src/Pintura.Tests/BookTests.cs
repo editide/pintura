@@ -452,6 +452,33 @@ public class BookTests
   }
 
   [Fact]
+  public void A_view_row_keeps_its_role_style_when_the_table_sets_its_height_but_not_its_style()
+  {
+    // Arrange
+    using DeckFixture deck = Deck("""
+      layout: content
+      elements:
+        - id: results
+          table: results
+          frame: content
+      """);
+    deck.Write("deck/tables/results.yaml", """
+      data:
+        view: acme::historical/segments
+      style: plain
+      rows:
+        4: { height: 30 }
+      """);
+
+    // Act
+    Table table = deck.Load().Tables["results"];
+
+    // Assert
+    table.Rows[4].Style.ShouldBe("total");
+    table.Rows[4].Height.ShouldBe(30);
+  }
+
+  [Fact]
   public void A_view_row_indents_its_label_by_the_table_style_indent_per_step()
   {
     // Arrange

@@ -2573,8 +2573,32 @@ public partial class PresentationLoader
         .ToList();
       for (int row = 0; row < view.Styles.Count; row++)
       {
-        if (view.Styles[row] is string role && style?.Rows.ContainsKey(role) == true &&
-          !tableRows.ContainsKey(row + 1))
+        if (view.Styles[row] is not string role || style?.Rows.ContainsKey(role) != true)
+        {
+          continue;
+        }
+        // A row entry without a style of its own, such as one setting a height, keeps the role's row style.
+        if (tableRows.TryGetValue(row + 1, out TableRow? written))
+        {
+          if (written.Style is null)
+          {
+            tableRows[row + 1] = new TableRow
+            {
+              Style = role,
+              Format = written.Format,
+              Fill = written.Fill,
+              BorderTop = written.BorderTop,
+              BorderBottom = written.BorderBottom,
+              BorderLeft = written.BorderLeft,
+              BorderRight = written.BorderRight,
+              Properties = written.Properties,
+              Height = written.Height,
+              Origin = written.Origin,
+              Origins = new Dictionary<string, Origin>(written.Origins) { ["style"] = dataNode.Origin }
+            };
+          }
+        }
+        else
         {
           tableRows[row + 1] = new TableRow { Style = role, Origins = { ["style"] = dataNode.Origin } };
         }
