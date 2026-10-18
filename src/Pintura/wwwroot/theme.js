@@ -113,7 +113,7 @@ function renderThemePanel(panel) {
   renderHeader(panel, {
     chips: [[KIND_NAMES[themeDetail.kind], 'style']],
     title: DETAIL_TITLES[themeDetail.kind]?.(value) ?? value.name,
-    meta: origin?.file ? [sourceTag(origin, null)] : null
+    meta: origin?.file ? [themeSourceTag(origin, null)] : null
   });
   DETAILS[themeDetail.kind](panel, value, theme);
 }
@@ -696,14 +696,14 @@ function tableSample(parent, style, theme) {
       const cell = element('td', kind, tr);
       cell.textContent = index === 0 ? words(row.name) : ['1,234', '5,678'][index - 1];
       applyCharacter(cell, row.text);
-      cell.style.borderTop = border(row.borderTop);
-      cell.style.borderBottom = border(row.borderBottom);
+      cell.style.borderTop = themeBorder(row.borderTop);
+      cell.style.borderBottom = themeBorder(row.borderBottom);
     });
   }
   return table;
 }
 
-function border(stroke) {
+function themeBorder(stroke) {
   return stroke ? `${stroke.width}pt ${stroke.dash === 'solid' ? 'solid' : 'dashed'} ${stroke.color}` : 'none';
 }
 
@@ -730,7 +730,7 @@ function renderCharts(section, theme) {
       element('strong', 'modifier-look', chip).textContent = style.name;
       element('span', 'theme-label', chip).textContent = style.uses.elements === 0
         ? 'Unused' : countLabel(style.uses.slides.length, 'slide');
-      sourceTag(style.origin, chip);
+      themeSourceTag(style.origin, chip);
     }
   }
 }
@@ -796,7 +796,7 @@ function usesLine(parent, uses) {
   return line;
 }
 
-function sourceTag(origin, parent) {
+function themeSourceTag(origin, parent) {
   if (!origin?.file) {
     return null;
   }

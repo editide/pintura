@@ -145,7 +145,7 @@ function layoutLegend(chart, box, context) {
     if (entry.line) {
       out.push({ kind: 'line', x1: x, y1: y, x2: x + width, y2: y, stroke: entry.color, width: LINE_WIDTH, ...of });
       if (entry.markers) {
-        out.push({ ...marker(entry.markers, entry.color, x + width / 2, y), ...of });
+        out.push({ ...pointMarker(entry.markers, entry.color, x + width / 2, y), ...of });
       }
     } else {
       out.push({ kind: 'rect', x, y: y - width / 2, width, height: width, fill: entry.color, ...of });
@@ -456,7 +456,7 @@ function layoutCartesian(chart, box, context) {
       }
       const x = slotStart(point) + slot / 2;
       const y = position(extent[1], series.secondary);
-      d += `${drawing ? 'L' : 'M'}${round(x)} ${round(y)} `;
+      d += `${drawing ? 'L' : 'M'}${roundChart(x)} ${roundChart(y)} `;
       drawing = true;
       points.push([x, y, point]);
       const labels = labelsAt(series, point);
@@ -471,7 +471,7 @@ function layoutCartesian(chart, box, context) {
     points.forEach(([x, y, point]) => {
       const markers = series.pointMarkers?.[point] || series.markers;
       out.push(traced({ part: 'marker', ...(markers && markers.shape !== 'none'
-        ? marker(markers, series.colors?.[point] || color, x, y)
+        ? pointMarker(markers, series.colors?.[point] || color, x, y)
         : { kind: 'hit', x, y, r: size * 0.5 }) }, series, index, point));
     });
   });
@@ -522,13 +522,13 @@ function layoutCartesian(chart, box, context) {
 }
 
 // A marker is outlined in its line's color and width, centered on the point, and `size` across, as PowerPoint's is.
-function marker(markers, color, x, y) {
+function pointMarker(markers, color, x, y) {
   const r = markers.size / 2;
   const d = {
-    circle: `M${round(x - r)} ${round(y)}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`,
-    square: `M${round(x - r)} ${round(y - r)}h${2 * r}v${2 * r}h${-2 * r}Z`,
-    diamond: `M${round(x)} ${round(y - r)}l${r} ${r}l${-r} ${r}l${-r} ${-r}Z`,
-    triangle: `M${round(x)} ${round(y - r)}l${r} ${2 * r}h${-2 * r}Z`
+    circle: `M${roundChart(x - r)} ${roundChart(y)}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`,
+    square: `M${roundChart(x - r)} ${roundChart(y - r)}h${2 * r}v${2 * r}h${-2 * r}Z`,
+    diamond: `M${roundChart(x)} ${roundChart(y - r)}l${r} ${r}l${-r} ${r}l${-r} ${-r}Z`,
+    triangle: `M${roundChart(x)} ${roundChart(y - r)}l${r} ${2 * r}h${-2 * r}Z`
   }[markers.shape];
   return { kind: 'path', d, fill: markers.fill || color, stroke: color, width: LINE_WIDTH, join: 'miter' };
 }
@@ -541,7 +541,7 @@ function lineLabel(labels, context, raw, x, y, trace) {
     color: labelColor(labels, raw), bold: labels.bold }));
 }
 
-function round(value) {
+function roundChart(value) {
   return Math.round(value * 100) / 100;
 }
 
@@ -552,20 +552,20 @@ function arcPoint(cx, cy, radius, angle) {
 // A slice from `start` to `end` radians, clockwise from three o'clock, between two radii.
 function slicePath(cx, cy, inner, outer, start, end) {
   if (end - start >= Math.PI * 2 - 1e-9) {
-    const ring = (radius) => `M${round(cx + radius)} ${round(cy)} A${round(radius)} ${round(radius)} 0 1 1 ` +
-      `${round(cx - radius)} ${round(cy)} A${round(radius)} ${round(radius)} 0 1 1 ${round(cx + radius)} ${round(cy)}Z`;
+    const ring = (radius) => `M${roundChart(cx + radius)} ${roundChart(cy)} A${roundChart(radius)} ${roundChart(radius)} 0 1 1 ` +
+      `${roundChart(cx - radius)} ${roundChart(cy)} A${roundChart(radius)} ${roundChart(radius)} 0 1 1 ${roundChart(cx + radius)} ${roundChart(cy)}Z`;
     return inner > 0 ? `${ring(outer)} ${ring(inner)}` : ring(outer);
   }
   const large = end - start > Math.PI ? 1 : 0;
   const [x1, y1] = arcPoint(cx, cy, outer, start);
   const [x2, y2] = arcPoint(cx, cy, outer, end);
-  let d = `M${round(x1)} ${round(y1)} A${round(outer)} ${round(outer)} 0 ${large} 1 ${round(x2)} ${round(y2)} `;
+  let d = `M${roundChart(x1)} ${roundChart(y1)} A${roundChart(outer)} ${roundChart(outer)} 0 ${large} 1 ${roundChart(x2)} ${roundChart(y2)} `;
   if (inner > 0) {
     const [x3, y3] = arcPoint(cx, cy, inner, end);
     const [x4, y4] = arcPoint(cx, cy, inner, start);
-    d += `L${round(x3)} ${round(y3)} A${round(inner)} ${round(inner)} 0 ${large} 0 ${round(x4)} ${round(y4)}Z`;
+    d += `L${roundChart(x3)} ${roundChart(y3)} A${roundChart(inner)} ${roundChart(inner)} 0 ${large} 0 ${roundChart(x4)} ${roundChart(y4)}Z`;
   } else {
-    d += `L${round(cx)} ${round(cy)}Z`;
+    d += `L${roundChart(cx)} ${roundChart(cy)}Z`;
   }
   return d;
 }
@@ -700,19 +700,19 @@ function drawChart(chart, width, height) {
     switch (primitive.kind) {
       case 'rect':
         node = svgElement('rect', {
-          x: round(primitive.x),
-          y: round(primitive.y),
-          width: round(primitive.width),
-          height: round(primitive.height),
+          x: roundChart(primitive.x),
+          y: roundChart(primitive.y),
+          width: roundChart(primitive.width),
+          height: roundChart(primitive.height),
           fill: primitive.fill || 'none'
         }, svg);
         break;
       case 'line':
         node = svgElement('line', {
-          x1: round(primitive.x1),
-          y1: round(primitive.y1),
-          x2: round(primitive.x2),
-          y2: round(primitive.y2),
+          x1: roundChart(primitive.x1),
+          y1: roundChart(primitive.y1),
+          x2: roundChart(primitive.x2),
+          y2: roundChart(primitive.y2),
           stroke: primitive.stroke || 'none',
           'stroke-width': primitive.width
         }, svg);
@@ -730,8 +730,8 @@ function drawChart(chart, width, height) {
         break;
       case 'text':
         node = svgElement('text', {
-          x: round(primitive.x),
-          y: round(primitive.y),
+          x: roundChart(primitive.x),
+          y: roundChart(primitive.y),
           'text-anchor': primitive.anchor,
           'dominant-baseline': 'central',
           'font-family': fontFamily(text.font),
@@ -742,7 +742,7 @@ function drawChart(chart, width, height) {
         node.textContent = primitive.text;
         break;
       case 'hit':
-        node = svgElement('circle', { cx: round(primitive.x), cy: round(primitive.y), r: primitive.r,
+        node = svgElement('circle', { cx: roundChart(primitive.x), cy: roundChart(primitive.y), r: primitive.r,
           fill: 'transparent' }, svg);
         break;
     }
