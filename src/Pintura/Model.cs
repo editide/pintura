@@ -494,6 +494,9 @@ public class Chart
   public string? Book { get; init; }
   /// <summary>Each series' line in <see cref="Book"/>, in series order.</summary>
   public List<string>? Lines { get; init; }
+  /// <summary>Each category's column in <see cref="Book"/>, or with <c>series_in: columns</c> each series', in order;
+  /// the categories or series names are the columns' labels.</summary>
+  public List<string>? Columns { get; init; }
   public string SeriesIn { get; init; } = "rows";
   public ChartProperties Properties { get; init; } = new ChartProperties();
   public List<string> Categories { get; init; } = new List<string>();

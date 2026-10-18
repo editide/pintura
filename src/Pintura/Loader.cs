@@ -1746,11 +1746,12 @@ public partial class PresentationLoader
 
     string? book = null;
     List<string>? lines = null;
+    List<string>? bookColumns = null;
     List<string> categories;
     List<ChartSeries> series;
     if (dataNode.IsMap)
     {
-      (book, lines, categories, series) = ReadChartLines(dataNode, seriesIn);
+      (book, lines, bookColumns, categories, series) = ReadChartLines(dataNode, seriesIn);
     }
     else
     {
@@ -1771,6 +1772,7 @@ public partial class PresentationLoader
       Data = data,
       Book = book,
       Lines = lines,
+      Columns = bookColumns,
       SeriesIn = seriesIn,
       Properties = properties,
       Categories = categories,
@@ -2099,9 +2101,10 @@ public partial class PresentationLoader
   }
 
   /// <summary>Series from a book's lines, over the columns the chart names or the first line's, or with
-  /// <c>series_in: columns</c> a series from each column over the lines.</summary>
-  private (string Book, List<string> Lines, List<string> Categories, List<ChartSeries> Series) ReadChartLines(
-    Node node, string seriesIn)
+  /// <c>series_in: columns</c> a series from each column over the lines; a column's label, if it has one, names its
+  /// category or series.</summary>
+  private (string Book, List<string> Lines, List<string> Columns, List<string> Categories, List<ChartSeries> Series)
+    ReadChartLines(Node node, string seriesIn)
   {
     MapNode map = node.WithTopic("books").AsMap();
     Node bookNode = map.Require("book");
@@ -2139,34 +2142,55 @@ public partial class PresentationLoader
       throw node.Error("a chart from a book needs a line in series");
     }
 
-    List<string> columns = columnsNode?.AsList().Select(column => column.AsString()).ToList() ??
-      picked[0].Line.Columns;
+    var columns = new List<(string Name, string Label, Node Node)>();
+    foreach (Node entry in columnsNode?.AsList() ?? [])
+    {
+      Node columnNode = entry;
+      string? label = null;
+      if (entry.IsMap)
+      {
+        MapNode columnMap = entry.AsMap();
+        columnNode = columnMap.Require("column");
+        label = columnMap.Require("label").AsString();
+        columnMap.Done();
+      }
+      string name = columnNode.AsString();
+      if (columns.Any(other => other.Label == (label ?? name)))
+      {
+        throw entry.Error($"two columns are called {label ?? name}; give one a label");
+      }
+      columns.Add((name, label ?? name, entry));
+    }
+    if (columnsNode is null)
+    {
+      columns.AddRange(picked[0].Line.Columns.Select(name => (name, name, node)));
+    }
     var values = new List<List<double?>>();
     foreach ((BookLine line, string _) in picked)
     {
       var row = new List<double?>();
-      foreach (string name in columns)
+      foreach ((string name, string _, Node columnNode) in columns)
       {
         int column = line.Columns.IndexOf(name);
         if (column < 0)
         {
-          throw (columnsNode ?? node).Error($"{line.Name} has no column {name}; its columns are " +
-            And([.. line.Columns]));
+          throw columnNode.Error($"{line.Name} has no column {name}; its columns are " + And([.. line.Columns]));
         }
         row.Add(PlainNumber.TryParse(line.Exact[column], out double value) ? value : null);
       }
       values.Add(row);
     }
     List<string> names = picked.Select(entry => entry.Name).ToList();
+    List<string> labels = columns.Select(column => column.Label).ToList();
     List<ChartSeries> series = seriesIn == "columns"
-      ? columns.Select((name, column) => new ChartSeries
+      ? labels.Select((label, column) => new ChartSeries
       {
-        Name = name,
+        Name = label,
         Values = values.Select(row => row[column]).ToList()
       }).ToList()
       : names.Select((name, line) => new ChartSeries { Name = name, Values = values[line] }).ToList();
-    return (book.Id, picked.Select(entry => entry.Line.Name).ToList(), seriesIn == "columns" ? names : columns,
-      series);
+    return (book.Id, picked.Select(entry => entry.Line.Name).ToList(), columns.Select(column => column.Name).ToList(),
+      seriesIn == "columns" ? names : labels, series);
   }
 
   private void ReadLabels(Node node, ChartLabels target, Dictionary<string, NumberFormat> formats,

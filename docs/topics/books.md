@@ -50,7 +50,7 @@ data_labels: { format: billions_of_dollars }
 | Key | Value |
 | --- | --- |
 | `book` | The book's id. |
-| `columns` | The categories, as the book's columns; every column the first line has if left out. |
+| `columns` | The categories, as the book's columns, each a name or `{ column, label }` to show another name; every column the first line has if left out. |
 | `series` | `{ line, label }` per series; `label` defaults to the line's label in the book, and names the series under the chart's `series` key, or the category with `series_in: columns`. |
 
 Values are the book's exact values in natural direction, and a cell with no value is a gap.
