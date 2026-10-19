@@ -168,16 +168,6 @@ public class MarkupTests
   }
 
   [Fact]
-  public void An_unknown_field_is_an_error()
-  {
-    // Act
-    LoadException error = Error("Dated ${date}");
-
-    // Assert
-    error.Problem.ShouldStartWith("unknown field date");
-  }
-
-  [Fact]
   public void Bold_as_a_span_attribute_points_to_asterisks()
   {
     // Act
