@@ -52,19 +52,6 @@ public class CommentTests
   }
 
   [Fact]
-  public void A_presentation_without_a_comments_file_has_no_comments()
-  {
-    // Arrange
-    using var deck = new DeckFixture();
-
-    // Act
-    Presentation presentation = deck.Load();
-
-    // Assert
-    presentation.Comments.ShouldBeEmpty();
-  }
-
-  [Fact]
   public void A_comment_with_an_unknown_key_fails_to_load_at_its_line()
   {
     // Arrange

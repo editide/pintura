@@ -306,40 +306,20 @@ public class TableTests
     Cell(item, 4, 2).Properties["border_top.width"].Value.ShouldBe(1.0);
   }
 
-  [Fact]
-  public void A_column_has_no_top_or_bottom_border()
+  [Theory]
+  [InlineData("columns:\n  - { border_top: { color: dark1, width: 1 } }", "border_top")]
+  [InlineData("rows:\n  2: { border_left: { color: dark1, width: 1 } }", "border_left")]
+  public void A_column_has_no_top_or_bottom_border_and_a_row_no_left_or_right(string yaml, string key)
   {
     // Arrange
     using var deck = new DeckFixture();
-    deck.Table("""
-      data: results.csv
-      columns:
-        - { border_top: { color: dark1, width: 1 } }
-      """);
+    deck.Table($"data: results.csv\n{yaml}");
 
     // Act
     LoadException error = deck.Error("table");
 
     // Assert
-    error.Message.ShouldStartWith("unknown key border_top");
-  }
-
-  [Fact]
-  public void A_row_has_no_left_or_right_border()
-  {
-    // Arrange
-    using var deck = new DeckFixture();
-    deck.Table("""
-      data: results.csv
-      rows:
-        2: { border_left: { color: dark1, width: 1 } }
-      """);
-
-    // Act
-    LoadException error = deck.Error("table");
-
-    // Assert
-    error.Message.ShouldStartWith("unknown key border_left");
+    error.Message.ShouldStartWith($"unknown key {key}");
   }
 
   [Fact]

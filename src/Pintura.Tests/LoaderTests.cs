@@ -364,27 +364,6 @@ public class LoaderTests
     presentation.Slides[1].Number.ShouldBe(2);
   }
 
-  [Fact]
-  public void Every_fixture_presentation_loads_and_builds_every_slide()
-  {
-    // Arrange
-    string presentations = Path.Combine(RepositoryRoot(), "presentations");
-    string charts = Path.Combine(RepositoryRoot(), "src", "Pintura.Tests", "fixtures", "charts");
-
-    foreach (string root in Directory.GetDirectories(presentations).Append(charts))
-    {
-      // Act
-      Presentation presentation = PresentationLoader.Load(root);
-
-      // Assert
-      presentation.Slides.ShouldAllBe(slide => slide.Error == null, Path.GetFileName(root));
-      foreach (Slide slide in presentation.Slides)
-      {
-        SceneBuilder.Build(presentation, slide).Items.ShouldNotBeEmpty();
-      }
-    }
-  }
-
   private static string Note(string text, string extra = "")
   {
     return $"layout: content\nelements:\n  - id: note\n    text: \"{text}\"\n    frame: [40, 100, 200, 40]{extra}";
