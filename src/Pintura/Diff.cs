@@ -520,9 +520,18 @@ public static partial class Differ
       // An unset bullet takes the text's color.
       string bulletColor = Show("bullet_color", paragraph.BulletColor ?? (paragraph.Bullet is null ? null
         : paragraph.Runs.FirstOrDefault()?.Properties.GetValueOrDefault("color")));
-      values[$"{name}.bullet"] = ($"{Show("bullet", paragraph.Bullet)} {bulletColor} " +
-        $"{Show("bullet_size", paragraph.BulletSize)} {Show("indent", paragraph.Indent)} " +
-        $"{Show("hanging", paragraph.Hanging)}".Trim(), null);
+      string glyph = Show("bullet", paragraph.Bullet);
+      string size = Show("bullet_size", paragraph.BulletSize);
+      List<string> bullet = [glyph.Length == 0 || glyph == "none" ? "none"
+        : $"{glyph} {bulletColor}{(size == "1" ? "" : $" ×{size}")}"];
+      foreach ((string key, Resolved? value) in new[] { ("indent", paragraph.Indent), ("hanging", paragraph.Hanging) })
+      {
+        if (Show(key, value) is { Length: > 0 } shown && shown != "0")
+        {
+          bullet.Add($"{key} {shown}");
+        }
+      }
+      values[$"{name}.bullet"] = (string.Join(", ", bullet), null);
       foreach (string key in TextProperties.Paragraph)
       {
         values[$"{name}.{key}"] = (Show(key, paragraph.Properties.GetValueOrDefault(key)), null);
@@ -615,11 +624,11 @@ public static partial class DiffCommand
     return Path.GetExtension(revision).ToLowerInvariant() is ".pptx" or ".potx";
   }
 
-  public static int Run(string root, string revision, bool json, TextWriter output)
+  public static int Run(string root, string revision, bool json, TextWriter output, SlideSelection? only = null)
   {
     if (IsDeck(revision))
     {
-      return RunDeck(root, revision, json, output);
+      return RunDeck(root, revision, json, only, output);
     }
     string[] ends = revision.Split("..", 2);
     string first = ends[0].Length == 0 ? "HEAD" : ends[0];
@@ -639,7 +648,7 @@ public static partial class DiffCommand
     return 0;
   }
 
-  private static int RunDeck(string root, string deck, bool json, TextWriter output)
+  private static int RunDeck(string root, string deck, bool json, SlideSelection? only, TextWriter output)
   {
     string source = Path.GetFullPath(deck);
     if (!File.Exists(source))
@@ -649,13 +658,30 @@ public static partial class DiffCommand
     Presentation presentation = PresentationLoader.Load(root);
     (DeckDiff diff, List<string> findings) = Against(presentation, DeckReads.Read(source, ToolHosts.Default()),
       source);
+    if (only is not null)
+    {
+      diff = Only(diff, presentation, only);
+    }
     if (json)
     {
       output.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { diff.Slides, diff.Causes, Unread = findings },
         PayloadJson.Indented));
       return 0;
     }
-    Write(diff, $"{Path.GetFileName(Path.GetFullPath(root))} → {Path.GetFileName(source)}", output);
+    string heading = $"{Path.GetFileName(Path.GetFullPath(root))} → {Path.GetFileName(source)}";
+    if (only is null)
+    {
+      Overview(diff, heading, output);
+      if (diff.Slides.Count > 0)
+      {
+        output.WriteLine();
+        output.WriteLine($"--diff {deck} --slides <list> lists each change on the slides it names.");
+      }
+    }
+    else
+    {
+      Write(diff, heading, output);
+    }
     if (findings.Count > 0)
     {
       output.WriteLine();
@@ -714,6 +740,59 @@ public static partial class DiffCommand
       }
     }
   }
+
+  /// <summary>The slides of <paramref name="diff"/> that <paramref name="only"/> names in
+  /// <paramref name="presentation"/>, by the number each had there, or for a slide the deck added, has.</summary>
+  public static DeckDiff Only(DeckDiff diff, Presentation presentation, SlideSelection only)
+  {
+    HashSet<int> numbers = [.. only.Pick(presentation.Slides, slide => slide.Id).Select(slide => slide.Number)];
+    List<SlideDiff> slides = diff.Slides.Where(slide => numbers.Contains(slide.Before ?? slide.After ?? 0)).ToList();
+    return new DeckDiff(slides, []);
+  }
+
+  /// <summary>A line a slide, counting what changed on it, for choosing the slides to list in full.</summary>
+  public static void Overview(DeckDiff diff, string heading, TextWriter output)
+  {
+    output.WriteLine(heading);
+    output.WriteLine();
+    if (diff.Slides.Count == 0)
+    {
+      output.WriteLine("no changes");
+      return;
+    }
+    int width = diff.Slides.Max(slide => slide.Id.Length);
+    foreach (SlideDiff slide in diff.Slides)
+    {
+      string number = (slide.After ?? slide.Before)?.ToString(CultureInfo.InvariantCulture) ?? "–";
+      var counts = new OrderedDictionary<string, int>
+      {
+        ["reworded"] = 0, ["moved"] = 0, ["restyled"] = 0, ["added"] = 0, ["removed"] = 0
+      };
+      foreach (ItemDiff item in slide.Items)
+      {
+        if (item.Status != "changed")
+        {
+          counts[item.Status]++;
+          continue;
+        }
+        bool reworded = item.Changes.Any(change => change.Key == "text" || CellText().IsMatch(change.Key));
+        bool moved = item.Changes.Any(change => change.Key is "frame" or "from" or "to");
+        counts["reworded"] += reworded ? 1 : 0;
+        counts["moved"] += moved ? 1 : 0;
+        counts["restyled"] += item.Changes.Any(change => change.Key is not ("text" or "frame" or "from" or "to") &&
+          !CellText().IsMatch(change.Key) && !(reworded && change.Key.Contains(" run ", StringComparison.Ordinal)))
+          ? 1
+          : 0;
+      }
+      List<string> parts = [.. slide.Changes.Select(change => $"{change.Key} changed"),
+        .. counts.Where(pair => pair.Value > 0).Select(pair => $"{pair.Value} {pair.Key}")];
+      string status = slide.Status is "added" or "removed" or "moved" ? slide.Status : string.Join(", ", parts);
+      output.WriteLine($"{number,2} {slide.Id.PadRight(width)}  {status}");
+    }
+  }
+
+  [GeneratedRegex(@"^cell \d+,\d+$")]
+  private static partial Regex CellText();
 
   /// <summary><paramref name="diff"/> without changes to <paramref name="keys"/>, and without the items and slides
   /// left unchanged once they go.</summary>
@@ -801,9 +880,15 @@ public static partial class DiffCommand
 
   private static void Changes(List<ChangeEntry> changes, string indent, TextWriter output)
   {
+    changes = Collapsed(changes);
     int width = changes.Count == 0 ? 0 : changes.Max(change => change.Key.Length);
     foreach (ChangeEntry change in changes)
     {
+      if (change.Before is null && ParagraphKey().Match($"{change.Key}.").Groups["paragraph"].Value == change.Key)
+      {
+        output.WriteLine($"{indent}{change.Key.PadRight(width)}  {change.After}");
+        continue;
+      }
       (string? before, string? after) = change.Before is not null && change.After is not null &&
         Math.Max(change.Before.Length, change.After.Length) > 60
           ? Excerpts(change.Before, change.After)
@@ -811,6 +896,58 @@ public static partial class DiffCommand
       output.WriteLine($"{indent}{change.Key.PadRight(width)}  {Value(before)} → {Value(after)}");
     }
   }
+
+  /// <summary>The changes as read: a paragraph added or removed whole as one line with its words, and a run that
+  /// only rewords left to the text's own line.</summary>
+  private static List<ChangeEntry> Collapsed(List<ChangeEntry> changes)
+  {
+    bool reworded = changes.Any(change => change.Key == "text" || CellText().IsMatch(change.Key));
+    var whole = new Dictionary<string, string>(StringComparer.Ordinal);
+    foreach (IGrouping<string, ChangeEntry> paragraph in changes
+      .Where(change => ParagraphKey().IsMatch(change.Key))
+      .GroupBy(change => ParagraphKey().Match(change.Key).Groups["paragraph"].Value))
+    {
+      string words = string.Concat(paragraph.Where(change => change.Key.Contains(" run ", StringComparison.Ordinal))
+        .Select(change => Look().Replace(change.Before ?? change.After ?? "", "")));
+      if (paragraph.All(change => change.After is null))
+      {
+        whole[paragraph.Key] = $"removed: {words}".TrimEnd();
+      }
+      else if (paragraph.All(change => change.Before is null))
+      {
+        whole[paragraph.Key] = $"added: {words}".TrimEnd();
+      }
+    }
+    var collapsed = new List<ChangeEntry>();
+    var listed = new HashSet<string>(StringComparer.Ordinal);
+    foreach (ChangeEntry change in changes)
+    {
+      Match match = ParagraphKey().Match(change.Key);
+      string? paragraph = match.Success ? match.Groups["paragraph"].Value : null;
+      if (paragraph is not null && whole.TryGetValue(paragraph, out string? line))
+      {
+        if (listed.Add(paragraph))
+        {
+          collapsed.Add(new ChangeEntry(paragraph, null, line, null, null));
+        }
+        continue;
+      }
+      bool rewordOnly = reworded && change.Key.Contains(" run ", StringComparison.Ordinal) &&
+        change.Before is not null && change.After is not null &&
+        Look().Match(change.Before).Value == Look().Match(change.After).Value;
+      if (!rewordOnly)
+      {
+        collapsed.Add(change);
+      }
+    }
+    return collapsed;
+  }
+
+  [GeneratedRegex(@"^(?<paragraph>(?:cell \d+,\d+ )?paragraph \d+)(?:\.| run )")]
+  private static partial Regex ParagraphKey();
+
+  [GeneratedRegex(@" ?\{[^{}]*\}$")]
+  private static partial Regex Look();
 
   /// <summary>A long value by the words that changed, with two words of what each side shares around them.</summary>
   private static (string, string) Excerpts(string before, string after)

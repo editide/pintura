@@ -188,9 +188,12 @@ An element whose `id` changed counts as removed and added.
 
 ```bash
 pintura presentations/example --diff edited.pptx
+pintura presentations/example --diff edited.pptx --slides 2,revenue
 ```
 
-`--diff` against a `.pptx` lists what was changed in PowerPoint since the export, for an agent to make the same edits in the files; it reads the deck as `--import` does, with an account, and bills nothing.
+`--diff` against a `.pptx` says what was changed in PowerPoint since the export, for an agent to make the same edits in the files; it reads the deck as `--import` does, with an account, and bills nothing.
+Alone it prints a line a slide, counting the elements reworded, moved, restyled, added, and removed, and `--slides` lists each change on the slides it names, so an agent reads the changes a slide at a time and runs it again to see the slide clean.
+A paragraph added or removed whole is one line with its words.
 The export keeps no ids, so slides pair by number and elements by kind, then frame, then text, and each is named by the presentation's id; an element added in PowerPoint lists what it draws.
 Values compare as drawn, so a number a reference renders matches the same number typed in the deck, a text element matches the rectangle PowerPoint keeps it as, and a frame within a point of where it was hasn't moved.
 What the export can't carry, such as sections and alt text, is left out, and an element the deck's reading couldn't import is listed as not compared.

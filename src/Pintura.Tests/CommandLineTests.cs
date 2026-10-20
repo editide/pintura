@@ -92,6 +92,18 @@ public class CommandLineTests
   }
 
   [Fact]
+  public void Slides_narrow_a_diff_against_a_deck_but_not_against_a_revision()
+  {
+    // Act
+    CommandLineOptions deck = CommandLineOptions.Parse(["deck", "--diff", "edited.pptx", "--slides", "2"]);
+    Action revision = () => CommandLineOptions.Parse(["deck", "--diff", "main", "--slides", "2"]);
+
+    // Assert
+    deck.Slides.ShouldNotBeNull();
+    revision.ShouldThrow<ArgumentException>().Message.ShouldContain("--slides");
+  }
+
+  [Fact]
   public void Diff_narrows_a_check_and_pairs_a_screenshot_and_nothing_else()
   {
     // Act

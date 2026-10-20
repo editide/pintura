@@ -275,9 +275,11 @@ public class CommandLineOptions
     {
       throw new ArgumentException("--theme requires --import.");
     }
-    if (slides is not null && (themeOnly || import is null && command is not HeadlessCommand.ExportPptx))
+    bool deckDiff = command is HeadlessCommand.Diff && DiffCommand.IsDeck(revision!);
+    if (slides is not null && (themeOnly || import is null && command is not HeadlessCommand.ExportPptx && !deckDiff))
     {
-      throw new ArgumentException("--slides requires --export <deck.pptx> or --import without --theme.");
+      throw new ArgumentException("--slides requires --export <deck.pptx>, --diff <deck.pptx>, or --import without " +
+        "--theme.");
     }
     return new CommandLineOptions
     {
@@ -326,9 +328,10 @@ public class CommandLineOptions
       "theme colors and fonts kept as references)");
     writer.WriteLine("  pintura [<presentation>] --export-html <file>   (one HTML file that shows the slides with no " +
       "server, for sending)");
-    writer.WriteLine("  pintura [<presentation>] --diff [<rev>|<a>..<b>|<deck.pptx>] [--json]   (what changed since " +
-      "a git revision, HEAD by default, or between two, or what a deck the presentation exported changed in " +
-      "PowerPoint)");
+    writer.WriteLine("  pintura [<presentation>] --diff [<rev>|<a>..<b>] [--json]   (what changed since a git " +
+      "revision, HEAD by default, or between two)");
+    writer.WriteLine("  pintura [<presentation>] --diff <deck.pptx> [--slides <list>] [--json]   (what was changed in " +
+      "PowerPoint since the export: a line a slide, or each change on the slides --slides names)");
     writer.WriteLine("  pintura --import <deck.pptx>|<deck.json> <folder> [--theme|--slides <list>]   (a " +
       "presentation folder with its theme inside, from a PowerPoint deck or the model's JSON as --export-json writes " +
       "it; --theme writes the theme alone, and --slides only the slides it names)");
