@@ -151,6 +151,25 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_border_the_whole_table_sets_reaches_each_cell_a_row_doesnt_override()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = Reads();
+    JsonNode table = reads["slides"]![4]!["read"]!["table_elements"]![0]!;
+    table["default_borders"] = JsonNode.Parse("""
+      { "left": { "color": { "scheme": "lt1" }, "weight": 3, "dash_type": "solid" } }
+      """);
+
+    // Act
+    Presentation presentation = Imported(output, reads);
+
+    // Assert
+    SceneItem item = SceneBuilder.Build(presentation, presentation.Slides[4]).Items.Single(item => item.Kind == "table");
+    item.Table!.Cells.ShouldAllBe(cell => cell.Properties.ContainsKey("border_left.color"));
+  }
+
+  [Fact]
   public void A_deck_imports_with_its_slides_and_layouts()
   {
     // Arrange

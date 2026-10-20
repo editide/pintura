@@ -31,6 +31,29 @@ public class ImportTests
   }
 
   [Fact]
+  public void A_table_cells_empty_paragraph_with_formatting_of_its_own_imports()
+  {
+    // Arrange
+    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example");
+    JsonObject deck = Importer.Snapshot(PresentationLoader.Load(root));
+    JsonNode table = deck["slides"]!.AsArray().SelectMany(slide => slide!["items"]!.AsArray())
+      .First(item => (string?)item!["kind"] == "table")!;
+    JsonNode paragraph = table["properties"]!["cells"]![0]!["paragraphs"]![0]!;
+    paragraph["runs"] = new JsonArray();
+    paragraph["properties"]!["align"] = "center";
+    paragraph["properties"]!["space_before"] = 7;
+    using var output = new TempFolder();
+
+    // Act
+    ImportResult result = Importer.Import(deck.ToJsonString(), root, output.PathTo("imported"));
+
+    // Assert
+    result.Findings.ShouldNotContain(finding => finding.Contains("left out"));
+    PresentationLoader.Load(output.PathTo("imported")).Slides.SelectMany(slide => slide.Elements)
+      .ShouldContain(element => element.Table != null);
+  }
+
+  [Fact]
   public void An_element_the_format_cant_hold_is_left_out_with_a_finding_and_the_rest_imports()
   {
     // Arrange

@@ -2452,7 +2452,8 @@ public partial class PowerPointMapping
         {
           cellProperties["fill"] = fill;
         }
-        JsonObject borders = Merge(row["default_borders"], cell["style"]?["borders"], cell["borders"]);
+        JsonObject borders = Merge(element["default_borders"], row["default_borders"], cell["style"]?["borders"],
+          cell["borders"]);
         foreach (string side in new[] { "top", "bottom", "left", "right" })
         {
           if (borders[side] is JsonObject border && Stroke(new JsonObject

@@ -1843,7 +1843,8 @@ public partial class Importer
     for (int index = 0; index < paragraphs.Count; index++)
     {
       JsonObject paragraph = paragraphs[index]!.AsObject();
-      if (paragraphStyles?[index] is string style)
+      // The markup styles a paragraph by the line after its style, which an empty one doesn't have.
+      if (paragraphStyles?[index] is string style && paragraph["runs"]!.AsArray().Count > 0)
       {
         lines.Add($"{{.{style}}}");
       }
