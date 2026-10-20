@@ -36,8 +36,8 @@ public sealed class EditideTools : IToolHost
 
   public static EditideTools Connect(string url)
   {
-    string key = Account.Default.Key ?? throw new ArgumentException("exporting and importing run on editide: sign " +
-      $"in with `pintura --login`, or set {Account.KeyVariable}");
+    string key = Account.Default.Key ?? throw new ArgumentException("exporting, importing, and diffing a deck run on " +
+      $"editide: sign in with `pintura --login`, or set {Account.KeyVariable}");
     return Connect(url, key);
   }
 
