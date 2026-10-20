@@ -25,7 +25,12 @@ public record DeckPayload
   public List<SectionPayload> Sections { get; init; } = new List<SectionPayload>();
   public List<SlidePayload> Slides { get; init; } = new List<SlidePayload>();
   public List<Comment> Comments { get; init; } = new List<Comment>();
+  public List<FontFacePayload> Fonts { get; init; } = new List<FontFacePayload>();
 }
+
+/// <summary>A font file the theme ships, as the page registers it: a CSS family, weight, and style at a URL.
+/// </summary>
+public record FontFacePayload(string Family, int Weight, string Style, string Url);
 
 public record SectionPayload(string? Name, List<string> Slides);
 
@@ -234,7 +239,11 @@ public static class PayloadBuilder
       Version = version,
       Sections = presentation.Sections.Select(section => new SectionPayload(section.Name, section.Slides)).ToList(),
       Slides = presentation.Slides.Select(slide => Slide(presentation, slide, pictureUrl)).ToList(),
-      Comments = presentation.Comments
+      Comments = presentation.Comments,
+      Fonts = presentation.Theme.Faces
+        .Select(face => new FontFacePayload(face.Family, face.Weight, face.Italic ? "italic" : "normal",
+          pictureUrl(face.Path, null)))
+        .ToList()
     };
   }
 

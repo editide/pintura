@@ -77,6 +77,12 @@ elements:
 The slide number is an ordinary text box showing `${slide}`.
 Theme elements can't be moved or edited from a slide; change them here, or drop them on a layout with `theme_elements: false`.
 
+## Fonts
+
+A `.ttf` or `.otf` in `fonts/` draws in the preview, screenshots, checks, PDF, and HTML export whether or not the machine has it installed.
+Each file answers to its family at its weight, and to the family Windows and PowerPoint list it under, such as `IBM Plex Sans Medm` for IBM Plex Sans Medium.
+A `.pptx` doesn't embed them, so PowerPoint still needs the font installed.
+
 ## Usual mistakes
 
 - Leaving out a theme color: all twelve are required.

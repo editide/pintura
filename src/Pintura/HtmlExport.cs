@@ -100,7 +100,7 @@ public static class HtmlExport
 
   private static string DataUri(string path, string? fill)
   {
-    string contentType = PresentationStore.ContentType(path) ?? "application/octet-stream";
+    string contentType = PresentationStore.ServedType(path) ?? "application/octet-stream";
     byte[] bytes = fill is null || !PresentationLoader.Svg(path)
       ? File.ReadAllBytes(path)
       : Encoding.UTF8.GetBytes(SvgPaint.Recolor(File.ReadAllText(path), fill));

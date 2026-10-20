@@ -67,6 +67,8 @@ public class Theme
   public Dictionary<string, string> Colors { get; init; } = new Dictionary<string, string>();
   public Dictionary<string, Color> NamedColors { get; init; } = new Dictionary<string, Color>();
   public Dictionary<string, string> Fonts { get; init; } = new Dictionary<string, string>();
+  /// <summary>The font files in the theme's <c>fonts/</c>, which draw in place of installed ones.</summary>
+  [JsonIgnore] public List<FontFace> Faces { get; init; } = new List<FontFace>();
   public Color Background { get; init; } = new Color { Theme = "light1" };
   public Placeholder? Title { get; init; }
   public Dictionary<string, Placeholder> Placeholders { get; init; } = new Dictionary<string, Placeholder>();

@@ -195,7 +195,7 @@ public static class Checks
     List<Finding> findings = Collapse(candidates);
     foreach (FontMeasure font in measurement.Fonts.Where(font => !font.Available))
     {
-      string message = "isn't installed, so the text in it was drawn in a fallback font";
+      string message = "isn't installed or in the theme's fonts/, so the text in it was drawn in a fallback font";
       if (fonts.Wsl && !fonts.WindowsFontsVisible)
       {
         message += "; to use the Windows fonts, add <dir>/mnt/c/Windows/Fonts</dir> inside <fontconfig> in " +
