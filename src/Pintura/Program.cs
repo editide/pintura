@@ -354,10 +354,10 @@ public class PresentationStore : IDisposable
 
   public string Root => root;
 
-  /// <summary>Only pictures the presentation places may be requested.</summary>
+  /// <summary>Only pictures the presentation places and fonts its theme ships may be requested.</summary>
   public bool TryGetMedia(string path, out string? contentType)
   {
-    contentType = ContentType(path);
+    contentType = ServedType(path);
     return contentType is not null && Volatile.Read(ref snapshot).Media.Contains(path) && File.Exists(path);
   }
 
@@ -374,7 +374,13 @@ public class PresentationStore : IDisposable
     };
   }
 
-  /// <summary>Every picture the theme, its layouts, and the slides place.</summary>
+  /// <summary>A picture's type, or a font's, which the page loads but no slide may place.</summary>
+  public static string? ServedType(string path)
+  {
+    return ContentType(path) ?? ThemeFonts.ContentType(path);
+  }
+
+  /// <summary>Every picture the theme, its layouts, and the slides place, and every font the theme ships.</summary>
   public static HashSet<string> Media(Presentation presentation)
   {
     return presentation.Theme.Elements
@@ -382,6 +388,7 @@ public class PresentationStore : IDisposable
       .Concat(presentation.Slides.SelectMany(slide => slide.Elements))
       .Select(element => element.PicturePath)
       .OfType<string>()
+      .Concat(presentation.Theme.Faces.Select(face => face.Path))
       .ToHashSet(StringComparer.Ordinal);
   }
 

@@ -458,6 +458,7 @@ public partial class PresentationLoader
       Colors = colors,
       NamedColors = namedColors,
       Fonts = fonts,
+      Faces = ThemeFonts.Read(Path.Combine(themeRoot, "fonts")),
       Background = background,
       Title = title,
       Placeholders = placeholders,

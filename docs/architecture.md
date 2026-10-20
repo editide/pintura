@@ -160,7 +160,7 @@ The exporter writes the identity map, and a dark layout states its own text colo
 ### Fonts
 
 Two theme fonts, `heading` and `body`, OOXML's major and minor, exported as theme-font links (`+mj-lt`, `+mn-lt`).
-A theme can ship font files in `fonts/`.
+A theme can ship font files in `fonts/`, which the page registers under the families the files name, so the preview, its prints, and the HTML export draw in them on any machine; the `.pptx` doesn't embed them.
 
 ## What we keep from OOXML, and what we drop
 
@@ -239,7 +239,7 @@ The browser is the reference.
 When the export disagrees with the preview, the export gets fixed; only when PowerPoint can't do what the preview does does the preview change.
 
 The preview runs on localhost, so it renders with the fonts installed on the machine, the same files PowerPoint uses there.
-The default theme uses Arial, which every machine and every PowerPoint has, and theme fonts in `fonts/` load through `@font-face`.
+The default theme uses Arial, which every machine and every PowerPoint has, and theme fonts in `fonts/` load through the FontFace API ahead of installed ones.
 On a machine without Office, metric-compatible substitutes keep line breaks the same: Carlito for Calibri, Liberation Sans for Arial.
 That leaves layout, where the two programs differ:
 

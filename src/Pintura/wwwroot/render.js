@@ -42,6 +42,29 @@ function fontFamily(family) {
   return `"${family.replace(/"/g, '')}"`;
 }
 
+const themeFaces = new Map();
+
+// The theme's own font files, registered under the families slides name so they draw whatever this machine has
+// installed. Resolves once they have loaded, since text is measured and fitted as it is drawn.
+async function useFonts(faces = []) {
+  const wanted = new Set(faces.map((face) => JSON.stringify(face)));
+  for (const [key, face] of themeFaces) {
+    if (!wanted.has(key)) {
+      document.fonts.delete(face);
+      themeFaces.delete(key);
+    }
+  }
+  for (const face of faces) {
+    const key = JSON.stringify(face);
+    if (!themeFaces.has(key)) {
+      const loaded = new FontFace(face.family, `url("${face.url}")`, { weight: `${face.weight}`, style: face.style });
+      themeFaces.set(key, loaded);
+      document.fonts.add(loaded);
+    }
+  }
+  await Promise.all([...themeFaces.values()].map((face) => face.load().catch(() => {})));
+}
+
 // A missing family falls back to a generic one; a family that is there changes the width of the sample against at
 // least one of the three. document.fonts.check can't tell, since it answers true for any family it has no face for.
 function fontAvailable(family) {

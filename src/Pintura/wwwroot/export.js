@@ -211,4 +211,4 @@ state.current = indexOf(decodeURIComponent(location.hash.slice(1)));
 renderSidebar();
 render();
 // Text is fitted as it is drawn, so fonts that arrive afterwards need the slides fitted again.
-document.fonts.ready.then(render);
+useFonts(deck.fonts).then(() => document.fonts.ready).then(render);

@@ -750,7 +750,7 @@ public class Comparison
 
   public bool TryGetMedia(string path, out string? contentType)
   {
-    contentType = PresentationStore.ContentType(path);
+    contentType = PresentationStore.ServedType(path);
     Side? side = Volatile.Read(ref before);
     return contentType is not null && side is not null && side.Media.Contains(path) && File.Exists(path);
   }

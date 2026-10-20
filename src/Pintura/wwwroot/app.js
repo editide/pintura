@@ -682,6 +682,7 @@ async function loadOnce() {
   const [response, compare, theme] = await Promise.all([fetch('api/presentation', { cache: 'no-store' }),
     fetchCompare(), fetch('api/theme', { cache: 'no-store' })]);
   const deck = await response.json();
+  await useFonts(deck.fonts);
   // An edit begun while this waited would have its slide redrawn out from under it.
   if (editingActive()) {
     editing.reloadPending = true;

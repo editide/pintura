@@ -10,7 +10,9 @@ const root = document.getElementById('root');
 
 async function fetchDeck() {
   const response = await fetch('api/presentation', { cache: 'no-store' });
-  return response.json();
+  const deck = await response.json();
+  await useFonts(deck.fonts);
+  return deck;
 }
 
 async function settle() {
