@@ -344,7 +344,8 @@ public class CommandLineOptions
     writer.WriteLine("  pintura --install-browser   (fetches the headless Chromium a machine without Edge or Chrome " +
       "would fetch on its first --screenshot or --check, through HTTPS_PROXY if set)");
     writer.WriteLine();
-    writer.WriteLine("--export and --import run on editide's API with an API key; everything else needs no account");
+    writer.WriteLine("--export, --import, and --diff against a .pptx run on editide's API with an API key; " +
+      "everything else needs no account");
     writer.WriteLine("without a presentation, the one presentation up to three folders below the working folder");
     writer.WriteLine("the server opens a browser tab, reuses one already serving the presentation, and stops with " +
       "no tab open");
