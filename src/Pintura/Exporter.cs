@@ -2150,8 +2150,10 @@ public partial class Exporter
     JsonNode? master = Call("read_slide", new JsonObject { ["theme_name"] = themeName, ["target"] = "master" });
     JsonNode? masterTitle = Items(Get(master, "text_elements"))
       .FirstOrDefault(element => Text(Get(Get(element, "placeholder"), "role")) == "title");
+    string named = Text(Get(theme, "name")) is { Length: > 0 } own ? own : themeName;
     var masterEdit = new JsonObject
     {
+      ["name"] = named,
       ["background"] = new JsonObject { ["color"] = Color(Get(theme, "background")) },
       ["master_text_styles"] = styles
     };
@@ -2173,6 +2175,7 @@ public partial class Exporter
       ["target"] = "master",
       ["slide"] = masterEdit
     });
+    themeName = named;
 
     JsonNode? masterBody = Get(theme, "text");
     JsonNode? masterTitleStyle = themeTitle is null ? null : Get(Items(Get(themeTitle, "paragraphs"))[0], "properties");

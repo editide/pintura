@@ -8,6 +8,9 @@ public sealed class BlandTools : IToolHost
 {
   public List<string> Calls { get; } = new List<string>();
 
+  /// <summary>Each call's input, in the order the calls came.</summary>
+  public List<(string Tool, JsonObject Input)> Inputs { get; } = new List<(string Tool, JsonObject Input)>();
+
   /// <summary>Runs before each save writes, such as to fail it.</summary>
   public Action<string>? Saving { get; init; }
 
@@ -34,6 +37,7 @@ public sealed class BlandTools : IToolHost
     public JsonNode? Call(string tool, JsonObject input)
     {
       tools.Calls.Add(tool);
+      tools.Inputs.Add((tool, input));
       return tool switch
       {
         "list_slide_layouts" => JsonNode.Parse("""

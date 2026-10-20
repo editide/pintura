@@ -271,6 +271,23 @@ public class IncrementalExportTests
   }
 
   [Fact]
+  public void The_master_takes_the_themes_name_rather_than_the_blank_decks()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    var tools = new BlandTools();
+
+    // Act
+    Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
+
+    // Assert
+    JsonObject master = tools.Inputs
+      .Single(call => call.Tool == "edit_slide" && (string?)call.Input["target"] == "master").Input;
+    ((string?)master["slide"]!["name"]).ShouldBe("Test");
+    ((string?)tools.Inputs.Last(call => call.Tool == "delete_layout").Input["theme_name"]).ShouldBe("Test");
+  }
+
+  [Fact]
   public void A_failed_save_leaves_the_previous_deck_and_manifest_alone()
   {
     // Arrange
