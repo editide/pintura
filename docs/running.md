@@ -187,6 +187,16 @@ A revision reads its books as the same commit left them, so a restated fact show
 An element whose `id` changed counts as removed and added.
 
 ```bash
+pintura presentations/example --diff edited.pptx
+```
+
+`--diff` against a `.pptx` lists what was changed in PowerPoint since the export, for an agent to make the same edits in the files; it reads the deck as `--import` does, with an account, and bills nothing.
+The export keeps no ids, so slides pair by number and elements by kind, then frame, then text, and each is named by the presentation's id; an element added in PowerPoint lists what it draws.
+Values compare as drawn, so a number a reference renders matches the same number typed in the deck, a text element matches the rectangle PowerPoint keeps it as, and a frame within a point of where it was hasn't moved.
+What the export can't carry, such as sections and alt text, is left out, and an element the deck's reading couldn't import is listed as not compared.
+A slide inserted or deleted in PowerPoint shifts the pairing of every slide after it.
+
+```bash
 pintura presentations/example --check --diff
 pintura presentations/example --check --diff main..HEAD --json
 pintura presentations/example --screenshot revenue --diff main

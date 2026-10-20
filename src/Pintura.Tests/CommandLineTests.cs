@@ -79,6 +79,19 @@ public class CommandLineTests
   }
 
   [Fact]
+  public void Diff_against_a_deck_lists_its_changes_and_does_nothing_else()
+  {
+    // Act
+    CommandLineOptions options = CommandLineOptions.Parse(["deck", "--diff", "edited.pptx"]);
+    Action check = () => CommandLineOptions.Parse(["deck", "--diff", "edited.pptx", "--check"]);
+
+    // Assert
+    options.Command.ShouldBe(HeadlessCommand.Diff);
+    options.Revision.ShouldBe("edited.pptx");
+    check.ShouldThrow<ArgumentException>().Message.ShouldContain(".pptx");
+  }
+
+  [Fact]
   public void Diff_narrows_a_check_and_pairs_a_screenshot_and_nothing_else()
   {
     // Act

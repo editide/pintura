@@ -227,6 +227,10 @@ public class CommandLineOptions
       {
         command = HeadlessCommand.Diff;
       }
+      else if (DiffCommand.IsDeck(revision))
+      {
+        throw new ArgumentException("--diff against a .pptx combines with nothing but --json.");
+      }
       else if (command is not (HeadlessCommand.Check or HeadlessCommand.Screenshot))
       {
         throw new ArgumentException("--diff combines only with --check and --screenshot.");
@@ -322,8 +326,9 @@ public class CommandLineOptions
       "theme colors and fonts kept as references)");
     writer.WriteLine("  pintura [<presentation>] --export-html <file>   (one HTML file that shows the slides with no " +
       "server, for sending)");
-    writer.WriteLine("  pintura [<presentation>] --diff [<rev>|<a>..<b>] [--json]   (what changed since a git " +
-      "revision, HEAD by default, or between two)");
+    writer.WriteLine("  pintura [<presentation>] --diff [<rev>|<a>..<b>|<deck.pptx>] [--json]   (what changed since " +
+      "a git revision, HEAD by default, or between two, or what a deck the presentation exported changed in " +
+      "PowerPoint)");
     writer.WriteLine("  pintura --import <deck.pptx>|<deck.json> <folder> [--theme|--slides <list>]   (a " +
       "presentation folder with its theme inside, from a PowerPoint deck or the model's JSON as --export-json writes " +
       "it; --theme writes the theme alone, and --slides only the slides it names)");
