@@ -68,7 +68,7 @@ public record ExportManifest(string Deck, string Design, IReadOnlyList<string> D
   /// <summary>Bumped when the exporter writes the theme or layouts differently, so a deck exported before is rebuilt.
   /// Not the build version, as rebuilding bills the master and every layout again, which an upgrade shouldn't.
   /// </summary>
-  public const string DesignMapping = "1";
+  public const string DesignMapping = "2";
 
   /// <summary>Everything but the slides, with <see cref="DesignMapping"/>.</summary>
   public static string DesignHash(JsonObject deck, string root)

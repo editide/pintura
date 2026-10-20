@@ -272,6 +272,7 @@ pintura presentations/example --export out/example.pptx
 ```
 
 `--export` writes a `.pptx` by replaying that model as editide's write tools on a copy of the blank deck Pintura carries, and lists what it can't reproduce, in the user's terms.
+The master takes the theme's `name`, which PowerPoint shows as the design's, and which `--import` reads back.
 The tools run on editide's API, with the key from `pintura --login` or `EDITIDE_API_KEY`; each picture is uploaded once as an attachment, at most 25 different ones an export, which a presentation with more is refused before anything is uploaded, and the deck is downloaded at the end.
 An SVG picture can carry script, so the API takes none: the headless browser draws it as a PNG, at four pixels a point of its largest frame and at most 4096 pixels a side, kept in that folder's `pictures` by the SVG's hash, so only a new or changed SVG costs the browser's start.
 An SVG with a `fill` is drawn in it, once for each fill it takes, and each counts as a picture against the 25.
