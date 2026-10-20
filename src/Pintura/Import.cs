@@ -2298,7 +2298,7 @@ public partial class Importer
 /// presentation folder, or its theme alone.</summary>
 public static class ImportCommand
 {
-  public static int Run(string deck, string folder, bool themeOnly, TextWriter output)
+  public static int Run(string deck, string folder, bool themeOnly, TextWriter output, SlideSelection? only = null)
   {
     string source = Path.GetFullPath(deck);
     if (!File.Exists(source))
@@ -2318,7 +2318,13 @@ public static class ImportCommand
       if (Path.GetExtension(source).ToLowerInvariant() is ".pptx" or ".potx")
       {
         media = Temporary.Folder("import", Guid.NewGuid().ToString("N"));
-        PowerPointDeck mapped = PowerPointMapping.Map(DeckReads.Read(source, ToolHosts.Default()), source, media);
+        JsonObject reads = DeckReads.Read(source, ToolHosts.Default());
+        if (only is not null)
+        {
+          List<JsonNode?> picked = only.Pick(reads["slides"]!.AsArray().ToList(), _ => null);
+          reads["slides"] = new JsonArray(picked.Select(slide => slide!.DeepClone()).ToArray());
+        }
+        PowerPointDeck mapped = PowerPointMapping.Map(reads, source, media);
         json = mapped.Deck.ToJsonString();
         pictures = mapped.Media;
         findings.AddRange(mapped.Findings);
@@ -2327,6 +2333,12 @@ public static class ImportCommand
       {
         json = File.ReadAllText(source);
         pictures = Path.GetDirectoryName(source)!;
+        if (only is not null && JsonNode.Parse(json) is JsonObject model)
+        {
+          List<JsonNode?> picked = only.Pick(model["slides"]!.AsArray().ToList(), slide => (string?)slide?["id"]);
+          model["slides"] = new JsonArray(picked.Select(slide => slide!.DeepClone()).ToArray());
+          json = model.ToJsonString();
+        }
       }
       findings.AddRange(Importer.Import(json, pictures, written).Findings);
       Presentation presentation = PresentationLoader.Load(written);

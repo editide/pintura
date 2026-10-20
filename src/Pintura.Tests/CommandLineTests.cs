@@ -40,6 +40,31 @@ public class CommandLineTests
   }
 
   [Fact]
+  public void Slides_narrow_an_export_or_an_import()
+  {
+    // Act
+    CommandLineOptions export = CommandLineOptions.Parse(["deck", "--export", "out.pptx", "--slides", "cover,3-4"]);
+    CommandLineOptions import = CommandLineOptions.Parse(["--import", "deck.pptx", "out", "--slides", "2"]);
+
+    // Assert
+    export.Slides.ShouldNotBeNull();
+    import.Slides.ShouldNotBeNull();
+  }
+
+  [Theory]
+  [InlineData("deck --list --slides 1")]
+  [InlineData("deck --check --export --slides 1")]
+  [InlineData("--import deck.pptx out --theme --slides 1")]
+  public void Slides_combine_with_nothing_else(string arguments)
+  {
+    // Act
+    Action parse = () => CommandLineOptions.Parse(arguments.Split(' '));
+
+    // Assert
+    parse.ShouldThrow<ArgumentException>().Message.ShouldContain("--slides");
+  }
+
+  [Fact]
   public void Diff_compares_against_head_unless_given_a_revision()
   {
     // Act

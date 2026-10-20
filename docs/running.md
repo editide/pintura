@@ -281,6 +281,7 @@ An export leaves `<deck>.pptx.pintura.json` beside the deck, with the deck's has
 editide bills each slide, layout, and master an export writes, so a re-export costs only the slides that changed; the export writes only the layouts the slides use, and ends by saying what it billed.
 A changed theme or layout, a deck edited since, or a missing manifest makes a full export, which writes the master and layouts again, so deleting the manifest forces one.
 A new Pintura makes one only when it writes the design differently, which `ExportManifest.DesignMapping` marks.
+`--slides cover,3-5` exports only the slides it names, by id, number, or range, in the presentation's order, with the whole theme; the manifest records just those, so a later export to the same file adds the rest.
 
 ```bash
 pintura presentations/example --export-html deck.html
@@ -303,10 +304,12 @@ An export that fails says why in the page.
 ```bash
 pintura --import deck.pptx out/deck
 pintura --import deck.pptx out/theme --theme
+pintura --import deck.pptx out/deck --slides 3,5-7
 pintura --import deck.json out/deck
 ```
 
 `--import` writes a presentation folder with its theme inside from a `.pptx`, or from the model's JSON as `--export-json` prints it, with pictures read from beside the JSON; `--theme` writes the theme folder alone, for a deck handed over as the template to use.
+`--slides 3,5-7` writes only the slides it names, by number, or by id from the JSON, with the whole theme.
 A `.pptx` is read with editide's read tools, which need an account but bill nothing, and the reads are cached in that folder's `reads` until the deck or the API's `/version` changes.
 The master the slides use becomes the theme and its layouts layouts, with a single-line text placeholder kept as a placeholder, named for its prompt, and any other as an area; an element on half the layouts moves to the theme.
 A master no slide uses is left out, and a deck whose slides use two masters is refused.

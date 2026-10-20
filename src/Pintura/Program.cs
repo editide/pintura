@@ -88,7 +88,7 @@ try
 
   if (options.Import is not null)
   {
-    return ImportCommand.Run(options.Import, options.ImportFolder!, options.ThemeOnly, Console.Out);
+    return ImportCommand.Run(options.Import, options.ImportFolder!, options.ThemeOnly, Console.Out, options.Slides);
   }
 
   string root;
@@ -163,7 +163,7 @@ try
     ExportReport report;
     try
     {
-      report = Exporter.Write(presentation, options.Output!, ToolHosts.Default(), progress);
+      report = Exporter.Write(presentation, options.Output!, ToolHosts.Default(), progress, only: options.Slides);
     }
     finally
     {

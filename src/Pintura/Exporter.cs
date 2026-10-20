@@ -129,14 +129,19 @@ public partial class Exporter
   /// attaching each picture once. A deck an earlier export wrote, unedited since and with the same design, keeps its
   /// unchanged slides, unless <paramref name="fresh"/>; any other starts from the blank deck at the presentation's
   /// size. <paramref name="progress"/> hears the share of the calls made, against an estimate, so it stops short of 1.
-  /// </summary>
+  /// <paramref name="only"/> narrows the deck to the slides it names.</summary>
   public static ExportReport Write(Presentation presentation, string output, IToolHost tools,
-    Action<double>? progress = null, bool fresh = false)
+    Action<double>? progress = null, bool fresh = false, SlideSelection? only = null)
   {
     Stopwatch watch = Stopwatch.StartNew();
     string file = Path.GetFullPath(output);
     Directory.CreateDirectory(Path.GetDirectoryName(file)!);
     JsonObject deck = Model(presentation);
+    if (only is not null)
+    {
+      List<JsonNode?> picked = only.Pick(Items(deck["slides"]), slide => Text(Get(slide, "id")));
+      deck["slides"] = new JsonArray(picked.Select(slide => slide!.DeepClone()).ToArray());
+    }
     if (deck["slides"]!.AsArray().Count == 0)
     {
       throw new InvalidOperationException("the presentation has no slides to export");

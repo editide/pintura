@@ -288,6 +288,27 @@ public class IncrementalExportTests
   }
 
   [Fact]
+  public void Slides_export_alone_and_a_later_whole_export_adds_the_rest()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    string output = fixture.Folder.PathTo("out/deck.pptx");
+    var tools = new BlandTools();
+    var whole = new BlandTools();
+
+    // Act
+    ExportReport report = Exporter.Write(fixture.Load(), output, tools, only: SlideSelection.Parse("two"));
+    ExportReport after = Exporter.Write(fixture.Load(), output, whole);
+
+    // Assert
+    report.Slides.ShouldBe(1);
+    tools.Inputs.Where(call => call.Tool == "add_slide").Select(call => (string?)call.Input["layout_name"])
+      .ShouldBe(["Content"]);
+    after.Reused.ShouldBe(1);
+    whole.Calls.Count(call => call == "add_slide").ShouldBe(1);
+  }
+
+  [Fact]
   public void A_failed_save_leaves_the_previous_deck_and_manifest_alone()
   {
     // Arrange
