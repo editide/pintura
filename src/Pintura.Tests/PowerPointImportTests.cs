@@ -76,8 +76,7 @@ public class PowerPointImportTests
     // Assert
     var listing = new StringWriter();
     DiffCommand.Write(diff, $"{name} after export and import", listing);
-    // The tools write no sections and normalize a callout's tail, so neither survives the export yet.
-    string[] exportGaps = ["section", "tail"];
+    string[] exportGaps = DiffCommand.ExportGaps;
     diff.Slides
       .Where(slide => slide.Status != "changed" || slide.Changes.Any(change => !exportGaps.Contains(change.Key)) ||
         slide.Items.Any(item => item.Status != "changed" ||
@@ -86,6 +85,69 @@ public class PowerPointImportTests
       .ShouldBeEmpty(listing.ToString());
     // Fails once sections export, as a reminder to drop "section" from the gaps above.
     diff.Slides.SelectMany(slide => slide.Changes).Select(change => change.Key).ShouldContain("section");
+  }
+
+  [Fact]
+  public void A_deck_as_exported_differs_from_its_presentation_in_nothing()
+  {
+    // Arrange
+    Presentation original = PresentationLoader.Load(Path.Combine(LoaderTests.RepositoryRoot(), "presentations",
+      "example"));
+
+    // Act
+    (DeckDiff diff, _) = DiffCommand.Against(original, Reads(), Fixture("example.pptx"));
+
+    // Assert
+    var listing = new StringWriter();
+    DiffCommand.Write(diff, "example against its deck", listing);
+    diff.Slides.ShouldBeEmpty(listing.ToString());
+  }
+
+  [Fact]
+  public void Text_reworded_in_powerpoint_shows_on_its_slide_by_the_presentations_ids()
+  {
+    // Arrange
+    Presentation original = PresentationLoader.Load(Path.Combine(LoaderTests.RepositoryRoot(), "presentations",
+      "example"));
+    JsonObject reads = Reads();
+    JsonNode read = reads["slides"]![1]!["read"]!["text_elements"]![0]!;
+    read["text_component"]!["paragraph_list"]![0]!["runs"]![0]!["text"] = "Financial results";
+
+    // Act
+    (DeckDiff diff, _) = DiffCommand.Against(original, reads, Fixture("example.pptx"));
+
+    // Assert
+    SlideDiff slide = diff.Slides.ShouldHaveSingleItem();
+    slide.Id.ShouldBe(original.Slides[1].Id);
+    ItemDiff title = slide.Items.ShouldHaveSingleItem();
+    title.Id.ShouldBe("title");
+    title.Changes.Single(change => change.Key == "text").After.ShouldBe("Financial results");
+  }
+
+  [Fact]
+  public void A_box_added_in_powerpoint_shows_what_it_draws()
+  {
+    // Arrange
+    Presentation original = PresentationLoader.Load(Path.Combine(LoaderTests.RepositoryRoot(), "presentations",
+      "example"));
+    JsonObject reads = Reads();
+    JsonArray texts = reads["slides"]![1]!["read"]!["text_elements"]!.AsArray();
+    texts.Add(JsonNode.Parse("""
+      {
+        "id": 40, "is_placeholder": false, "position": { "left": 600, "top": 400, "z_index": 9 },
+        "size": { "height": 30, "width": 200 }, "autofit": "none", "wrap_text": true,
+        "text_component": { "paragraph_list": [{ "indent_level": 0, "runs": [{ "text": "Added in PowerPoint" }] }] }
+      }
+      """));
+
+    // Act
+    (DeckDiff diff, _) = DiffCommand.Against(original, reads, Fixture("example.pptx"));
+
+    // Assert
+    ItemDiff added = diff.Slides.ShouldHaveSingleItem().Items.ShouldHaveSingleItem();
+    added.Status.ShouldBe("added");
+    added.Changes.Single(change => change.Key == "text").After.ShouldBe("Added in PowerPoint");
+    added.Changes.Single(change => change.Key == "frame").After.ShouldBe("[600, 400, 200, 30]");
   }
 
   [Fact]

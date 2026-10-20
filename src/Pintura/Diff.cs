@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace Pintura;
@@ -132,7 +133,16 @@ public static partial class Differ
     {
       if (!pairs.TryGetValue(item, out SceneItem? previous))
       {
-        diff.Items.Add(new ItemDiff(item.Id, item.Owner, item.Kind, "added", []));
+        // Ids that came back from PowerPoint name nothing in the files, so an added item shows what it draws.
+        List<ChangeEntry> drawn = byPosition
+          ? Values(after, later, item, true)
+            .Where(value => value.Key != "kind" && (!value.Key.StartsWith("paragraph ", StringComparison.Ordinal) ||
+              value.Key.Contains(" run ", StringComparison.Ordinal) ||
+              value.Key.EndsWith(".align", StringComparison.Ordinal)))
+            .Select(value => new ChangeEntry(value.Key, null, value.Value.Item1, null, null))
+            .ToList()
+          : [];
+        diff.Items.Add(new ItemDiff(item.Id, item.Owner, item.Kind, "added", drawn));
         continue;
       }
       var changes = new List<ChangeEntry>();
@@ -141,6 +151,8 @@ public static partial class Differ
       if (byPosition)
       {
         Contained(was, now);
+        Boxed(was, now);
+        Near(was, now);
       }
       Compare(was, now, changes, before, after);
       if (changes.Count > 0)
@@ -198,9 +210,11 @@ public static partial class Differ
     return pairs;
   }
 
+  /// <summary>A text element with a box draws as a shape holding text, which is how PowerPoint keeps it, so the two
+  /// pair.</summary>
   private static string Kind(SceneItem item)
   {
-    return item.Role == "title" ? "title" : item.Kind;
+    return item.Role == "title" ? "title" : item.Kind == "text" ? "shape" : item.Kind;
   }
 
   private static void Compare(Dictionary<string, (string Display, string? Origin)> before,
@@ -353,6 +367,41 @@ public static partial class Differ
     }
   }
 
+  /// <summary>A text element draws as a rectangle holding its text, so the two differ in neither kind nor shape.
+  /// </summary>
+  private static void Boxed(Dictionary<string, (string Display, string? Origin)> before,
+    Dictionary<string, (string Display, string? Origin)> after)
+  {
+    string[] kinds = [before["kind"].Display, after["kind"].Display];
+    Dictionary<string, (string Display, string? Origin)> shape = kinds[0] == "shape" ? before : after;
+    if (kinds.Order().SequenceEqual(["shape", "text"]) &&
+      (!shape.TryGetValue("shape", out (string Display, string? Origin) drawn) || drawn.Display == "rectangle"))
+    {
+      foreach (string key in new[] { "kind", "shape" })
+      {
+        before.Remove(key);
+        after.Remove(key);
+      }
+    }
+  }
+
+  /// <summary>A frame that comes back within a point of where it was hasn't moved: PowerPoint keeps frames in EMUs,
+  /// and fits a picture to its own aspect.</summary>
+  private static void Near(Dictionary<string, (string Display, string? Origin)> before,
+    Dictionary<string, (string Display, string? Origin)> after)
+  {
+    if (before.TryGetValue("frame", out (string Display, string? Origin) was) &&
+      after.TryGetValue("frame", out (string Display, string? Origin) now))
+    {
+      double[] first = Numbers(was.Display);
+      double[] second = Numbers(now.Display);
+      if (first.Length == second.Length && first.Zip(second).All(pair => Math.Abs(pair.First - pair.Second) < 1))
+      {
+        after["frame"] = was;
+      }
+    }
+  }
+
   private static double[] Numbers(string display)
   {
     return NumberPattern().Matches(display).Select(match => double.Parse(match.Value, CultureInfo.InvariantCulture))
@@ -360,7 +409,8 @@ public static partial class Differ
   }
 
   /// <summary>The values as PowerPoint keeps them: without the names of styles, formats, and files, which it doesn't
-  /// carry, and with each color by its hex, whatever the theme calls it.</summary>
+  /// carry, with each color by its hex, whatever the theme calls it, and without what draws nothing, as unset doesn't.
+  /// </summary>
   private static Dictionary<string, (string, string?)> Drawn(Dictionary<string, (string, string?)> values)
   {
     var drawn = new Dictionary<string, (string, string?)>();
@@ -373,6 +423,11 @@ public static partial class Differ
         continue;
       }
       string value = Hex(display);
+      if (last is "fill" or "stroke" or "legend" or "show" or "fit" && value == "none" ||
+        last == "gridlines" && value == "false")
+      {
+        continue;
+      }
       // A frame in an area shows the area's name before its rectangle.
       drawn[key] = (last == "frame" && value.IndexOf('[') is > 0 and int bracket ? value[bracket..] : value, origin);
     }
@@ -484,8 +539,21 @@ public static partial class Differ
 /// <summary><c>--diff</c>: what changed since a revision, or between two, as a listing or JSON.</summary>
 public static partial class DiffCommand
 {
+  /// <summary>What the export can't carry yet: the tools write no sections or alt text and normalize a callout's
+  /// tail, so a deck shows these changed though no one changed them.</summary>
+  public static readonly string[] ExportGaps = ["section", "tail", "alt", "decorative"];
+
+  public static bool IsDeck(string revision)
+  {
+    return Path.GetExtension(revision).ToLowerInvariant() is ".pptx" or ".potx";
+  }
+
   public static int Run(string root, string revision, bool json, TextWriter output)
   {
+    if (IsDeck(revision))
+    {
+      return RunDeck(root, revision, json, output);
+    }
     string[] ends = revision.Split("..", 2);
     string first = ends[0].Length == 0 ? "HEAD" : ends[0];
     Presentation before = Revisions.Load(root, first);
@@ -502,6 +570,103 @@ public static partial class DiffCommand
     }
     Write(diff, $"{Name(first)} → {(ends.Length == 1 ? "the working tree" : Name(ends[1]))}", output);
     return 0;
+  }
+
+  private static int RunDeck(string root, string deck, bool json, TextWriter output)
+  {
+    string source = Path.GetFullPath(deck);
+    if (!File.Exists(source))
+    {
+      throw new ArgumentException($"no file at {source}");
+    }
+    Presentation presentation = PresentationLoader.Load(root);
+    (DeckDiff diff, List<string> findings) = Against(presentation, DeckReads.Read(source, ToolHosts.Default()),
+      source);
+    if (json)
+    {
+      output.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { diff.Slides, diff.Causes, Unread = findings },
+        PayloadJson.Indented));
+      return 0;
+    }
+    Write(diff, $"{Path.GetFileName(Path.GetFullPath(root))} → {Path.GetFileName(source)}", output);
+    if (findings.Count > 0)
+    {
+      output.WriteLine();
+      output.WriteLine("not compared, since the deck's reading of them didn't land:");
+      foreach (string finding in findings)
+      {
+        output.WriteLine($"- {finding}");
+      }
+    }
+    return 0;
+  }
+
+  /// <summary>What <paramref name="deck"/>, as editide's <paramref name="reads"/> see it, changed from
+  /// <paramref name="presentation"/>: slides paired by number and items by kind, frame, and text, since the export
+  /// keeps no ids, named by the presentation's ids. Values compare as drawn, so a number a reference renders
+  /// matches the same number typed in PowerPoint. The findings are what the deck's import couldn't read.</summary>
+  public static (DeckDiff Diff, List<string> Findings) Against(Presentation presentation, JsonObject reads,
+    string deck)
+  {
+    string scratch = Temporary.Folder("compare", Guid.NewGuid().ToString("N"));
+    try
+    {
+      PowerPointDeck mapped = PowerPointMapping.Map(reads, deck, Path.Combine(scratch, "media"));
+      ImportResult imported = Importer.Import(mapped.Deck.ToJsonString(), mapped.Media,
+        Path.Combine(scratch, "presentation"));
+      Presentation read = PresentationLoader.Load(Path.Combine(scratch, "presentation"));
+      DeckDiff diff = Differ.Compare(presentation, read, byPosition: true);
+      // The import's findings name its own slide ids, which mean nothing in the presentation.
+      string Named(string finding)
+      {
+        foreach (Slide slide in read.Slides)
+        {
+          string ours = presentation.Slides.ElementAtOrDefault(slide.Number - 1)?.Id ?? $"slide {slide.Number}";
+          finding = finding.Replace($"slide:{slide.Id}/", $"{ours}/", StringComparison.Ordinal);
+        }
+        return finding;
+      }
+      // The deck's side takes its values from a theme the import made up, so no change is the theme's doing.
+      var own = new DeckDiff(diff.Slides.Select(slide => slide with
+      {
+        Items = slide.Items.Select(item => item with
+        {
+          Changes = item.Changes.Select(change => change with { Cause = null }).ToList()
+        }).ToList()
+      }).ToList(), []);
+      return (Without(own, ExportGaps), [.. mapped.Findings.Concat(imported.Findings).Select(Named).Distinct()]);
+    }
+    finally
+    {
+      if (Directory.Exists(scratch))
+      {
+        Directory.Delete(scratch, true);
+      }
+    }
+  }
+
+  /// <summary><paramref name="diff"/> without changes to <paramref name="keys"/>, and without the items and slides
+  /// left unchanged once they go.</summary>
+  private static DeckDiff Without(DeckDiff diff, string[] keys)
+  {
+    var slides = new List<SlideDiff>();
+    foreach (SlideDiff slide in diff.Slides)
+    {
+      List<ChangeEntry> changes = slide.Changes.Where(change => !keys.Contains(change.Key)).ToList();
+      List<ItemDiff> items = slide.Items
+        .Select(item => item with { Changes = item.Changes.Where(change => !keys.Contains(change.Key)).ToList() })
+        .Where(item => item.Status != "changed" || item.Changes.Count > 0)
+        .ToList();
+      if (slide.Status != "changed" || changes.Count > 0 || items.Count > 0)
+      {
+        slides.Add(slide with { Changes = changes, Items = items });
+      }
+      else if (slide.Moved)
+      {
+        slides.Add(slide with { Status = "moved", Changes = changes, Items = items });
+      }
+    }
+    return new DeckDiff(slides, diff.Causes.Where(cause => !keys.Contains(cause.Key)).ToList());
   }
 
   public static void Write(DeckDiff diff, string heading, TextWriter output)
@@ -537,6 +702,15 @@ public static partial class DiffCommand
         }
         string mark = item.Status switch { "added" => "+", "removed" => "-", _ => "~" };
         output.WriteLine(item.Status == "changed" ? $"    {mark} {item.Id}" : $"    {mark} {item.Id}  {item.Kind}");
+        if (item.Status == "added")
+        {
+          int keys = own.Count == 0 ? 0 : own.Max(change => change.Key.Length);
+          foreach (ChangeEntry change in own)
+          {
+            output.WriteLine($"        {change.Key.PadRight(keys)}  {Value(change.After)}");
+          }
+          continue;
+        }
         Changes(own, "        ", output);
       }
       if (restyled > 0)
