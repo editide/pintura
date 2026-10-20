@@ -351,6 +351,25 @@ public class ImportTests
   }
 
   [Fact]
+  public void Importing_slides_writes_those_alone_with_the_whole_theme()
+  {
+    // Arrange
+    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    using var output = new TempFolder();
+    output.Write("deck.json", Importer.Snapshot(PresentationLoader.Load(root)).ToJsonString());
+    Presentation source = PresentationLoader.Load(root);
+
+    // Act
+    ImportCommand.Run(output.PathTo("deck.json"), output.PathTo("out"), false, TextWriter.Null,
+      SlideSelection.Parse($"1,{source.Slides[^1].Id}"));
+
+    // Assert
+    Presentation imported = PresentationLoader.Load(output.PathTo("out"));
+    imported.Slides.Select(slide => slide.Id).ShouldBe([source.Slides[0].Id, source.Slides[^1].Id]);
+    imported.Theme.Layouts.Count.ShouldBe(source.Theme.Layouts.Count);
+  }
+
+  [Fact]
   public void Importing_with_theme_writes_the_theme_alone()
   {
     // Arrange

@@ -35,6 +35,8 @@ public class CommandLineOptions
   public string? ImportFolder { get; private init; }
   /// <summary>Makes <c>--import</c> write only the theme.</summary>
   public bool ThemeOnly { get; private init; }
+  /// <summary>The slides <c>--export</c> or <c>--import</c> takes, or null for all of them.</summary>
+  public SlideSelection? Slides { get; private init; }
   public AccountCommand? Account { get; private init; }
   /// <summary>The folder <c>--new</c> writes a presentation into.</summary>
   public string? New { get; private init; }
@@ -64,6 +66,7 @@ public class CommandLineOptions
     string? import = null;
     string? importFolder = null;
     bool themeOnly = false;
+    SlideSelection? slides = null;
     for (int index = first; index < arguments.Length; index++)
     {
       string argument = arguments[index];
@@ -178,6 +181,10 @@ public class CommandLineOptions
         case "--theme":
           themeOnly = true;
           break;
+        case "--slides":
+          Require(arguments, index, 1);
+          slides = SlideSelection.Parse(arguments[++index]);
+          break;
         case "--login":
         case "--logout":
         case "--whoami":
@@ -257,11 +264,16 @@ public class CommandLineOptions
     if (import is not null && (root is not null || command is not null || revision is not null || portSpecified ||
       json || export || output is not null || documentation is not null))
     {
-      throw new ArgumentException("--import cannot be combined with a presentation or another option but --theme.");
+      throw new ArgumentException("--import cannot be combined with a presentation or another option but --theme " +
+        "or --slides.");
     }
     if (themeOnly && import is null)
     {
       throw new ArgumentException("--theme requires --import.");
+    }
+    if (slides is not null && (themeOnly || import is null && command is not HeadlessCommand.ExportPptx))
+    {
+      throw new ArgumentException("--slides requires --export <deck.pptx> or --import without --theme.");
     }
     return new CommandLineOptions
     {
@@ -279,7 +291,8 @@ public class CommandLineOptions
       Documentation = documentation,
       Import = import,
       ImportFolder = importFolder,
-      ThemeOnly = themeOnly
+      ThemeOnly = themeOnly,
+      Slides = slides
     };
   }
 
@@ -303,16 +316,17 @@ public class CommandLineOptions
     writer.WriteLine("  pintura [<presentation>] --comments [--json]   (reviewers' comments in slide order, each " +
       "beside the file and line of what it points at)");
     writer.WriteLine("  pintura [<presentation>] --url   (the address of the server already running it)");
-    writer.WriteLine("  pintura [<presentation>] --export <deck.pptx>   (a PowerPoint deck written on editide, " +
-      "with what it can't reproduce)");
+    writer.WriteLine("  pintura [<presentation>] --export <deck.pptx> [--slides <list>]   (a PowerPoint deck written " +
+      "on editide, with what it can't reproduce; --slides takes ids, numbers, and ranges such as cover,3-5)");
     writer.WriteLine("  pintura [<presentation>] --export-json   (the model the exporter reads: styles resolved, " +
       "theme colors and fonts kept as references)");
     writer.WriteLine("  pintura [<presentation>] --export-html <file>   (one HTML file that shows the slides with no " +
       "server, for sending)");
     writer.WriteLine("  pintura [<presentation>] --diff [<rev>|<a>..<b>] [--json]   (what changed since a git " +
       "revision, HEAD by default, or between two)");
-    writer.WriteLine("  pintura --import <deck.pptx>|<deck.json> <folder> [--theme]   (a presentation folder with its theme " +
-      "inside, from a PowerPoint deck or the model's JSON as --export-json writes it; --theme writes the theme alone)");
+    writer.WriteLine("  pintura --import <deck.pptx>|<deck.json> <folder> [--theme|--slides <list>]   (a " +
+      "presentation folder with its theme inside, from a PowerPoint deck or the model's JSON as --export-json writes " +
+      "it; --theme writes the theme alone, and --slides only the slides it names)");
     writer.WriteLine("  pintura --docs [<topic>]   (the format, one topic at a time)");
     writer.WriteLine("  pintura --version");
     writer.WriteLine("  pintura --login   (signs in with an API key from editide's dashboard, read from standard " +
