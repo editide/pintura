@@ -56,6 +56,8 @@ async function showSheet() {
 // Every slide at its own size, one after another, for the browser to print a page each.
 async function showPrint() {
   const deck = await fetchDeck();
+  // The PDF takes its title from the page's.
+  document.title = deck.name;
   root.replaceChildren(...deck.slides.map((slide) => renderStage(slide, deck.size)));
   await settle();
 }
