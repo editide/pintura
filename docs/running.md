@@ -294,7 +294,9 @@ An export leaves `<deck>.pptx.pintura.json` beside the deck, with the deck's has
 editide bills each slide, layout, and master an export writes, so a re-export costs only the slides that changed; the export writes only the layouts the slides use, and ends by saying what it billed.
 A changed theme or layout, a deck edited since, or a missing manifest makes a full export, which writes the master and layouts again, so deleting the manifest forces one.
 A new Pintura makes one only when it writes the design differently, which `ExportManifest.DesignMapping` marks.
-`--slides cover,3-5` exports only the slides it names, by id, number, or range, in the presentation's order, with the whole theme; the manifest records just those, so a later export to the same file adds the rest.
+`--slides cover,3-5` exports only the slides it names, by id, number, or range, in the presentation's order, with the whole theme.
+Into a deck an earlier export wrote, it rewrites those slides and leaves its others as they were, even where the files changed since, which a later full export catches up.
+It refuses a deck it would have to replace instead: one edited in PowerPoint since, one whose theme or layouts changed, or one Pintura didn't export.
 
 ```bash
 pintura presentations/example --export-html deck.html

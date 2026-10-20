@@ -309,6 +309,65 @@ public class IncrementalExportTests
   }
 
   [Fact]
+  public void Slides_exported_into_a_deck_rewrite_only_those_and_leave_the_rest_as_they_were()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    string output = fixture.Folder.PathTo("out/deck.pptx");
+    Exporter.Write(fixture.Load(), output, new BlandTools());
+    fixture.Write("deck/slides/one.yaml", "layout: cover\ntitle: Changed, but not named");
+    fixture.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed and named");
+    var tools = new BlandTools();
+    var whole = new BlandTools();
+
+    // Act
+    ExportReport report = Exporter.Write(fixture.Load(), output, tools, only: SlideSelection.Parse("two"));
+    Exporter.Write(fixture.Load(), output, whole);
+
+    // Assert
+    report.Slides.ShouldBe(2);
+    report.Reused.ShouldBe(1);
+    tools.Inputs.Where(call => call.Tool is "add_slide" or "delete_slides").Select(call => call.Input.ToJsonString())
+      .ShouldBe(["""{"slide_indices":[2]}""", """{"layout_name":"Content"}"""]);
+    whole.Inputs.Where(call => call.Tool == "add_slide").Select(call => (string?)call.Input["layout_name"])
+      .ShouldBe(["Cover"]);
+  }
+
+  [Theory]
+  [InlineData("edited", "edited in PowerPoint")]
+  [InlineData("theme", "theme or layouts changed")]
+  [InlineData("foreign", "Pintura didn't export")]
+  public void Slides_refuse_a_deck_they_would_replace_rather_than_update(string change, string message)
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    string output = fixture.Folder.PathTo("out/deck.pptx");
+    Exporter.Write(fixture.Load(), output, new BlandTools());
+    if (change == "edited")
+    {
+      File.AppendAllText(output, "edited in PowerPoint");
+    }
+    else if (change == "theme")
+    {
+      fixture.Write("theme/theme.yaml", DeckFixture.Theme.Replace("#4472C4", "#112233"));
+    }
+    else
+    {
+      File.Delete(ExportManifest.PathFor(output));
+    }
+    byte[] before = File.ReadAllBytes(output);
+    var tools = new BlandTools();
+
+    // Act
+    Action export = () => Exporter.Write(fixture.Load(), output, tools, only: SlideSelection.Parse("two"));
+
+    // Assert
+    export.ShouldThrow<InvalidOperationException>().Message.ShouldContain(message);
+    tools.Calls.ShouldBeEmpty();
+    File.ReadAllBytes(output).ShouldBe(before);
+  }
+
+  [Fact]
   public void A_failed_save_leaves_the_previous_deck_and_manifest_alone()
   {
     // Arrange
