@@ -129,7 +129,8 @@ public partial class Exporter
   /// attaching each picture once. A deck an earlier export wrote, unedited since and with the same design, keeps its
   /// unchanged slides, unless <paramref name="fresh"/>; any other starts from the blank deck at the presentation's
   /// size. <paramref name="progress"/> hears the share of the calls made, against an estimate, so it stops short of 1.
-  /// <paramref name="only"/> narrows the deck to the slides it names.</summary>
+  /// <paramref name="only"/> writes just the slides it names: into a deck an earlier export wrote, alongside its
+  /// other slides, left as they were, and refusing one it would have to replace.</summary>
   public static ExportReport Write(Presentation presentation, string output, IToolHost tools,
     Action<double>? progress = null, bool fresh = false, SlideSelection? only = null)
   {
@@ -137,11 +138,8 @@ public partial class Exporter
     string file = Path.GetFullPath(output);
     Directory.CreateDirectory(Path.GetDirectoryName(file)!);
     JsonObject deck = Model(presentation);
-    if (only is not null)
-    {
-      List<JsonNode?> picked = only.Pick(Items(deck["slides"]), slide => Text(Get(slide, "id")));
-      deck["slides"] = new JsonArray(picked.Select(slide => slide!.DeepClone()).ToArray());
-    }
+    ExportManifest? previous = fresh ? null : ExportManifest.Read(file);
+    HashSet<string> kept = only is null ? [] : Narrow(deck, file, only, previous, presentation.Root);
     if (deck["slides"]!.AsArray().Count == 0)
     {
       throw new InvalidOperationException("the presentation has no slides to export");
@@ -160,9 +158,12 @@ public partial class Exporter
     Dictionary<string, string> hashes = Items(deck["slides"]).OfType<JsonNode>().ToDictionary(
       slide => Text(Get(slide, "id"))!, slide => ExportManifest.SlideHash(slide, presentation.Root),
       StringComparer.Ordinal);
-    ExportManifest? previous = fresh ? null : ExportManifest.Read(file);
+    foreach (ExportedSlide slide in previous?.Slides.Where(slide => kept.Contains(slide.Id)) ?? [])
+    {
+      hashes[slide.Id] = slide.Hash;
+    }
     bool incremental = previous?.Design == design;
-    if (incremental && Unchanged(deck, previous!, presentation.Root))
+    if (incremental && Unchanged(deck, previous!, hashes))
     {
       return new ExportReport(file, deck["slides"]!.AsArray().Count, 0, watch.Elapsed,
         previous!.DesignGaps.Concat(previous.Slides.SelectMany(slide => slide.Gaps)).ToHashSet(StringComparer.Ordinal),
@@ -233,7 +234,7 @@ public partial class Exporter
       };
       if (incremental)
       {
-        exporter.Update(deck, previous!.Slides, previous.DesignGaps);
+        exporter.Update(deck, previous!.Slides, previous.DesignGaps, kept);
       }
       else
       {
@@ -326,12 +327,48 @@ public partial class Exporter
   }
 
   /// <summary>Whether the deck already holds every slide as it is, in order, with none failing to load.</summary>
-  private static bool Unchanged(JsonObject deck, ExportManifest previous, string root)
+  private static bool Unchanged(JsonObject deck, ExportManifest previous, Dictionary<string, string> hashes)
   {
     List<JsonNode> slides = Items(deck["slides"]).OfType<JsonNode>().ToList();
     return slides.Count == previous.Slides.Count && slides.Zip(previous.Slides).All(pair =>
       Text(Get(pair.First, "error")) is null && Text(Get(pair.First, "id")) == pair.Second.Id &&
-      ExportManifest.SlideHash(pair.First, root) == pair.Second.Hash);
+      hashes[pair.Second.Id] == pair.Second.Hash);
+  }
+
+  /// <summary>Narrows <paramref name="deck"/> to the slides <paramref name="only"/> names and, when
+  /// <paramref name="file"/> is a deck an earlier export wrote, the others it holds, returning those to keep as they
+  /// were. Refuses a deck it would have to replace: one edited since, one on a design that changed, or one Pintura
+  /// didn't export.</summary>
+  private static HashSet<string> Narrow(JsonObject deck, string file, SlideSelection only, ExportManifest? previous,
+    string root)
+  {
+    HashSet<string> named = [.. only.Pick(Items(deck["slides"]), slide => Text(Get(slide, "id"))).Select(slide =>
+      Text(Get(slide, "id"))!)];
+    HashSet<string> kept = [];
+    if (File.Exists(file))
+    {
+      string name = Path.GetFileName(file);
+      if (ExportManifest.Edited(file))
+      {
+        throw new InvalidOperationException($"{name} was edited in PowerPoint since its export, which --slides would " +
+          "lose; export to a new file, or bring the edits in first, as --diff lists them");
+      }
+      if (previous is null)
+      {
+        throw new InvalidOperationException($"Pintura didn't export {name}, so --slides would replace it; export to " +
+          "a new file");
+      }
+      if (previous.Design != ExportManifest.DesignHash(deck, root))
+      {
+        throw new InvalidOperationException($"the theme or layouts changed since {name}'s export, so its other " +
+          "slides can't stay as they were; export every slide, or to a new file");
+      }
+      kept = [.. previous.Slides.Select(slide => slide.Id).Where(id => !named.Contains(id))];
+    }
+    deck["slides"] = new JsonArray(Items(deck["slides"])
+      .Where(slide => Text(Get(slide, "id")) is string id && (named.Contains(id) || kept.Contains(id)))
+      .Select(slide => slide!.DeepClone()).ToArray());
+    return kept;
   }
 
   /// <summary>Sets the deck's slide size, in points, which editide's tools can't set.</summary>
@@ -2245,9 +2282,11 @@ public partial class Exporter
 
   /// <summary>Brings a deck an earlier export wrote, with the same design, up to <paramref name="deck"/>: slides
   /// whose hash is unchanged stay and move into place, the rest are written afresh where they go, and what's left
-  /// over is deleted. <paramref name="previous"/> lists the deck's slides in order, with their hashes and gaps.
+  /// over is deleted. <paramref name="previous"/> lists the deck's slides in order, with their hashes and gaps, and
+  /// <paramref name="kept"/> names those to leave as they were, whatever their hash.
   /// </summary>
-  public void Update(JsonObject deck, IReadOnlyList<ExportedSlide> previous, IReadOnlyList<string> designGaps)
+  public void Update(JsonObject deck, IReadOnlyList<ExportedSlide> previous, IReadOnlyList<string> designGaps,
+    IReadOnlySet<string>? kept = null)
   {
     Design design = Prepare(deck);
     gaps.UnionWith(designGaps);
@@ -2255,6 +2294,10 @@ public partial class Exporter
     List<JsonNode> slides = Items(deck["slides"]).OfType<JsonNode>().Where(Loaded).ToList();
     Dictionary<string, string> hashes = slides.ToDictionary(slide => Text(Get(slide, "id"))!,
       slide => ExportManifest.SlideHash(slide, Root), StringComparer.Ordinal);
+    foreach (ExportedSlide slide in previous.Where(slide => kept?.Contains(slide.Id) == true))
+    {
+      hashes[slide.Id] = slide.Hash;
+    }
     // The deck's slides as they stand, by id, with a null for one that changed or went.
     List<string?> current = previous
       .Select(slide => hashes.GetValueOrDefault(slide.Id) == slide.Hash ? slide.Id : null)
@@ -2280,9 +2323,9 @@ public partial class Exporter
         continue;
       }
       Reused += 1;
-      ExportedSlide kept = previous.First(slide => slide.Id == id);
-      SlideGaps[id] = kept.Gaps;
-      gaps.UnionWith(kept.Gaps);
+      ExportedSlide earlier = previous.First(slide => slide.Id == id);
+      SlideGaps[id] = earlier.Gaps;
+      gaps.UnionWith(earlier.Gaps);
       if (at != position)
       {
         Call("move_slide", new JsonObject { ["from_index"] = at + 1, ["to_index"] = position + 1 });
