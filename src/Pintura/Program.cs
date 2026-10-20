@@ -143,7 +143,7 @@ try
 
   if (options.Command == HeadlessCommand.Diff)
   {
-    return DiffCommand.Run(root, options.Revision!, options.Json, Console.Out);
+    return DiffCommand.Run(root, options.Revision!, options.Json, Console.Out, options.Slides);
   }
 
   if (options.Command == HeadlessCommand.ExportHtml)

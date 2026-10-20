@@ -5,6 +5,33 @@ namespace Pintura.Tests;
 
 public class DiffTests
 {
+  [Fact]
+  public void A_removed_paragraph_lists_as_one_line_and_a_run_that_only_rewords_shows_once_as_the_text()
+  {
+    // Arrange
+    var item = new ItemDiff("cell", "slide", "text", "changed",
+    [
+      new ChangeEntry("text", "Revenue: $7.6B\nBacklog: ~$104B", "Revenue, LTM", null, null),
+      new ChangeEntry("paragraph 1 run 1", "Revenue: {size=11 bold=false}", "Revenue, LTM {size=11 bold=false}", null,
+        null),
+      new ChangeEntry("paragraph 2.align", "left", null, null, null),
+      new ChangeEntry("paragraph 2 run 1", "Backlog:  {size=11 bold=false}", null, null, null),
+      new ChangeEntry("paragraph 2 run 2", "~$104B {size=11 bold=true}", null, null, null)
+    ]);
+    var diff = new DeckDiff([new SlideDiff { Id = "summary", Status = "changed", After = 2, Items = [item] }], []);
+    var output = new StringWriter();
+
+    // Act
+    DiffCommand.Write(diff, "deck", output);
+
+    // Assert
+    string[] lines = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+      .Select(line => line.Trim()).ToArray();
+    lines.ShouldContain("paragraph 2  removed: Backlog: ~$104B");
+    lines.ShouldNotContain(line => line.StartsWith("paragraph 1 run 1"));
+    lines.ShouldNotContain(line => line.StartsWith("paragraph 2.align"));
+  }
+
   private const string Boxes = """
     layout: content
     title: Results in ${section}

@@ -171,6 +171,29 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void The_overview_counts_each_slides_changes_and_slides_narrow_the_detail()
+  {
+    // Arrange
+    Presentation original = PresentationLoader.Load(Path.Combine(LoaderTests.RepositoryRoot(), "presentations",
+      "example"));
+    JsonObject reads = Reads();
+    JsonNode read = reads["slides"]![1]!["read"]!["text_elements"]![0]!;
+    read["text_component"]!["paragraph_list"]![0]!["runs"]![0]!["text"] = "Financial results";
+    read["position"]!["left"] = 80.0;
+    (DeckDiff diff, _) = DiffCommand.Against(original, reads, Fixture("example.pptx"));
+    var overview = new StringWriter();
+    var detail = new StringWriter();
+
+    // Act
+    DiffCommand.Overview(diff, "example", overview);
+    DiffCommand.Write(DiffCommand.Only(diff, original, SlideSelection.Parse("3")), "example", detail);
+
+    // Assert
+    overview.ToString().ShouldContain($" 2 {original.Slides[1].Id}  1 reworded, 1 moved");
+    detail.ToString().ShouldContain("no changes");
+  }
+
+  [Fact]
   public void A_deck_imports_with_its_slides_and_layouts()
   {
     // Arrange
