@@ -336,7 +336,66 @@ public static partial class Differ
       // A table's height is only the room its rows have.
       values["frame"] = (string.Join(", ", Numbers(frame.Display).Take(3)), frame.Origin);
     }
+    if (asDrawn && item.Chart is not null)
+    {
+      Labels(values);
+    }
+    if (asDrawn && item.Table is not null)
+    {
+      Shared(values);
+      // Each cell draws with its own.
+      values.Remove("valign");
+      values.Remove("insets");
+    }
     return asDrawn ? Drawn(values) : values;
+  }
+
+  /// <summary>A border between two rows draws as the upper cell's bottom or the lower one's top, which PowerPoint
+  /// keeps as both, so it counts as the upper cell's bottom.</summary>
+  private static void Shared(Dictionary<string, (string Display, string? Origin)> values)
+  {
+    foreach (string key in values.Keys.Where(key => key.StartsWith("cell ", StringComparison.Ordinal) &&
+      key.Contains(".border_top", StringComparison.Ordinal)).ToList())
+    {
+      Match cell = CellPattern().Match(key);
+      int row = int.Parse(cell.Groups["row"].Value, CultureInfo.InvariantCulture);
+      string above = $"cell {row - 1},{cell.Groups["column"].Value}" +
+        key[cell.Length..].Replace(".border_top", ".border_bottom", StringComparison.Ordinal);
+      if (row > 1 && !values.ContainsKey(above))
+      {
+        values[above] = values[key];
+      }
+      if (row > 1 && values[above].Display == values[key].Display)
+      {
+        values.Remove(key);
+      }
+    }
+  }
+
+  /// <summary>Labels as drawn: those not shown, on the chart or a series that takes the chart's, draw nothing, and
+  /// those shown with no color of their own draw in the chart's text color.</summary>
+  private static void Labels(Dictionary<string, (string Display, string? Origin)> values)
+  {
+    string? Shown(string prefix) => values.TryGetValue($"{prefix}data_labels.show", out (string Display, string?) show)
+      ? show.Display
+      : prefix.Length > 0 ? Shown("") : null;
+    List<string> prefixes = values.Keys.Where(key => key.Contains("data_labels.", StringComparison.Ordinal))
+      .Select(key => key[..key.IndexOf("data_labels.", StringComparison.Ordinal)]).Distinct().ToList();
+    foreach (string prefix in prefixes)
+    {
+      if (Shown(prefix) is null or "none")
+      {
+        foreach (string key in values.Keys
+          .Where(key => key.StartsWith($"{prefix}data_labels.", StringComparison.Ordinal)).ToList())
+        {
+          values.Remove(key);
+        }
+      }
+      else if (values.TryGetValue("text.color", out (string Display, string? Origin) color))
+      {
+        values.TryAdd($"{prefix}data_labels.color", color);
+      }
+    }
   }
 
   /// <summary>A picture fit inside its frame draws as one stretched to the rectangle it fills, as PowerPoint keeps it,
@@ -449,6 +508,11 @@ public static partial class Differ
   {
     string Show(string key, Resolved? resolved) => resolved is null ? Unset.GetValueOrDefault(key, "")
       : Hex(HeadlessRunner.Property(key, resolved, theme).Display);
+    // Text with no words draws nothing, however its paragraphs are set.
+    if (paragraphs.All(paragraph => paragraph.Runs.All(run => run.Text.Length == 0 && run.Field is null)))
+    {
+      return;
+    }
     for (int index = 0; index < paragraphs.Count; index++)
     {
       SceneParagraph paragraph = paragraphs[index];
@@ -529,6 +593,9 @@ public static partial class Differ
 
   [GeneratedRegex(@"-?\d+(?:\.\d+)?")]
   private static partial Regex NumberPattern();
+
+  [GeneratedRegex(@"^cell (?<row>\d+),(?<column>\d+)")]
+  private static partial Regex CellPattern();
 
   [GeneratedRegex(@"^(?<file>.*?):\d+(?: (?<path>\S.*))?$")]
   private static partial Regex OriginPattern();
@@ -634,7 +701,10 @@ public static partial class DiffCommand
           Changes = item.Changes.Select(change => change with { Cause = null }).ToList()
         }).ToList()
       }).ToList(), []);
-      return (Without(own, ExportGaps), [.. mapped.Findings.Concat(imported.Findings).Select(Named).Distinct()]);
+      // The rest of the import's findings say how its files differ from the deck, which the diff already compares.
+      IEnumerable<string> unread = imported.Findings
+        .Where(finding => finding.Contains("left out", StringComparison.Ordinal));
+      return (Without(own, ExportGaps), [.. mapped.Findings.Concat(unread).Select(Named).Distinct()]);
     }
     finally
     {
