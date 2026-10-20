@@ -330,8 +330,8 @@ public class CommandLineOptions
       "server, for sending)");
     writer.WriteLine("  pintura [<presentation>] --diff [<rev>|<a>..<b>] [--json]   (what changed since a git " +
       "revision, HEAD by default, or between two)");
-    writer.WriteLine("  pintura [<presentation>] --diff <deck.pptx> [--slides <list>] [--json]   (what was changed in " +
-      "PowerPoint since the export: a line a slide, or each change on the slides --slides names)");
+    writer.WriteLine("  pintura [<presentation>] --diff <deck.pptx> [--slides <list>] [--json]   (what was changed " +
+      "in PowerPoint since the export: a line a slide, or each change on the slides --slides names)");
     writer.WriteLine("  pintura --import <deck.pptx>|<deck.json> <folder> [--theme|--slides <list>]   (a " +
       "presentation folder with its theme inside, from a PowerPoint deck or the model's JSON as --export-json writes " +
       "it; --theme writes the theme alone, and --slides only the slides it names)");
