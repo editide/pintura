@@ -165,7 +165,8 @@ public class PowerPointImportTests
     Presentation presentation = Imported(output, reads);
 
     // Assert
-    SceneItem item = SceneBuilder.Build(presentation, presentation.Slides[4]).Items.Single(item => item.Kind == "table");
+    SceneItem item = SceneBuilder.Build(presentation, presentation.Slides[4]).Items
+      .Single(item => item.Kind == "table");
     item.Table!.Cells.ShouldAllBe(cell => cell.Properties.ContainsKey("border_left.color"));
   }
 
