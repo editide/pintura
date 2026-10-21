@@ -33,11 +33,13 @@ function showTooltip(host) {
     tooltipLayer = document.createElement('div');
     tooltipLayer.className = 'tooltip';
     tooltipLayer.setAttribute('role', 'presentation');
+    // A popover, so it opens in the top layer above any menu already open there.
+    tooltipLayer.popover = 'manual';
     document.body.appendChild(tooltipLayer);
   }
   tooltipHost = host;
   tooltipLayer.textContent = text;
-  tooltipLayer.hidden = false;
+  tooltipLayer.showPopover();
   placeTooltip(host);
 }
 
@@ -83,8 +85,8 @@ function hideTooltip() {
     }
     tooltipHost = null;
   }
-  if (tooltipLayer !== null) {
-    tooltipLayer.hidden = true;
+  if (tooltipLayer?.matches(':popover-open')) {
+    tooltipLayer.hidePopover();
   }
 }
 

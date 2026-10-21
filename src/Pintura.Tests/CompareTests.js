@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { changeMarks, changedStep, chartParts, textChanges, textDiff, textMarks, versionName } =
+const { changeMarks, changedStep, chartParts, textChanges, textDiff, textMarks, versionDay, versionTime } =
   require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'compare.js'));
 
 function words(...paragraphs) {
@@ -201,16 +201,17 @@ test('stepping past the last changed slide stays put, and a removed slide steps 
   assert.equal(fromRemoved, 'one');
 });
 
-test('a version is named by its day as near ones are spoken of, and its time', () => {
+test('a version is placed by its day as near ones are spoken of, and its time', () => {
   // Arrange
   const now = new Date(2026, 9, 7, 16, 30);
+  const dates = [new Date(2026, 9, 7, 9, 5), new Date(2026, 9, 6, 23, 59), new Date(2026, 9, 2, 14, 0),
+    new Date(2026, 8, 30, 8, 0), new Date(2025, 11, 31, 18, 45)];
 
   // Act
-  const names = [new Date(2026, 9, 7, 9, 5), new Date(2026, 9, 6, 23, 59), new Date(2026, 9, 2, 14, 0),
-    new Date(2026, 8, 30, 8, 0), new Date(2025, 11, 31, 18, 45)].map((date) => versionName(date, now));
+  const names = dates.map((date) => `${versionDay(date, now)} ${versionTime(date)}`);
 
   // Assert
-  assert.deepEqual(names, ['today 9:05 AM', 'yesterday 11:59 PM', 'Friday 2:00 PM', 'Sep 30 8:00 AM',
+  assert.deepEqual(names, ['Today 9:05 AM', 'Yesterday 11:59 PM', 'Friday 2:00 PM', 'Sep 30 8:00 AM',
     'Dec 31, 2025 6:45 PM']);
 });
 

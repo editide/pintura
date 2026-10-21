@@ -164,8 +164,17 @@ Libreta answers are kept until a file in the book changes, so an edit to a slide
 ## Compare against a revision
 
 In a git repository, the page compares the working tree against `HEAD`, or against the revision its address names, as in `http://localhost:5180/?base=main#revenue`.
-The picker beside Before and Changes lists the versions of the presentation: the last 50 commits on the current branch that changed it, its theme, or its books, newest first, each with how many slides it changed.
+The picker beside Save lists the versions of the presentation: the last 50 commits on the current branch that changed it, its theme, or its books, newest first, each numbered from the first as `v1`, `v2`, and on, with its subject and when it was made, under the day it was made.
 Choosing one writes it into the address as `?base=`, and choosing the newest, shown as the last save, compares against `HEAD` again.
+The picker names the version compared against, as `Since v12`.
+
+## Save a version
+
+Save, beside the theme, commits the presentation and its theme, and nothing else in the repository, whatever is staged; books are Libreta's to save.
+Of the files git doesn't have yet, it takes only YAML and the pictures and CSVs the YAML names, so an export or a screenshot left in the folder stays out.
+It shows while either differs from `HEAD`, leaving aside the comments, and hides once they don't.
+`Ctrl+S` or a click opens it on a description of the changes, such as `Rearranged slide 4`, which typing replaces and Enter saves as the commit's subject.
+Outside a repository, Save starts one in the presentation's folder.
 The sidebar and the grid mark each slide added, changed, or moved since, and list the slides the revision had and the working tree doesn't under the sidebar.
 Two keys review the changes:
 

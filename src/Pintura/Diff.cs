@@ -775,20 +775,27 @@ public static partial class DiffCommand
           counts[item.Status]++;
           continue;
         }
-        bool reworded = item.Changes.Any(change => change.Key == "text" || CellText().IsMatch(change.Key));
-        bool moved = item.Changes.Any(change => change.Key is "frame" or "from" or "to");
+        (bool reworded, bool moved, bool restyled) = Kinds(item.Changes);
         counts["reworded"] += reworded ? 1 : 0;
         counts["moved"] += moved ? 1 : 0;
-        counts["restyled"] += item.Changes.Any(change => change.Key is not ("text" or "frame" or "from" or "to") &&
-          !CellText().IsMatch(change.Key) && !(reworded && change.Key.Contains(" run ", StringComparison.Ordinal)))
-          ? 1
-          : 0;
+        counts["restyled"] += restyled ? 1 : 0;
       }
       List<string> parts = [.. slide.Changes.Select(change => $"{change.Key} changed"),
         .. counts.Where(pair => pair.Value > 0).Select(pair => $"{pair.Value} {pair.Key}")];
       string status = slide.Status is "added" or "removed" or "moved" ? slide.Status : string.Join(", ", parts);
       output.WriteLine($"{number,2} {slide.Id.PadRight(width)}  {status}");
     }
+  }
+
+  /// <summary>Whether an item's changes reword it, move it, or restyle it; a run's look changing with its words is
+  /// the rewording.</summary>
+  public static (bool Reworded, bool Moved, bool Restyled) Kinds(List<ChangeEntry> changes)
+  {
+    bool reworded = changes.Any(change => change.Key == "text" || CellText().IsMatch(change.Key));
+    bool moved = changes.Any(change => change.Key is "frame" or "from" or "to");
+    bool restyled = changes.Any(change => change.Key is not ("text" or "frame" or "from" or "to") &&
+      !CellText().IsMatch(change.Key) && !(reworded && change.Key.Contains(" run ", StringComparison.Ordinal)));
+    return (reworded, moved, restyled);
   }
 
   [GeneratedRegex(@"^cell \d+,\d+$")]
