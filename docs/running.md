@@ -88,7 +88,7 @@ Each value shows only how it looks and how many slides use it; clicking it shows
 Unused colors say so, and other unused values fade, in a list folding behind a count.
 In the inspector, a color shows PowerPoint's shades, a layout the theme's areas too, and a style its deck text with what it sets apart from what it takes from the base text.
 
-It only reads; change the theme in its files, and the view redraws on every save.
+It only reads, but for a layout's Edit, which opens it on the slide view to move (see below); change the rest of the theme in its files, and the view redraws on every save.
 `--screenshot theme` takes a picture of it.
 
 ## Edit with the mouse
@@ -105,6 +105,8 @@ In the one-slide view, the mouse moves, resizes, and rewords what the slide owns
   Fields such as `${date}` stay as written, and an edit that would cross formatting, such as the edge of a bold run, is refused.
 - While rewording, a bar above the text, or Ctrl+B, Ctrl+I, and Ctrl+U, makes the selected words bold, italic, or underlined, writing `**`, `*`, or `[…]{underline=true}` around them, or takes the mark off where all of them have it.
   Text a style makes bold or italic is changed in the style, and the title and placeholders take no formatting, since the layout decides their look.
+- With a text box, shape, or line selected, Fill and Outline at the top of the inspector open the theme's colors and their shades, its named colors, and PowerPoint's outline weights; hovering one previews it, and clicking it writes the element's own `fill` or `stroke`, such as `fill: accent2 lighter 40`.
+  An outline picked where there was none gets `dark1` or a 1-point weight to go with it, and a fill or outline the element's style sets is overridden on the element, not changed in the style.
 
 Drag a slide in the sidebar or the grid to reorder the presentation: its line in `presentation.yaml` moves to where it is dropped, and dropping it first under a section's name puts it first in that section.
 The move is refused when an agent has moved that slide since, or removed the one it was dropped after.
@@ -112,7 +114,11 @@ Delete or Backspace on a slide focused in the sidebar, or the current slide in t
 
 Values round to whole points.
 Moving an element placed in an area writes numbers in place of the area's name, and moving the title or a placeholder writes its frame into the slide, as `title: { text: …, frame: [x, y, w, h] }`.
-Theme and layout elements don't move, and the page names the file that owns them; a chart's or a table's text is edited in its files.
+Theme and layout elements don't move on a slide, and the page names the file that owns them; a chart's or a table's text is edited in its files.
+
+Edit on a layout in the theme view opens the layout on the slide view, its title and placeholders holding their names, with its areas drawn dashed and moved by their labels.
+There the mouse moves and resizes the title, placeholders, areas, and elements, and picks the elements' fill and outline, writing each value in the file that sets it: the layout's own file, or `theme.yaml` for what the layout inherits, which moves it on every layout inheriting it.
+The caption counts the slides using the layout, and Back to the theme, or picking a slide, leaves it.
 
 Every patch carries the source it expects to replace and finds it again by its key, so an agent's edit elsewhere in the same file survives.
 When an agent changed that value since the page drew it, the patch is refused, and the page says so and redraws from the file.

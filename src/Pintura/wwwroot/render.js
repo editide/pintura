@@ -412,6 +412,14 @@ function renderTable(item, parent) {
   return node;
 }
 
+// An area on a layout's stage, which only exists to be moved.
+function renderArea(item, parent) {
+  const node = element('div', `item area-item ${item.owner}`, parent);
+  place(node, item.frame);
+  element('span', 'guide-label', node).textContent = item.id;
+  return node;
+}
+
 function renderItem(item, parent) {
   const node = {
     text: renderTextItem,
@@ -419,7 +427,8 @@ function renderItem(item, parent) {
     line: renderLine,
     picture: renderPicture,
     chart: renderChart,
-    table: renderTable
+    table: renderTable,
+    area: renderArea
   }[item.kind](item, parent);
   node.dataset.id = item.id;
   node.dataset.owner = item.owner;

@@ -439,6 +439,14 @@ function renderLayouts(parent, theme) {
     const head = element('div', 'layout-head', card);
     element('strong', null, head).textContent = layout.name || words(layout.id);
     element('span', 'theme-label', head).textContent = countLabel(layout.slides.length, 'slide');
+    const edit = element('button', 'link layout-edit', head);
+    edit.type = 'button';
+    edit.textContent = 'Edit';
+    edit.title = 'Move its title, placeholders, areas, and elements';
+    edit.addEventListener('click', (event) => {
+      event.stopPropagation();
+      editLayout(layout.id);
+    });
   }
 }
 

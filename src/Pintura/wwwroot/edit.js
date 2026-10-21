@@ -298,8 +298,17 @@ function valueEdits(item, change) {
   return edits;
 }
 
-function send(slide, edits, kind = 'edit') {
-  return post('api/edit', { slide, edits }, (undo) => (undo?.length > 0 ? { slide, edits: undo } : null), kind);
+// Edits to the slide's file, or with a file to the theme's or a layout's, undone from whichever slide made them.
+function send(slide, edits, kind = 'edit', file = null) {
+  const layout = state.layout;
+  return post('api/edit', file ? { file, edits } : { slide, edits },
+    (undo) => (undo?.length > 0 ? { slide, file, layout, edits: undo } : null), kind);
+}
+
+function sendEdits(item, edits) {
+  if (edits.length > 0) {
+    send(currentSlide().id, edits, 'edit', item.edit.file);
+  }
 }
 
 function sendMove(move, kind = 'edit') {
@@ -444,7 +453,7 @@ function endGesture(event) {
   drawSnaps(slideStage(), []);
   const edits = gesture.change ? valueEdits(gesture.item, gesture.change) : [];
   if (edits.length > 0) {
-    send(gesture.slide, edits);
+    send(gesture.slide, edits, 'edit', gesture.item.edit.file);
   } else {
     afterEditing();
   }
@@ -501,7 +510,7 @@ function flushNudge() {
   editing.nudge = null;
   const edits = valueEdits(nudge.item, nudge.change);
   if (edits.length > 0) {
-    send(nudge.slide, edits);
+    send(nudge.slide, edits, 'edit', nudge.item.edit.file);
   } else {
     afterEditing();
   }
@@ -584,7 +593,9 @@ function revert(slide, id, owner) {
 function stepHistory(kind) {
   const entry = editing[kind].pop();
   if (entry) {
-    if (entry.slide !== state.current) {
+    if (entry.layout && entry.layout !== state.layout) {
+      editLayout(entry.layout);
+    } else if (!entry.layout && (state.layout || entry.slide !== state.current)) {
       select(entry.slide);
     }
     if (entry.move) {
@@ -592,7 +603,7 @@ function stepHistory(kind) {
     } else if (entry.comment) {
       sendComment(entry.comment, entry.slide, kind);
     } else {
-      send(entry.slide, entry.edits, kind);
+      send(entry.slide, entry.edits, kind, entry.file);
     }
   } else {
     editing.queued.length = 0;

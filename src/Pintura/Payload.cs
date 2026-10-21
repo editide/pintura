@@ -85,6 +85,8 @@ public record ItemPayload
 /// null where the slide leaves the key out, or why it can't, naming the file to edit instead.</summary>
 public record EditPayload
 {
+  /// <summary>The theme's or a layout's file the paths are in, as origins name it; null for the slide's.</summary>
+  public string? File { get; init; }
   public string? Locked { get; init; }
   public SourcePayload? Frame { get; init; }
   public SourcePayload? From { get; init; }
@@ -92,6 +94,11 @@ public record EditPayload
   public SourcePayload? Text { get; init; }
   public string? TextLocked { get; init; }
   public SourcePayload? Delete { get; init; }
+  public SourcePayload? Fill { get; init; }
+  /// <summary>The whole stroke, which no outline replaces, and its color and width.</summary>
+  public SourcePayload? Stroke { get; init; }
+  public SourcePayload? StrokeColor { get; init; }
+  public SourcePayload? StrokeWidth { get; init; }
 }
 
 public record SourcePayload(string Path, string? Source);
@@ -252,7 +259,9 @@ public static class PayloadBuilder
     return slide.Title?.Text is List<Run> runs ? SceneBuilder.Text(presentation, slide, runs) : "";
   }
 
-  public static SlidePayload Slide(Presentation presentation, Slide slide, PictureUrl pictureUrl)
+  /// <summary>The slide as drawn; with <paramref name="stage"/>, a layout's specimen on which the mouse writes the
+  /// theme's and layout's files instead, its areas drawn as items to move.</summary>
+  public static SlidePayload Slide(Presentation presentation, Slide slide, PictureUrl pictureUrl, Layout? stage = null)
   {
     SlideScene scene;
     try
@@ -279,9 +288,52 @@ public static class PayloadBuilder
       Layout = slide.Layout,
       Section = slide.Section,
       Background = Hex(scene.Background.Value, theme),
-      Items = scene.Items.Select(item => Item(item, theme, pictureUrl) with { Edit = Edit(slide, item) }).ToList(),
-      Guides = Guides(theme, slide)
+      Items = stage is null
+        ? scene.Items.Select(item => Item(item, theme, pictureUrl) with { Edit = Edit(slide, item) }).ToList()
+        : scene.Items.Select(item => Item(item, theme, pictureUrl) with { Edit = StageEdit(item) })
+          .Concat(StageAreas(theme, stage)).ToList(),
+      Guides = stage is null ? Guides(theme, slide) : null
     };
+  }
+
+  private static IEnumerable<ItemPayload> StageAreas(Theme theme, Layout layout)
+  {
+    foreach (string name in theme.Areas.Keys.Concat(layout.Areas.Keys).Distinct())
+    {
+      (Area area, string owner) = layout.Areas.TryGetValue(name, out Area? own)
+        ? (own, "layout")
+        : (theme.Areas[name], "theme");
+      yield return new ItemPayload
+      {
+        Id = name,
+        Owner = owner,
+        Kind = "area",
+        Frame = area.Rect,
+        Edit = new EditPayload { File = area.Origin.File, Frame = Source(area.Origin) }
+      };
+    }
+  }
+
+  /// <summary>What the mouse writes for an item on a layout's specimen: the frame where it's set, whichever of the
+  /// theme's or layout's files that is, and an element's fill and outline in its own file. The specimen's words are
+  /// the slides' to write.</summary>
+  private static EditPayload StageEdit(SceneItem item)
+  {
+    string? words = item.Paragraphs is null ? null : "the layout's text is each slide's to write";
+    if (item.Element is Element element)
+    {
+      return Painted(new EditPayload
+      {
+        File = element.Origin.File,
+        Frame = element.Origins.TryGetValue("frame", out Origin? frame) ? Source(frame) : null,
+        From = element.Origins.TryGetValue("from", out Origin? from) ? Source(from) : null,
+        To = element.Origins.TryGetValue("to", out Origin? to) ? Source(to) : null,
+        TextLocked = words
+      }, element);
+    }
+    return item.Properties.TryGetValue("frame", out Resolved? placed) && placed.Origin is Origin origin
+      ? new EditPayload { File = origin.File, Frame = Source(origin), TextLocked = words }
+      : new EditPayload { Locked = $"{item.Id} has no frame of its own to move", TextLocked = words };
   }
 
   private static List<GuidePayload> Guides(Theme theme, Slide slide)
@@ -386,7 +438,7 @@ public static class PayloadBuilder
         Text = text is null ? null : Source(text)
       };
     }
-    return new EditPayload
+    return Painted(new EditPayload
     {
       Frame = element.Origins.TryGetValue("frame", out Origin? frameOrigin) ? Source(frameOrigin) : null,
       From = element.Origins.TryGetValue("from", out Origin? from) ? Source(from) : null,
@@ -395,6 +447,30 @@ public static class PayloadBuilder
         ? Source(paragraphs)
         : null,
       Delete = Source(element.Origin)
+    }, element);
+  }
+
+  /// <summary>Where the element's own fill and stroke are written, or would be: a text box or shape takes both, a
+  /// line only a stroke.</summary>
+  private static EditPayload Painted(EditPayload edit, Element element)
+  {
+    if (element.Kind is not ("text" or "shape" or "line"))
+    {
+      return edit;
+    }
+    string path = element.Origin.Path;
+    SourcePayload Own(Dictionary<string, Origin> origins, string key, string at)
+    {
+      return origins.TryGetValue(key, out Origin? origin) ? Source(origin) : new SourcePayload($"{path}.{at}", null);
+    }
+
+    Dictionary<string, Origin> stroke = element.Stroke?.Origins ?? new Dictionary<string, Origin>();
+    return edit with
+    {
+      Fill = element.Kind == "line" ? null : Own(element.Origins, "fill", "fill"),
+      Stroke = Own(element.Origins, "stroke", "stroke"),
+      StrokeColor = Own(stroke, "color", "stroke.color"),
+      StrokeWidth = Own(stroke, "width", "stroke.width")
     };
   }
 

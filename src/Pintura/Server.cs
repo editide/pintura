@@ -52,8 +52,10 @@ public static class PreviewServer
     app.MapGet("/api/theme", () => store.Theme is ThemeViewPayload theme
       ? Results.Json(theme, PayloadJson.Options)
       : Results.NotFound());
-    app.MapGet("/api/element", (string slide, int index) =>
-      store.Presentation is Presentation presentation && HeadlessRunner.Detail(presentation, slide, index) is { } detail
+    app.MapGet("/api/element", (string? slide, string? layout, int index) =>
+      store.Presentation is Presentation presentation && (layout is null
+        ? slide is null ? null : HeadlessRunner.Detail(presentation, slide, index)
+        : HeadlessRunner.LayoutDetail(presentation, layout, index)) is { } detail
         ? Results.Json(detail, PayloadJson.Options)
         : Results.NotFound());
     app.MapPost("/api/edit", (EditRequest request) => Edit(store, request));
@@ -265,26 +267,58 @@ public static class PreviewServer
     {
       return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
     }
+    if (request.File is not null)
+    {
+      if (ThemeFile(presentation.Theme, request.File) is not string path)
+      {
+        return Refused($"the mouse writes only the theme's theme.yaml and layouts, not {request.File}",
+          StatusCodes.Status404NotFound);
+      }
+      if (request.Edits.Count == 0 || !request.Edits.All(edit => Writable(edit, true)))
+      {
+        return Refused("the mouse writes a layout's frames, areas, fills, and outlines",
+          StatusCodes.Status400BadRequest);
+      }
+      return Patch(store, presentation, path, request.Edits);
+    }
     if (presentation.Slides.FirstOrDefault(candidate => candidate.Id == request.Slide) is not Slide slide)
     {
       return Refused($"no slide {request.Slide}", StatusCodes.Status404NotFound);
     }
-    if (request.Edits.Count == 0 || !request.Edits.All(Writable))
+    if (request.Edits.Count == 0 || !request.Edits.All(edit => Writable(edit, false)))
     {
-      return Refused("the mouse writes frames, line ends, and text, and deletes elements",
+      return Refused("the mouse writes frames, line ends, text, fills, and outlines, and deletes elements",
         StatusCodes.Status400BadRequest);
     }
     return Patch(store, presentation, slide, request.Edits);
+  }
+
+  /// <summary>The theme's <c>theme.yaml</c> or a layout's file, by the name origins give it.</summary>
+  private static string? ThemeFile(Theme theme, string file)
+  {
+    if (file == $"{theme.Display}/theme.yaml")
+    {
+      return Path.Combine(theme.Root, "theme.yaml");
+    }
+    return theme.Layouts.Keys.FirstOrDefault(id => file == $"{theme.Display}/layouts/{id}.yaml") is string layout
+      ? Path.Combine(theme.Root, "layouts", $"{layout}.yaml")
+      : null;
   }
 
   /// <summary>Applies edits to a slide's file and reloads, answering with the edits that write it back.</summary>
   public static IResult Patch(PresentationStore store, Presentation presentation, Slide slide,
     IReadOnlyList<ValueEdit> edits)
   {
+    return Patch(store, presentation, SlideFile(presentation, slide.Id), edits);
+  }
+
+  private static IResult Patch(PresentationStore store, Presentation presentation, string file,
+    IReadOnlyList<ValueEdit> edits)
+  {
     List<ValueEdit> undo;
     try
     {
-      undo = Patcher.ApplyToFile(SlideFile(presentation, slide.Id), edits, MarkupContext.For(presentation));
+      undo = Patcher.ApplyToFile(file, edits, MarkupContext.For(presentation));
     }
     catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
     {
@@ -448,25 +482,33 @@ public static class PreviewServer
   /// <summary>Only what a mouse edit changes: a frame, a line's ends, and the text of an element, the title, or a
   /// placeholder, the source an undo restores in one of them, a whole element deleted or put back, and a whole file
   /// as a revert or its undo restores it.</summary>
-  private static bool Writable(ValueEdit edit)
+  /// <summary>Whether the mouse may write the edit: on a slide, frames, line ends, text, fills, and outlines, and
+  /// deleting elements; on the theme or a layout, the frames of its title, placeholders, areas, and elements, and
+  /// its elements' fills and outlines.</summary>
+  private static bool Writable(ValueEdit edit, bool theme)
   {
     if (edit.Path.Length == 0)
     {
-      return edit.Source is not null && edit.Restore is not null && edit.Numbers is null && edit.Paragraphs is null &&
-        !edit.Delete;
+      return !theme && edit.Source is not null && edit.Restore is not null && edit.Numbers is null &&
+        edit.Paragraphs is null && !edit.Delete && edit.Value is null;
     }
     string[] parts = edit.Path.Split('.');
     if (edit.Delete)
     {
-      return parts[0] == "elements" && parts.Length > 1 && edit.Numbers is null && edit.Paragraphs is null &&
-        edit.Restore is null;
+      return !theme && parts[0] == "elements" && parts.Length > 1 && edit.Numbers is null &&
+        edit.Paragraphs is null && edit.Restore is null && edit.Value is null;
     }
-    bool owned = parts[0] is "title" or "elements" || (parts[0] == "placeholders" && parts.Length > 1);
+    bool owned = parts[0] is "title" or "elements" || (parts[0] == "placeholders" && parts.Length > 1) ||
+      (theme && parts[0] == "areas" && parts.Length == 2);
     string last = parts[^1];
+    bool painted = parts[0] == "elements" && (last is "fill" or "stroke" || edit.Path.EndsWith(".stroke.color") ||
+      edit.Path.EndsWith(".stroke.width"));
     return owned && (edit.Restore is not null ? edit.Path != "elements" : edit.Numbers is not null
-      ? last is "frame" or "from" or "to"
-      : edit.Paragraphs is not null && (last == "text" || edit.Path == "title" ||
-        (parts[0] == "placeholders" && parts.Length == 2)));
+      ? last is "frame" or "from" or "to" || parts[0] == "areas"
+      : edit.Value is not null
+        ? painted
+        : !theme && edit.Paragraphs is not null && (last == "text" || edit.Path == "title" ||
+          (parts[0] == "placeholders" && parts.Length == 2)));
   }
 
   private static IResult Refused(string message, int status)
@@ -583,7 +625,9 @@ public static class PreviewServer
 }
 
 /// <summary>Mouse edits to one slide's file, applied together or not at all.</summary>
-public record EditRequest(string Slide, List<ValueEdit> Edits);
+/// <summary>Edits to a slide's file, or with <paramref name="File"/> to the theme's or a layout's, named as origins
+/// name it.</summary>
+public record EditRequest(string? Slide, List<ValueEdit> Edits, string? File = null);
 
 /// <summary>The page's before side: a revision drawn as the page draws the working tree, and what changed since.
 /// </summary>
