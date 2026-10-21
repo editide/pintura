@@ -2,8 +2,8 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { snapTargets, moveBox, resizeBox, movePoint, moveLine, valueEdits } = require(path.join(__dirname, '..', 'Pintura',
-  'wwwroot', 'edit.js'));
+const { snapTargets, moveBox, resizeBox, movePoint, moveLine, moveGroup, boxPicks, valueEdits } = require(
+  path.join(__dirname, '..', 'Pintura', 'wwwroot', 'edit.js'));
 
 const slide = {
   guides: [{ kind: 'area', name: 'left', rect: [40, 100, 430, 380] }],
@@ -16,7 +16,7 @@ const slide = {
 
 test('a box dragged near an area edge snaps its own edge onto it', () => {
   // Arrange
-  const targets = snapTargets(slide, [960, 540], 1);
+  const targets = snapTargets(slide, [960, 540], [1]);
 
   // Act
   const { box, lines } = moveBox([500, 300, 100, 50], -455, 3, targets, 6);
@@ -30,7 +30,7 @@ test('a box as wide as the one it lines up under shows a line at each edge and t
   // Arrange
   const heading = { id: 'heading', frame: [674.18, 140, 339.64, 24] };
   const bullets = { id: 'bullets', frame: [700.18, 178, 339.64, 300] };
-  const targets = snapTargets({ items: [heading, bullets] }, [1088, 612], 1);
+  const targets = snapTargets({ items: [heading, bullets] }, [1088, 612], [1]);
 
   // Act
   const { box, lines } = moveBox(bullets.frame, -24, 0, targets, 4);
@@ -44,7 +44,7 @@ test('a box as wide as the one it lines up under shows a line at each edge and t
 
 test('a box snaps by its middle to the middle of the slide', () => {
   // Arrange
-  const targets = snapTargets(slide, [960, 540], 1);
+  const targets = snapTargets(slide, [960, 540], [1]);
 
   // Act
   const { box } = moveBox([500, 300, 100, 50], -72, 0, targets, 6);
@@ -55,7 +55,7 @@ test('a box snaps by its middle to the middle of the slide', () => {
 
 test('the moving item is not a target for itself', () => {
   // Arrange
-  const targets = snapTargets(slide, [960, 540], 1);
+  const targets = snapTargets(slide, [960, 540], [1]);
 
   // Act
   const { box, lines } = moveBox([500, 300, 100, 50], 2, 2, targets, 1);
@@ -146,4 +146,80 @@ test('a box snapped under one an area laid out writes the edge it snapped to, no
 
   // Assert
   assert.deepEqual(edits.map((edit) => edit.numbers), [[674.18, 178, 339.64, 300]]);
+});
+
+test('none of the items moving together is a target for the others', () => {
+  // Act
+  const targets = snapTargets(slide, [960, 540], [1, 2]);
+
+  // Assert
+  assert.ok(!targets.x.includes(500) && !targets.x.includes(700));
+  assert.ok(targets.x.includes(40));
+});
+
+const movable = { frame: { path: 'frame' } };
+
+test('a box drawn across the slide picks the items it touches', () => {
+  // Arrange
+  const items = [
+    { frame: [40, 24, 880, 56], edit: movable },
+    { frame: [500, 300, 100, 50], edit: movable },
+    { from: [600, 200], to: [700, 200], edit: { from: { path: 'from' } } }
+  ];
+
+  // Act
+  const picked = boxPicks(items, [550, 180, 100, 140]);
+
+  // Assert
+  assert.deepEqual(picked, [1, 2]);
+});
+
+test('a box drawn inside an item does not pick it', () => {
+  // Arrange
+  const items = [{ frame: [0, 0, 960, 540], edit: movable }, { frame: [500, 300, 100, 50], edit: movable }];
+
+  // Act
+  const picked = boxPicks(items, [450, 250, 100, 100]);
+
+  // Assert
+  assert.deepEqual(picked, [1]);
+});
+
+test('a box picks a diagonal line only where it crosses the line, not its corners', () => {
+  // Arrange
+  const items = [{ from: [0, 0], to: [100, 100], edit: { from: { path: 'from' } } }];
+
+  // Act
+  const missed = boxPicks(items, [70, 0, 20, 20]);
+  const crossed = boxPicks(items, [40, 40, 20, 20]);
+
+  // Assert
+  assert.deepEqual(missed, []);
+  assert.deepEqual(crossed, [0]);
+});
+
+test('a box passes over items the mouse cannot move', () => {
+  // Arrange
+  const items = [
+    { frame: [500, 300, 100, 50], edit: { locked: 'layout' } },
+    { frame: [500, 300, 100, 50], edit: {} }
+  ];
+
+  // Act
+  const picked = boxPicks(items, [450, 250, 100, 100]);
+
+  // Assert
+  assert.deepEqual(picked, []);
+});
+
+test('items moved together snap by the box around them all and shift by the same amount', () => {
+  // Arrange
+  const items = [{ frame: [100, 100, 50, 50] }, { from: [300, 120], to: [400, 220] }];
+
+  // Act
+  const { changes, lines } = moveGroup(items, -57, 10, { x: [40], y: [] }, 6);
+
+  // Assert
+  assert.deepEqual(changes, [{ frame: [40, 110, 50, 50] }, { from: [240, 130], to: [340, 230] }]);
+  assert.deepEqual(lines, [{ axis: 'x', at: 40 }]);
 });

@@ -341,10 +341,9 @@ public class ServerTests
     string file = served.Store.Theme!.Layouts.Single(layout => layout.Id == "cover").File;
     var edit = new
     {
-      file,
       edits = new[]
       {
-        new { path = "areas.left", source = "[60, 340, 400, 100]", numbers = new[] { 80.0, 340, 400, 120 } }
+        new { file, path = "areas.left", source = "[60, 340, 400, 100]", numbers = new[] { 80.0, 340, 400, 120 } }
       }
     };
 
@@ -354,6 +353,109 @@ public class ServerTests
     // Assert
     response.StatusCode.ShouldBe(HttpStatusCode.OK);
     File.ReadAllText(deck.Folder.PathTo("theme/layouts/cover.yaml")).ShouldContain("left: [80, 340, 400, 120]");
+  }
+
+  [Fact]
+  public async Task Edits_to_theme_yaml_and_a_layout_in_one_request_write_both_and_undo_as_one()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    await using Served served = await Served.Start(deck);
+    string layout = served.Store.Theme!.Layouts.Single(candidate => candidate.Id == "cover").File;
+    string theme = layout.Replace("layouts/cover.yaml", "theme.yaml");
+    string themeBefore = File.ReadAllText(deck.Folder.PathTo("theme/theme.yaml"));
+    string layoutBefore = File.ReadAllText(deck.Folder.PathTo("theme/layouts/cover.yaml"));
+    var edit = new
+    {
+      edits = new[]
+      {
+        new { file = theme, path = "areas.content", source = "[40, 100, 880, 380]",
+          numbers = new[] { 50.0, 100, 880, 380 } },
+        new { file = layout, path = "areas.left", source = "[60, 340, 400, 100]",
+          numbers = new[] { 70.0, 340, 400, 100 } }
+      }
+    };
+
+    // Act
+    HttpResponseMessage moved = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+    string themeMoved = File.ReadAllText(deck.Folder.PathTo("theme/theme.yaml"));
+    string layoutMoved = File.ReadAllText(deck.Folder.PathTo("theme/layouts/cover.yaml"));
+    System.Text.Json.JsonElement undo = (await moved.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
+      .GetProperty("undo");
+    HttpResponseMessage undone = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", new { edits = undo });
+
+    // Assert
+    moved.StatusCode.ShouldBe(HttpStatusCode.OK);
+    themeMoved.ShouldContain("content: [50, 100, 880, 380]");
+    layoutMoved.ShouldContain("left: [70, 340, 400, 100]");
+    undone.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("theme/theme.yaml")).ShouldBe(themeBefore);
+    File.ReadAllText(deck.Folder.PathTo("theme/layouts/cover.yaml")).ShouldBe(layoutBefore);
+  }
+
+  [Fact]
+  public async Task An_edit_that_conflicts_in_one_file_leaves_the_request_s_other_files_unwritten()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    await using Served served = await Served.Start(deck);
+    string layout = served.Store.Theme!.Layouts.Single(candidate => candidate.Id == "cover").File;
+    string theme = layout.Replace("layouts/cover.yaml", "theme.yaml");
+    string themeBefore = File.ReadAllText(deck.Folder.PathTo("theme/theme.yaml"));
+    var edit = new
+    {
+      edits = new[]
+      {
+        new { file = theme, path = "areas.content", source = "[40, 100, 880, 380]",
+          numbers = new[] { 50.0, 100, 880, 380 } },
+        new { file = layout, path = "areas.left", source = "[1, 2, 3, 4]", numbers = new[] { 70.0, 340, 400, 100 } }
+      }
+    };
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+
+    // Assert
+    response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+    File.ReadAllText(deck.Folder.PathTo("theme/theme.yaml")).ShouldBe(themeBefore);
+  }
+
+  [Fact]
+  public async Task Deleting_elements_together_answers_with_one_undo_that_writes_them_back_in_order()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Folder.Write("deck/slides/one.yaml", """
+      layout: cover
+      elements:
+        - id: note
+          text: A note
+          frame: [40, 400, 300, 40]
+
+        - id: box
+          shape: rectangle
+          frame: [400, 400, 100, 40]
+
+        - id: last
+          shape: rectangle
+          frame: [600, 400, 100, 40]
+      """);
+    await using Served served = await Served.Start(deck);
+    string before = File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml"));
+    var edits = served.Store.Deck.Slides[0].Items!.Where(item => item.Id is "note" or "box")
+      .Select(item => new { path = item.Edit.Delete!.Path, source = item.Edit.Delete.Source, delete = true });
+    HttpResponseMessage deleted = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit",
+      new { slide = "one", edits });
+    System.Text.Json.JsonElement undo = (await deleted.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
+      .GetProperty("undo");
+
+    // Act
+    HttpResponseMessage undone = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", new { slide = "one", edits = undo });
+
+    // Assert
+    deleted.StatusCode.ShouldBe(HttpStatusCode.OK);
+    undone.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml")).ShouldBe(before);
   }
 
   [Fact]
@@ -388,7 +490,7 @@ public class ServerTests
     await using Served served = await Served.Start(deck);
     string file = served.Store.Theme!.Layouts.Single(layout => layout.Id == "cover").File
       .Replace("layouts/cover", "styles");
-    var edit = new { file, edits = new[] { new { path = "shape.fill", source = "light2", value = "accent1" } } };
+    var edit = new { edits = new[] { new { file, path = "shape.fill", source = "light2", value = "accent1" } } };
 
     // Act
     HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);

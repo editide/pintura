@@ -267,30 +267,31 @@ public static class PreviewServer
     {
       return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
     }
-    if (request.File is not null)
+    if (request.Edits.Count == 0)
     {
-      if (ThemeFile(presentation.Theme, request.File) is not string path)
+      return Refused("the edit carries no values", StatusCodes.Status400BadRequest);
+    }
+    var files = new List<(string Path, string? Name, List<ValueEdit> Edits)>();
+    foreach (IGrouping<string?, ValueEdit> group in request.Edits.GroupBy(edit => edit.File))
+    {
+      string? path = group.Key is not null ? ThemeFile(presentation.Theme, group.Key)
+        : presentation.Slides.Any(slide => slide.Id == request.Slide) ? SlideFile(presentation, request.Slide!)
+        : null;
+      if (path is null)
       {
-        return Refused($"the mouse writes only the theme's theme.yaml and layouts, not {request.File}",
+        return Refused(group.Key is null ? $"no slide {request.Slide}"
+          : $"the mouse writes only the theme's theme.yaml and layouts, not {group.Key}",
           StatusCodes.Status404NotFound);
       }
-      if (request.Edits.Count == 0 || !request.Edits.All(edit => Writable(edit, true)))
+      if (!group.All(edit => Writable(edit, group.Key is not null)))
       {
-        return Refused("the mouse writes a layout's frames, areas, fills, and outlines",
-          StatusCodes.Status400BadRequest);
+        return Refused(group.Key is null
+          ? "the mouse writes frames, line ends, text, fills, and outlines, and deletes elements"
+          : "the mouse writes a layout's frames, areas, fills, and outlines", StatusCodes.Status400BadRequest);
       }
-      return Patch(store, presentation, path, request.Edits);
+      files.Add((path, group.Key, group.Select(edit => edit with { File = null }).ToList()));
     }
-    if (presentation.Slides.FirstOrDefault(candidate => candidate.Id == request.Slide) is not Slide slide)
-    {
-      return Refused($"no slide {request.Slide}", StatusCodes.Status404NotFound);
-    }
-    if (request.Edits.Count == 0 || !request.Edits.All(edit => Writable(edit, false)))
-    {
-      return Refused("the mouse writes frames, line ends, text, fills, and outlines, and deletes elements",
-        StatusCodes.Status400BadRequest);
-    }
-    return Patch(store, presentation, slide, request.Edits);
+    return Patch(store, presentation, files);
   }
 
   /// <summary>The theme's <c>theme.yaml</c> or a layout's file, by the name origins give it.</summary>
@@ -309,19 +310,32 @@ public static class PreviewServer
   public static IResult Patch(PresentationStore store, Presentation presentation, Slide slide,
     IReadOnlyList<ValueEdit> edits)
   {
-    return Patch(store, presentation, SlideFile(presentation, slide.Id), edits);
+    return Patch(store, presentation, [(SlideFile(presentation, slide.Id), null, edits.ToList())]);
   }
 
-  private static IResult Patch(PresentationStore store, Presentation presentation, string file,
-    IReadOnlyList<ValueEdit> edits)
+  /// <summary>Applies each file's edits and reloads, answering with the edits that write them all back, each named
+  /// with its file as the request named it. A file failing puts back the ones written before it.</summary>
+  private static IResult Patch(PresentationStore store, Presentation presentation,
+    IReadOnlyList<(string Path, string? Name, List<ValueEdit> Edits)> files)
   {
-    List<ValueEdit> undo;
+    var undo = new List<ValueEdit>();
+    var written = new List<(string Path, string Text)>();
     try
     {
-      undo = Patcher.ApplyToFile(file, edits, MarkupContext.For(presentation));
+      foreach ((string path, string? name, List<ValueEdit> edits) in files)
+      {
+        string before = File.ReadAllText(path);
+        List<ValueEdit> back = Patcher.ApplyToFile(path, edits, MarkupContext.For(presentation));
+        written.Add((path, before));
+        undo.InsertRange(0, back.Select(edit => edit with { File = name }));
+      }
     }
     catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
     {
+      foreach ((string path, string text) in written)
+      {
+        Put(path, text);
+      }
       return Unwritten(store, exception);
     }
     store.Refresh();
@@ -624,10 +638,8 @@ public static class PreviewServer
 
 }
 
-/// <summary>Mouse edits to one slide's file, applied together or not at all.</summary>
-/// <summary>Edits to a slide's file, or with <paramref name="File"/> to the theme's or a layout's, named as origins
-/// name it.</summary>
-public record EditRequest(string? Slide, List<ValueEdit> Edits, string? File = null);
+/// <summary>Mouse edits to a slide's file and the theme's and layouts' files, applied together or not at all.</summary>
+public record EditRequest(string? Slide, List<ValueEdit> Edits);
 
 /// <summary>The page's before side: a revision drawn as the page draws the working tree, and what changed since.
 /// </summary>
