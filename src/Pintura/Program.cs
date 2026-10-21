@@ -275,16 +275,18 @@ try
   }
   return 0;
 }
-// One line rather than a stack trace, whatever a command meets.
+// One line rather than a stack trace, whatever a command meets; a debug build adds the trace for a bug.
 catch (Exception exception)
 {
-  Console.Error.WriteLine(exception is LoadException or BookException or ArgumentException or IOException or
+  bool expected = exception is LoadException or BookException or ArgumentException or IOException or
     UnauthorizedAccessException or InvalidDataException or InvalidOperationException or HttpRequestException or
-    JsonException or TimeoutException or OperationCanceledException
-    ? exception.Message
-    : $"{exception.GetType().Name}: {exception.Message}");
+    JsonException or TimeoutException or OperationCanceledException;
+  Console.Error.WriteLine(expected ? exception.Message : $"{exception.GetType().Name}: {exception.Message}");
 #if DEBUG
-  Console.Error.WriteLine(exception.StackTrace);
+  if (!expected)
+  {
+    Console.Error.WriteLine(exception.StackTrace);
+  }
 #endif
   return 1;
 }
