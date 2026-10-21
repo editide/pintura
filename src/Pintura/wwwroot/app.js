@@ -322,7 +322,7 @@ function renderCurrent() {
       button.scrollIntoView({ block: 'nearest' });
     }
   }
-  document.title = `editide | ${state.deck.name}`;
+  document.title = `Pintura | ${state.deck.name}`;
 }
 
 function select(id) {
