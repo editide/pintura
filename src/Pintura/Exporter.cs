@@ -767,6 +767,12 @@ public partial class Exporter
     {
       gaps.Add("opacity on an element with no fill isn't exported");
     }
+    Border(style, properties);
+    return style;
+  }
+
+  private static void Border(JsonObject style, JsonNode? properties)
+  {
     if (Text(Get(properties, "stroke")) == "none")
     {
       style["border_color"] = "transparent";
@@ -781,7 +787,6 @@ public partial class Exporter
         style["border_dash_type"] = dash;
       }
     }
-    return style;
   }
 
   public record Geometry(string? Type, int Rotation, JsonObject Adjustments, bool FlipVertical);
@@ -1161,7 +1166,7 @@ public partial class Exporter
     return size is null || Math.Abs(frame[2] / frame[3] / (size[0] / size[1]) - 1) < 0.01;
   }
 
-  private JsonObject Picture(JsonNode item)
+  public JsonObject Picture(JsonNode item)
   {
     JsonNode? properties = Get(item, "properties");
     string? fill = PictureFill(properties, deck);
@@ -1196,6 +1201,12 @@ public partial class Exporter
     if (Get(properties, "opacity") is not null)
     {
       gaps.Add("picture opacity isn't exported");
+    }
+    var style = new JsonObject();
+    Border(style, properties);
+    if (style.Count > 0)
+    {
+      element["shape_style"] = style;
     }
     return element;
   }

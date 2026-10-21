@@ -183,6 +183,28 @@ public class ExporterTests
     frame.ShouldBe([0, 25, 100, 50]);
   }
 
+  [Fact]
+  public void A_pictures_stroke_goes_as_its_border()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    folder.Write("shot.png", "not read");
+    Exporter exporter = NewExporter();
+    JsonNode item = Json($$"""
+      { "kind": "picture", "properties": { "picture": {{JsonValue.Create(folder.PathTo("shot.png")).ToJsonString()}},
+        "frame": [0, 0, 100, 50], "fit": "stretch", "stroke.color": { "theme": "accent2" }, "stroke.width": 0.5,
+        "stroke.dash": "dot" } }
+      """);
+
+    // Act
+    JsonObject picture = exporter.Picture(item);
+
+    // Assert
+    ShouldMatch(picture["shape_style"],
+      """{ "border_color": { "scheme": "accent2" }, "border_weight": 0.5, "border_dash_type": "dot" }""");
+    exporter.Gaps.ShouldBeEmpty();
+  }
+
   [Theory]
   [InlineData(342, 35, 101.3, 10.37, true)]
   [InlineData(342, 35, 110, 10.37, false)]

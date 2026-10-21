@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { countLines, overflow } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
+const { countLines, overflow, fitted } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
 
 test('runs side by side on one line count once', () => {
   // Arrange
@@ -133,4 +133,16 @@ test('text that grows its shape never overflows', () => {
 
   // Assert
   assert.equal(past, 0);
+});
+
+test('a contained picture is outlined where it is drawn, and a covered or stretched one at its frame', () => {
+  // Act
+  const contained = fitted('contain', 200, 100, [400, 400]);
+  const covered = fitted('cover', 200, 100, [400, 400]);
+  const stretched = fitted('stretch', 200, 100, [400, 400]);
+
+  // Assert
+  assert.deepEqual(contained, [50, 0, 100, 100]);
+  assert.deepEqual(covered, [0, 0, 200, 100]);
+  assert.deepEqual(stretched, [0, 0, 200, 100]);
 });

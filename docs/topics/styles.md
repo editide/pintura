@@ -36,7 +36,7 @@ A box or paragraph in that style takes them over the theme's level, key by key, 
 
 A named style can also set `insets` and the box itself: `fill`, `stroke`, and `opacity`, as a slide writes them (see `shapes`).
 A text box or shape in that style takes them over the theme's `shape` base, and its own keys win over the style's, key by key for `stroke`.
-An SVG picture in that style takes its `fill` and `opacity`, so every icon is one style.
+A picture in that style takes its `stroke` and `opacity`, and an SVG its `fill` too, so every icon or screenshot is one style.
 The same band on several slides, such as a dark strip behind a photo credit, is one style rather than the same keys on each slide.
 
 A style used on a box applies all its properties; on a paragraph, all but `valign`, `insets`, `fill`, `stroke`, and `opacity`; on a run (`[text]{.name}`), only `font`, `size`, `color`, `bold`, `italic`, and `underline`.
