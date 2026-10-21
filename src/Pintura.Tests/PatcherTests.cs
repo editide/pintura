@@ -360,6 +360,28 @@ public class PatcherTests
     patched.ShouldEndWith("      - Up **3**\n      - **3%** on 2024");
   }
 
+  [Theory]
+  [InlineData("**Bold**words", "Bold", "words", "**Bold**", "words")]
+  [InlineData("[Lead]{.lead}words", "Lead", "words", "[Lead]{.lead}", "words")]
+  [InlineData("***Both***words", "Both", "words", "***Both***", "words")]
+  [InlineData("**Bold *both***words", "Bold both", "words", "**Bold *both***", "words")]
+  [InlineData("[**Nested**]{.lead}words", "Nested", "words", "[**Nested**]{.lead}", "words")]
+  [InlineData("[**Nested**, span]{.lead}", "Nested", ", span", "[**Nested**]{.lead}", "[, span]{.lead}")]
+  public void Splitting_where_markup_ends_breaks_after_its_closer(string written, string before, string after,
+    string first, string second)
+  {
+    // Arrange
+    string note = $"elements:\n  - id: note\n    text: |\n      {written}\n    frame: [0, 0, 100, 50]\n";
+    var split = new ValueEdit("elements.note.text", Patcher.SourceAt(note, "elements.note.text")!,
+      Paragraphs: [before, after]);
+
+    // Act
+    string patched = Apply(note, split);
+
+    // Assert
+    patched.ShouldContain($"      {first}\n      {second}\n");
+  }
+
   [Fact]
   public void Joining_two_paragraphs_writes_them_on_one_line()
   {

@@ -315,8 +315,9 @@ public static partial class Markup
 
     while (position < text.Length)
     {
+      // Two asterisks inside italic open bold, but three close the italic and then the bold around it.
       if (closer is not null && string.CompareOrdinal(text, position, closer, 0, closer.Length) == 0 &&
-        !(closer == "*" && At(text, position, "**")))
+        !(closer == "*" && At(text, position, "**") && !At(text, position, "***")))
       {
         FlushLiteral();
         position += closer.Length;

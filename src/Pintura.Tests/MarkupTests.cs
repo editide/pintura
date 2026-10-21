@@ -112,6 +112,34 @@ public class MarkupTests
     runs[7].Link.ShouldBe("https://sec.gov");
   }
 
+  [Theory]
+  [InlineData("***both***")]
+  [InlineData("**bold *both***")]
+  [InlineData("*italic **both***")]
+  public void Three_asterisks_close_bold_and_italic_together(string text)
+  {
+    // Act
+    List<Run> runs = Parse(text)[0].Runs;
+
+    // Assert
+    Run both = runs.Last();
+    both.Text.ShouldBe("both");
+    both.Bold.ShouldBe(true);
+    both.Italic.ShouldBe(true);
+  }
+
+  [Fact]
+  public void Bold_inside_italic_still_opens_at_two_asterisks()
+  {
+    // Act
+    List<Run> runs = Parse("*an **aside** here*")[0].Runs;
+
+    // Assert
+    runs.Select(run => run.Text).ShouldBe(["an ", "aside", " here"]);
+    runs.ShouldAllBe(run => run.Italic == true);
+    runs[1].Bold.ShouldBe(true);
+  }
+
   [Fact]
   public void A_span_inside_bold_is_bold_with_its_own_properties()
   {
