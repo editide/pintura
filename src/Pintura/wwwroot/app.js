@@ -146,7 +146,6 @@ function renderSidebar() {
 function renderToolbar() {
   const pressed = {
     slide: state.view === 'slide' && !state.layout,
-    grid: state.view === 'grid',
     theme: state.view === 'theme' || Boolean(state.layout),
     guides: state.guides,
     inspector: state.inspector,
@@ -169,6 +168,7 @@ function renderToolbar() {
   badge.hidden = errors === 0;
   badge.textContent = errors;
   badge.title = `${errors} ${errors === 1 ? 'error' : 'errors'} on this slide`;
+  document.getElementById('grid-toggle').setAttribute('aria-pressed', String(state.view === 'grid'));
   document.getElementById('nav-show').hidden = state.nav;
   const strip = document.getElementById('strip-toggle');
   strip.title = state.strip ? 'Show the slides beside the slide (|)' : 'Show the slides below the slide (|)';
@@ -238,7 +238,7 @@ function renderSlide() {
   }
   const drawn = shown || slide;
   const revision = namedBase() ? `as of ${namedBase()}` : 'before the changes';
-  const caption = [`Slide ${drawn.number} of ${deck.slides.length}`, reviewing(slide) && revision,
+  const caption = [`${drawn.number} of ${deck.slides.length}`, reviewing(slide) && revision,
     state.zoom !== 1 && `${Math.round(state.zoom * 100)}%`];
   document.getElementById('slide-caption').textContent = caption.filter(Boolean).join(' · ');
 }
@@ -942,7 +942,6 @@ document.querySelector('.toolbar').addEventListener('click', (event) => {
   }
   const actions = {
     slide: () => setView('slide'),
-    grid: () => setView('grid'),
     theme: () => setView('theme'),
     inspector: () => toggle('inspector'),
     before: flipBefore,
@@ -1535,6 +1534,11 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
 document.getElementById('nav-hide').addEventListener('click', () => toggle('nav'));
 document.getElementById('nav-show').addEventListener('click', () => toggle('nav'));
 document.getElementById('strip-toggle').addEventListener('click', toggleStrip);
+document.getElementById('grid-toggle').addEventListener('click', () => {
+  if (state.deck) {
+    setView(state.view === 'grid' ? 'slide' : 'grid');
+  }
+});
 // A mouse wheel scrolls only up and down, which the strip turns into along it.
 document.querySelector('.sidebar-scroll').addEventListener('wheel', (event) => {
   if (state.strip && !event.ctrlKey && Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
