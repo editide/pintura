@@ -1311,6 +1311,7 @@ document.getElementById('versions-menu').addEventListener('click', async (event)
 
 function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
+  themeBook();
   const button = document.getElementById('theme-toggle');
   const next = state.theme === 'dark' ? 'light' : 'dark';
   button.title = `Switch to the ${next} workspace`;
