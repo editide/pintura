@@ -147,9 +147,21 @@ function renderParagraph(paragraph, index, parent) {
       span.rel = 'noopener';
     }
     applyCharacter(span, run);
-    span.textContent = run.text;
+    breakLines(run.text, span);
   }
   return node;
+}
+
+// A newline in a run is a line break; one ending the paragraph still takes a line, as in PowerPoint.
+function breakLines(text, parent) {
+  text.split('\n').forEach((line, index, lines) => {
+    if (index > 0) {
+      parent.append(document.createElement('br'));
+    }
+    if (line.length > 0 || (index > 0 && index === lines.length - 1)) {
+      parent.append(line || '\u200B');
+    }
+  });
 }
 
 // A number read from a Libreta book, which Ctrl- or Cmd-clicking opens there.

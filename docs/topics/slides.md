@@ -13,6 +13,7 @@ A slide is a file in `slides/` that picks a layout, writes its title and placeho
 | `hide` | Ids of theme and layout elements this slide leaves out, such as `[page]` for the slide number. |
 
 The title and placeholders take one paragraph of plain text, in the layout's style: fields such as `${date}` work, markup doesn't, and a `$` not followed by `{` is literal, as everywhere.
+A newline in it breaks the line, as `title: "Borrowing to\nBuild the AI Cloud"` or a block (`|-`) of two lines.
 
 ## Elements
 

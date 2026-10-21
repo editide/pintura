@@ -805,6 +805,8 @@ function paragraphText(node) {
   for (const child of node.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
       text += child.data;
+    } else if (child.nodeName === 'BR') {
+      text += '\n';
     } else if (child.nodeType !== Node.ELEMENT_NODE || child.classList.contains('bullet')) {
       continue;
     } else if (child.dataset.field !== undefined) {
@@ -877,13 +879,115 @@ function textKey(event) {
   if (mark) {
     event.preventDefault();
     formatText(mark);
-  } else if (event.key === 'Enter') {
+  } else if (event.key === 'Enter' && !event.isComposing) {
     event.preventDefault();
-    finishText(true);
+    // The title and placeholders are a paragraph each, so Enter breaks the line there.
+    if (editing.text.item.role) {
+      breakLine();
+    } else {
+      splitParagraph();
+    }
+  } else if ((event.key === 'Backspace' || event.key === 'Delete') && joinParagraphs(event.key === 'Delete')) {
+    event.preventDefault();
   } else if (event.key === 'Escape') {
     event.preventDefault();
-    finishText(false);
+    finishText(true);
   }
+}
+
+function breakLine() {
+  const selection = getSelection();
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  dropSpaces(range);
+  // The caret has no place after a break that ends the text without something there to hold it.
+  const holder = document.createTextNode('\u200B');
+  range.insertNode(holder);
+  range.insertNode(document.createElement('br'));
+  selection.collapse(holder, 1);
+}
+
+// The spaces where a line breaks would only trail one line or lead the next.
+function dropSpaces(range) {
+  const node = range.startContainer;
+  if (node.nodeType !== Node.TEXT_NODE) {
+    return;
+  }
+  let start = range.startOffset;
+  let end = start;
+  while (start > 0 && node.data[start - 1] === ' ') {
+    start--;
+  }
+  while (end < node.data.length && node.data[end] === ' ') {
+    end++;
+  }
+  node.deleteData(start, end - start);
+  range.setStart(node, start);
+  range.collapse(true);
+}
+
+function caretParagraph(range) {
+  const node = range.startContainer;
+  const paragraph = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement).closest('.paragraph');
+  return editing.text.flow.contains(paragraph) ? paragraph : null;
+}
+
+// The paragraph splits at the caret, its second half taking its bullet until the file redraws it.
+function splitParagraph() {
+  const selection = getSelection();
+  const range = selection.getRangeAt(0);
+  const paragraph = caretParagraph(range);
+  if (!paragraph) {
+    return;
+  }
+  range.deleteContents();
+  dropSpaces(range);
+  const tail = document.createRange();
+  tail.setStart(range.startContainer, range.startOffset);
+  tail.setEnd(paragraph, paragraph.childNodes.length);
+  const moved = tail.extractContents();
+  const next = paragraph.cloneNode(false);
+  const bullet = paragraph.querySelector(':scope > .bullet');
+  if (bullet) {
+    next.append(bullet.cloneNode(true));
+  }
+  next.append(moved);
+  for (const half of [paragraph, next]) {
+    if (paragraphText(half).length === 0) {
+      half.append('\u200B');
+    }
+  }
+  paragraph.after(next);
+  selection.collapse(next, bullet ? 1 : 0);
+}
+
+// Backspace at a paragraph's start, or Delete at its end, joins it to its neighbour; true when it did.
+function joinParagraphs(forward) {
+  const selection = getSelection();
+  const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  const paragraph = range?.collapsed && caretParagraph(range);
+  if (!paragraph || editing.text.item.role) {
+    return false;
+  }
+  const at = textOffset(paragraph, range.startContainer, range.startOffset);
+  const [first, second] = forward ? [paragraph, paragraph.nextElementSibling]
+    : [paragraph.previousElementSibling, paragraph];
+  if (at !== (forward ? paragraphText(paragraph).length : 0) || !second?.classList.contains('paragraph') ||
+    !first?.classList.contains('paragraph')) {
+    return false;
+  }
+  const join = document.createRange();
+  join.selectNodeContents(first);
+  join.collapse(false);
+  for (const child of [...second.childNodes]) {
+    if (!child.classList?.contains('bullet')) {
+      first.append(child);
+    }
+  }
+  second.remove();
+  selection.removeAllRanges();
+  selection.addRange(join);
+  return true;
 }
 
 // Editing on the slide rewords paragraphs; adding one is an edit to the file.
@@ -961,7 +1065,7 @@ function textOffset(paragraph, container, offset) {
   return paragraphText(range.cloneContents()).length;
 }
 
-// The point in a paragraph after that many of its characters, a field counting as one.
+// The point in a paragraph after that many of its characters, a field or a line break counting as one.
 function textPoint(paragraph, count) {
   let left = count;
   const walk = (node) => {
@@ -978,7 +1082,7 @@ function textPoint(paragraph, count) {
         }
         left -= seen;
       } else if (child.nodeType === Node.ELEMENT_NODE && !child.classList.contains('bullet')) {
-        if (child.dataset.field !== undefined) {
+        if (child.dataset.field !== undefined || child.nodeName === 'BR') {
           left -= 1;
           if (left === 0) {
             return [child.parentNode, [...child.parentNode.childNodes].indexOf(child) + 1];

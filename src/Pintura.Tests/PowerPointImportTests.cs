@@ -719,7 +719,7 @@ public class PowerPointImportTests
   }
 
   [Fact]
-  public void A_line_break_inside_a_paragraph_imports_as_a_space()
+  public void A_line_break_in_a_title_imports_as_a_newline()
   {
     // Arrange
     using var output = new TempFolder();
@@ -738,12 +738,12 @@ public class PowerPointImportTests
     // Assert
     JsonNode title = mapped.Deck["slides"]![0]!["items"]!.AsArray().First(item => (string?)item!["id"] == "title")!;
     title["paragraphs"]!.AsArray().SelectMany(paragraph => paragraph!["runs"]!.AsArray())
-      .Select(run => (string?)run!["text"]).ShouldBe(["Q2 2026 Board Update"]);
-    mapped.Findings.ShouldContain("slide 1: a line break inside a paragraph is kept as a space");
+      .Select(run => (string?)run!["text"]).ShouldBe(["Q2 2026\nBoard Update"]);
+    mapped.Findings.ShouldNotContain("slide 1: a line break inside a paragraph is kept as a space");
   }
 
   [Fact]
-  public void A_carriage_return_or_line_separator_in_a_run_imports_as_a_space()
+  public void A_carriage_return_or_line_separator_in_a_title_imports_as_a_newline()
   {
     // Arrange
     using var output = new TempFolder();
@@ -756,7 +756,7 @@ public class PowerPointImportTests
 
     // Assert
     File.ReadAllText(output.PathTo("imported/slides/q2-2026-board-update.yaml"))
-      .ShouldContain("title: Q2 2026 Board Update\n");
+      .ShouldContain("title: |-\n  Q2 2026\n  Board\n  Update\n");
   }
 
   private static JsonArray TitleRuns(JsonObject reads)
