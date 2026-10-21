@@ -910,13 +910,22 @@ public static partial class Patcher
       }
       Paragraph home = parsed.LastOrDefault(paragraph => Content(paragraph) <= from) ?? parsed[0];
       string opening = (home.Style is null ? "" : $"{{.{home.Style}}}\n") + lines[home.Line][..home.Start];
-      // A break inside bold, italic, a link or a span closes it on the first line and opens it again on the next.
-      int next = removed.Count == 0 && start < old.Count && old[start].Character != '\n' ? old[start].Start : to;
-      List<(string Open, string Close)> around = typed.Contains('\n') && to <= End(home)
-        ? Around(lines[home.Line], home.Start, from - starts[home.Line], next - starts[home.Line])
+      int origin = starts[home.Line];
+      int next = (removed.Count == 0 && start < old.Count && old[start].Character != '\n' ? old[start].Start : to) -
+        origin;
+      List<Wrapper> around = typed.Contains('\n') && to <= End(home)
+        ? Around(lines[home.Line], home.Start, from - origin)
         : [];
-      string closing = string.Concat(around.Select(markup => markup.Close).Reverse());
-      string reopening = string.Concat(around.Select(markup => markup.Open));
+      // A break typed where markup ends goes after its closer, and one inside markup closes it on the first line and
+      // opens it again on the next.
+      List<Wrapper> ending = around.Where(markup => markup.ContentEnd < next).ToList();
+      if (removed.Count == 0 && ending.Count > 0)
+      {
+        from = to = origin + ending.Max(markup => markup.ContentEnd + markup.Close.Length);
+      }
+      List<Wrapper> inside = around.Where(markup => markup.ContentEnd >= next).ToList();
+      string closing = string.Concat(inside.Select(markup => markup.Close).Reverse());
+      string reopening = string.Concat(inside.Select(markup => markup.Open));
       text.Remove(from, to - from);
       text.Insert(from, Escape(typed, false).Replace("\n", closing + "\n" + opening + reopening));
     }
@@ -928,17 +937,21 @@ public static partial class Patcher
     return same ? updated : throw new PatchException("that text would read as markup; write it in the file");
   }
 
-  /// <summary>The markup that wraps both <paramref name="from"/> and <paramref name="to"/> on a line, outermost first,
-  /// read as <see cref="Markup"/> reads it.</summary>
-  private static List<(string Open, string Close)> Around(string line, int start, int from, int to)
+  /// <summary>Bold, italic, a link or a span: where its content starts and ends on its line, and the markup on either
+  /// side.</summary>
+  private record Wrapper(int ContentStart, int ContentEnd, string Open, string Close);
+
+  /// <summary>The markup whose content takes in <paramref name="position"/> on a line, its ends included, outermost
+  /// first, read as <see cref="Markup"/> reads it.</summary>
+  private static List<Wrapper> Around(string line, int start, int position)
   {
-    var wrapping = new List<(int ContentStart, string Open, string Close)>();
+    var wrapping = new List<Wrapper>();
     var open = new Stack<(int ContentStart, string Marker, int Close, string Closer)>();
-    int position = start;
-    while (position < line.Length)
+    int at = start;
+    while (at < line.Length)
     {
-      char current = line[position];
-      if (open.FirstOrDefault(markup => markup.Marker == "[") is { Marker: "[" } span && position == span.Close)
+      char current = line[at];
+      if (open.FirstOrDefault(markup => markup.Marker == "[") is { Marker: "[" } span && at == span.Close)
       {
         // Emphasis left unclosed inside a span is literal text, since the span's content reads on its own.
         while (open.Peek().Marker != "[")
@@ -946,49 +959,52 @@ public static partial class Patcher
           open.Pop();
         }
         open.Pop();
-        if (span.ContentStart <= from && to <= span.Close)
+        if (span.ContentStart <= position && position <= span.Close)
         {
-          wrapping.Add((span.ContentStart, "[", span.Closer));
+          wrapping.Add(new Wrapper(span.ContentStart, span.Close, "[", span.Closer));
         }
-        position = span.Close + span.Closer.Length;
+        at = span.Close + span.Closer.Length;
         continue;
       }
       if (current == '\\')
       {
-        position += 2;
+        at += 2;
         continue;
       }
-      if (current == '$' && position + 1 < line.Length && line[position + 1] == '{')
+      if (current == '$' && at + 1 < line.Length && line[at + 1] == '{')
       {
-        int end = line.IndexOf('}', position);
-        position = end < 0 ? line.Length : end + 1;
+        int end = line.IndexOf('}', at);
+        at = end < 0 ? line.Length : end + 1;
         continue;
       }
       if (current == '*')
       {
-        string delimiter = position + 1 < line.Length && line[position + 1] == '*' ? "**" : "*";
+        string rest = line[at..];
+        bool closesItalic = open.Count > 0 && open.Peek().Marker == "*" &&
+          (!rest.StartsWith("**", StringComparison.Ordinal) || rest.StartsWith("***", StringComparison.Ordinal));
+        string delimiter = !closesItalic && rest.StartsWith("**", StringComparison.Ordinal) ? "**" : "*";
         if (open.Count > 0 && open.Peek().Marker == delimiter)
         {
           int contentStart = open.Pop().ContentStart;
-          if (contentStart <= from && to <= position)
+          if (contentStart <= position && position <= at)
           {
-            wrapping.Add((contentStart, delimiter, delimiter));
+            wrapping.Add(new Wrapper(contentStart, at, delimiter, delimiter));
           }
         }
-        else if (position + delimiter.Length < line.Length && line[position + delimiter.Length] != ' ')
+        else if (at + delimiter.Length < line.Length && line[at + delimiter.Length] != ' ')
         {
-          open.Push((position + delimiter.Length, delimiter, -1, ""));
+          open.Push((at + delimiter.Length, delimiter, -1, ""));
         }
-        position += delimiter.Length;
+        at += delimiter.Length;
         continue;
       }
-      if (current == '[' && Bracketed(line, position) is (int close, string closer))
+      if (current == '[' && Bracketed(line, at) is (int close, string closer))
       {
-        open.Push((position + 1, "[", close, closer));
+        open.Push((at + 1, "[", close, closer));
       }
-      position++;
+      at++;
     }
-    return wrapping.OrderBy(markup => markup.ContentStart).Select(markup => (markup.Open, markup.Close)).ToList();
+    return wrapping.OrderBy(markup => markup.ContentStart).ToList();
   }
 
   /// <summary>Where a link or span opened at <paramref name="open"/> closes, and the markup that closes it, such as
