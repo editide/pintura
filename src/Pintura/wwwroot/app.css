@@ -3329,6 +3329,10 @@ kbd {
   border: none;
 }
 
+#book-back {
+  min-width: 0;
+}
+
 .book-bar #book-pop-out {
   flex: none;
 }
@@ -3663,4 +3667,24 @@ kbd {
 .paint-weight-line {
   width: 100%;
   border-top: 1px solid var(--ink);
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 100;
+  max-width: 352px;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre-line;
+  text-align: center;
+  box-shadow: var(--shadow-pop);
+  pointer-events: none;
+}
+
+.tooltip[hidden] {
+  display: none;
 }

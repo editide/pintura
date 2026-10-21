@@ -38,6 +38,11 @@ function hideBook() {
   window.focus();
 }
 
+// The book follows the deck's theme, which Libreta on another origin can't read.
+function themeBook() {
+  bookFrame?.contentWindow.postMessage({ pintura: 'theme', theme: document.documentElement.dataset.theme }, '*');
+}
+
 // A number's cell replaces the frame's page, since an entry for each would make back step through them.
 function showInBook(url) {
   bookFrame.dataset.page = url;
@@ -46,6 +51,7 @@ function showInBook(url) {
 
 if (book) {
   document.getElementById('book-back').addEventListener('click', closeBook);
+  bookFrame.addEventListener('load', themeBook);
   window.addEventListener('popstate', () => {
     if (bookShown() && !history.state?.book) {
       hideBook();
