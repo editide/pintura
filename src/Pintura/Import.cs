@@ -418,14 +418,25 @@ public partial class Importer
     {
       shapeBase["fill"] = fill;
     }
-    if (Mode(shapes.Select(shape => Stroke(shape.Properties))) is JsonObject shapeStroke)
+    if (Mode(shapes.Select(shape => Group(shape.Properties, "stroke"))) is JsonObject shapeStroke)
     {
       foreach ((string key, JsonNode? value) in shapeStroke)
       {
         shapeBase[key] = value?.DeepClone();
       }
     }
-    if (Mode(items.Where(item => item.Kind == "line").Select(line => Stroke(line.Properties))) is JsonObject stroke)
+    // A shape without a shadow states none of its keys, so it couldn't clear one from the base: only a shadow every
+    // shape has goes there.
+    List<JsonObject?> shadows = shapes.Select(shape => Group(shape.Properties, "shadow")).ToList();
+    if (shadows.Count > 0 && shadows.All(shadow => shadow is not null && JsonNode.DeepEquals(shadow, shadows[0])))
+    {
+      foreach ((string key, JsonNode? value) in shadows[0]!)
+      {
+        shapeBase[key] = value?.DeepClone();
+      }
+    }
+    if (Mode(items.Where(item => item.Kind == "line").Select(line => Group(line.Properties, "stroke"))) is
+      JsonObject stroke)
     {
       foreach ((string key, JsonNode? value) in stroke)
       {
@@ -436,17 +447,18 @@ public partial class Importer
       picture.Properties["fit"]));
   }
 
-  private static JsonObject? Stroke(JsonObject properties)
+  /// <summary>A key such as <c>stroke</c> and its dotted keys, or null where the item sets none of them.</summary>
+  private static JsonObject? Group(JsonObject properties, string group)
   {
-    var stroke = new JsonObject();
-    foreach (string key in new[] { "stroke", "stroke.color", "stroke.width", "stroke.dash" })
+    var found = new JsonObject();
+    foreach ((string key, JsonNode? value) in properties)
     {
-      if (properties[key] is JsonNode value)
+      if (value is not null && (key == group || key.StartsWith($"{group}.", StringComparison.Ordinal)))
       {
-        stroke[key] = value.DeepClone();
+        found[key] = value.DeepClone();
       }
     }
-    return stroke.Count == 0 ? null : stroke;
+    return found.Count == 0 ? null : found;
   }
 
   /// <summary>The value most of <paramref name="values"/> share, ties going to the first seen, or null when most

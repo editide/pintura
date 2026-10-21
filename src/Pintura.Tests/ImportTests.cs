@@ -235,6 +235,40 @@ public class ImportTests
     Comparable(after).ShouldBe(Comparable(before));
   }
 
+  [Theory]
+  [InlineData("shape: { fill: light2, stroke: { color: dark1 lighter 50, width: 1 } }",
+    "shape: { fill: light2, stroke: { color: dark1 lighter 50, width: 1 }, shadow: { color: dark1, opacity: 40, " +
+    "blur: 4, distance: 3, angle: 90 } }", true)]
+  [InlineData("    shape: rounded_rectangle\n", "    shape: rounded_rectangle\n    shadow: { color: accent1, distance: 2 }\n",
+    false)]
+  public void A_shadow_survives_import_in_the_shape_base_only_when_every_shape_has_it(string from, string to,
+    bool inBase)
+  {
+    // Arrange
+    using var source = new TempFolder();
+    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "default"), source.PathTo("themes/default"));
+    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme"),
+      source.PathTo("presentations/default-theme"));
+    string file = inBase ? "themes/default/styles.yaml" : "presentations/default-theme/slides/operating-income-bridge.yaml";
+    string text = File.ReadAllText(source.PathTo(file));
+    int first = text.IndexOf(from, StringComparison.Ordinal);
+    first.ShouldBeGreaterThanOrEqualTo(0);
+    File.WriteAllText(source.PathTo(file), text[..first] + to + text[(first + from.Length)..]);
+    string root = source.PathTo("presentations/default-theme");
+    JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
+    using var output = new TempFolder();
+    string folder = output.PathTo("imported");
+
+    // Act
+    ImportResult result = Importer.Import(before.ToJsonString(), root, folder);
+
+    // Assert
+    result.Findings.ShouldBeEmpty();
+    File.ReadAllText(Path.Combine(folder, "theme", "styles.yaml")).Contains("shadow").ShouldBe(inBase);
+    JsonObject after = Importer.Snapshot(PresentationLoader.Load(folder));
+    Comparable(after).ShouldBe(Comparable(before));
+  }
+
   [Fact]
   public void A_tables_left_and_right_borders_survive_import()
   {

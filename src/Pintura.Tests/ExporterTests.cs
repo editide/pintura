@@ -205,6 +205,28 @@ public class ExporterTests
     exporter.Gaps.ShouldBeEmpty();
   }
 
+  [Fact]
+  public void A_shadow_goes_as_the_shape_styles_effects_its_opacity_as_the_colors_alpha()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    folder.Write("shot.png", "not read");
+    Exporter exporter = NewExporter();
+    JsonNode item = Json($$"""
+      { "kind": "picture", "properties": { "picture": {{JsonValue.Create(folder.PathTo("shot.png")).ToJsonString()}},
+        "frame": [0, 0, 100, 50], "fit": "stretch", "shadow.color": { "theme": "dark1" }, "shadow.opacity": 40,
+        "shadow.distance": 3 } }
+      """);
+
+    // Act
+    JsonObject picture = exporter.Picture(item);
+
+    // Assert
+    ShouldMatch(picture["shape_style"], """
+      { "effects": { "shadow": { "color": { "scheme": "dk1", "alpha": 40 }, "blur": 0, "distance": 3, "angle": 0 } } }
+      """);
+  }
+
   [Theory]
   [InlineData(342, 35, 101.3, 10.37, true)]
   [InlineData(342, 35, 110, 10.37, false)]

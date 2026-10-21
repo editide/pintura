@@ -1053,7 +1053,7 @@ public partial class PowerPointMapping
       case "table_elements":
         return Table(element, slideStem ?? "table", ids, where);
       case "picture_elements":
-        return Picture(element, ids, where);
+        return Picture(element, ids, where, defaults);
       default:
         findings.Add($"{where}: {kind.Replace("_elements", "").Replace('_', ' ')} is out of scope and left out");
         return null;
@@ -1099,6 +1099,7 @@ public partial class PowerPointMapping
     }
     var properties = new JsonObject { ["frame"] = Frame(element) };
     Rotation(element, properties);
+    Effects(style, properties, where);
     BoxText(properties, paragraphs, own, Merge(read?["default_text_layout"],
       element["text_component"]?["text_layout"]), element, where);
     return Item(Id(element, "text", ids, where), "text", properties, Paragraphs(paragraphs, where));
@@ -1214,6 +1215,7 @@ public partial class PowerPointMapping
     {
       properties[key] = value?.DeepClone();
     }
+    Effects(style, properties, where);
     Rotation(element, properties);
     BoxText(properties, paragraphs, layers, Merge(read?["default_text_layout"], element["text_component"]?["text_layout"]),
       element, where);
@@ -1279,6 +1281,46 @@ public partial class PowerPointMapping
       stroke["stroke.dash"] = dash.Contains("dot", StringComparison.Ordinal) ? "dot" : "dash";
     }
     return stroke;
+  }
+
+  /// <summary>A shape style's outer shadow as the model's dotted keys, its other effects having no match in the
+  /// format.</summary>
+  private void Effects(JsonObject style, JsonObject properties, string where)
+  {
+    if (style["effects"] is not JsonObject effects)
+    {
+      return;
+    }
+    foreach ((string effect, _) in effects.Where(pair => pair.Key != "shadow" && pair.Value is not null))
+    {
+      findings.Add($"{where}: a {effect.Replace('_', ' ')} has no match in the format and is left out");
+    }
+    if (effects["shadow"] is not JsonObject shadow)
+    {
+      return;
+    }
+    if ((bool?)shadow["inner"] == true)
+    {
+      findings.Add($"{where}: an inner shadow has no match in the format and is left out");
+      return;
+    }
+    if (Color(shadow["color"], where) is not JsonObject color || color["none"] is not null)
+    {
+      return;
+    }
+    properties["shadow.color"] = color;
+    if ((double?)(shadow["color"] as JsonObject)?["alpha"] is double alpha && alpha < 99.5)
+    {
+      properties["shadow.opacity"] = Round(alpha);
+    }
+    foreach (string key in new[] { "blur", "distance", "angle" })
+    {
+      double value = (double?)shadow[key] ?? 0;
+      if (Math.Abs(value) > 0.005)
+      {
+        properties[$"shadow.{key}"] = key == "angle" ? Round((value % 360 + 360) % 360) : Round(value);
+      }
+    }
   }
 
   /// <summary>A box's text properties: what most of its runs and paragraphs share, and its box's own.</summary>
@@ -1396,7 +1438,7 @@ public partial class PowerPointMapping
     return levels.Where(pair => Matches(pair.Value)).Select(pair => pair.Key).DefaultIfEmpty(paragraph.Level).First();
   }
 
-  private JsonObject? Picture(JsonObject element, Ids ids, string where)
+  private JsonObject? Picture(JsonObject element, Ids ids, string where, JsonObject? read)
   {
     string id = Id(element, "picture", ids, where);
     string? file = package.Picture(where, (int?)element["id"], id.StartsWith("picture-", StringComparison.Ordinal)
@@ -1408,6 +1450,15 @@ public partial class PowerPointMapping
       return null;
     }
     var properties = new JsonObject { ["frame"] = Frame(element), ["picture"] = file, ["fit"] = "stretch" };
+    JsonObject style = Merge(read?["picture_element_shape_style"], element["shape_style"]);
+    if (Stroke(style, where) is JsonObject stroke && stroke["stroke"] is null)
+    {
+      foreach ((string key, JsonNode? value) in stroke)
+      {
+        properties[key] = value?.DeepClone();
+      }
+    }
+    Effects(style, properties, where);
     Rotation(element, properties);
     return Item(id, "picture", properties, null);
   }

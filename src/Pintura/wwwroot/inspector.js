@@ -50,6 +50,12 @@ const LABELS = {
   'stroke.color': 'Outline color',
   'stroke.width': 'Outline width',
   'stroke.dash': 'Outline dash',
+  shadow: 'Shadow',
+  'shadow.color': 'Shadow color',
+  'shadow.opacity': 'Shadow opacity',
+  'shadow.blur': 'Shadow blur',
+  'shadow.distance': 'Shadow distance',
+  'shadow.angle': 'Shadow angle',
   'adjust.corner': 'Corner radius',
   start: 'Start arrow',
   end: 'End arrow',
@@ -70,7 +76,7 @@ const LABELS = {
 };
 
 const POINTS = new Set(['size', 'space_before', 'space_after', 'indent', 'hanging', 'adjust.corner', 'text.size',
-  'markers.size']);
+  'markers.size', 'shadow.blur', 'shadow.distance']);
 const PERCENTAGES = new Set(['gap_width', 'overlap']);
 // Names a file gives, which read as written rather than as words.
 const LITERAL = new Set(['style', 'row_style', 'chart', 'table', 'data', 'picture', 'alt', 'title']);

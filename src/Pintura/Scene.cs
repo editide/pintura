@@ -242,10 +242,12 @@ public class SceneBuilder
         Fill(properties, element, look?.Fill is null ? styles.ShapeFill : look.Fill,
           look?.Fill is null ? styles.Origins.GetValueOrDefault("shape.fill") : look.Origins["fill"]);
         Strokes(properties, "stroke", styles.ShapeStroke, look?.Stroke, element.Stroke);
+        Shadows(properties, styles.ShapeShadow, look?.Shadow, element.Shadow);
         break;
       case "text":
         Fill(properties, element, look?.Fill, look?.Origins.GetValueOrDefault("fill"));
         Strokes(properties, "stroke", look?.Stroke, element.Stroke);
+        Shadows(properties, look?.Shadow, element.Shadow);
         break;
       case "line":
         Set("from", element.From);
@@ -267,6 +269,7 @@ public class SceneBuilder
           Fill(properties, element, look?.Fill, look?.Origins.GetValueOrDefault("fill"));
         }
         Strokes(properties, "stroke", look?.Stroke, element.Stroke);
+        Shadows(properties, look?.Shadow, element.Shadow);
         break;
       case "chart":
         Set("chart", element.Chart);
@@ -989,6 +992,39 @@ public class SceneBuilder
       if (stroke.Dash is not null)
       {
         properties[$"{key}.dash"] = new Resolved(stroke.Dash, stroke.Origins["dash"]);
+      }
+    }
+  }
+
+  /// <summary>Merges a shadow key by key over the base, as <see cref="Strokes"/> does a stroke.</summary>
+  private static void Shadows(Dictionary<string, Resolved> properties, params Shadow?[] layers)
+  {
+    foreach (Shadow? shadow in layers)
+    {
+      if (shadow is null)
+      {
+        continue;
+      }
+      if (shadow.None == true)
+      {
+        foreach (string key in properties.Keys.Where(key => key.StartsWith("shadow.", StringComparison.Ordinal)).ToList())
+        {
+          properties.Remove(key);
+        }
+        properties["shadow"] = new Resolved("none", shadow.Origins["none"]);
+        continue;
+      }
+      properties.Remove("shadow");
+      foreach ((string key, object? value) in new (string, object?)[]
+        {
+          ("color", shadow.Color), ("opacity", shadow.Opacity), ("blur", shadow.Blur), ("distance", shadow.Distance),
+          ("angle", shadow.Angle)
+        })
+      {
+        if (value is not null)
+        {
+          properties[$"shadow.{key}"] = new Resolved(value, shadow.Origins[key]);
+        }
       }
     }
   }

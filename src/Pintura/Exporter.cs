@@ -768,6 +768,7 @@ public partial class Exporter
       gaps.Add("opacity on an element with no fill isn't exported");
     }
     Border(style, properties);
+    Effects(style, properties);
     return style;
   }
 
@@ -787,6 +788,24 @@ public partial class Exporter
         style["border_dash_type"] = dash;
       }
     }
+  }
+
+  /// <summary>A shadow as the shape style's effects; one with no color draws nothing, as in the preview.</summary>
+  private static void Effects(JsonObject style, JsonNode? properties)
+  {
+    if (!Truthy(Get(properties, "shadow.color")))
+    {
+      return;
+    }
+    var shadow = new JsonObject
+    {
+      ["color"] = Color(Get(properties, "shadow.color"), Get(properties, "shadow.opacity"))
+    };
+    foreach (string key in new[] { "blur", "distance", "angle" })
+    {
+      shadow[key] = Number(Get(properties, $"shadow.{key}")) ?? 0;
+    }
+    style["effects"] = new JsonObject { ["shadow"] = shadow };
   }
 
   public record Geometry(string? Type, int Rotation, JsonObject Adjustments, bool FlipVertical);
@@ -1204,6 +1223,7 @@ public partial class Exporter
     }
     var style = new JsonObject();
     Border(style, properties);
+    Effects(style, properties);
     if (style.Count > 0)
     {
       element["shape_style"] = style;

@@ -157,6 +157,7 @@ public class Element
   public string? Style { get; init; }
   public Color? Fill { get; init; }
   public Stroke? Stroke { get; init; }
+  public Shadow? Shadow { get; init; }
   public double? Opacity { get; init; }
   /// <summary>Decoration rather than content, such as a watermark: the geometry checks leave it out.</summary>
   public bool? Decorative { get; init; }
@@ -187,6 +188,19 @@ public class Stroke
   public Color? Color { get; set; }
   public double? Width { get; set; }
   public string? Dash { get; set; }
+  public bool? None { get; set; }
+  [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
+}
+
+/// <summary>A drop shadow: <see cref="Distance"/> points off toward <see cref="Angle"/>, degrees clockwise from
+/// the right.</summary>
+public class Shadow
+{
+  public Color? Color { get; set; }
+  public double? Opacity { get; set; }
+  public double? Blur { get; set; }
+  public double? Distance { get; set; }
+  public double? Angle { get; set; }
   public bool? None { get; set; }
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
 }
@@ -269,6 +283,7 @@ public class StyleShape
 {
   public Color? Fill { get; init; }
   public Stroke? Stroke { get; init; }
+  public Shadow? Shadow { get; init; }
   public double? Opacity { get; init; }
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
 }
@@ -280,10 +295,11 @@ public class StyleSheet
   public TextProperties ShapeText { get; init; } = new TextProperties();
   public Color? ShapeFill { get; init; }
   public Stroke? ShapeStroke { get; init; }
+  public Shadow? ShapeShadow { get; init; }
   public string? PictureFit { get; init; }
   public Stroke? LineStroke { get; init; }
   public Dictionary<string, TextProperties> Styles { get; init; } = new Dictionary<string, TextProperties>();
-  /// <summary>Each named style's fill, stroke, and opacity, for the styles that set any.</summary>
+  /// <summary>Each named style's fill, stroke, shadow, and opacity, for the styles that set any.</summary>
   public Dictionary<string, StyleShape> StyleShapes { get; init; } = new Dictionary<string, StyleShape>();
   /// <summary>Each named style's own levels, for the styles that set any.</summary>
   public Dictionary<string, Dictionary<int, Level>> StyleLevels { get; init; } =

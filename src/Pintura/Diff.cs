@@ -482,7 +482,7 @@ public static partial class Differ
         continue;
       }
       string value = Hex(display);
-      if (last is "fill" or "stroke" or "legend" or "show" or "fit" && value == "none" ||
+      if (last is "fill" or "stroke" or "shadow" or "legend" or "show" or "fit" && value == "none" ||
         last == "gridlines" && value == "false")
       {
         continue;

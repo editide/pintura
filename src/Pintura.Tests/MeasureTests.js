@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { countLines, overflow, fitted } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
+const { countLines, overflow, fitted, shadowFilter } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
 
 test('runs side by side on one line count once', () => {
   // Arrange
@@ -145,4 +145,18 @@ test('a contained picture is outlined where it is drawn, and a covered or stretc
   assert.deepEqual(contained, [50, 0, 100, 100]);
   assert.deepEqual(covered, [0, 0, 200, 100]);
   assert.deepEqual(stretched, [0, 0, 200, 100]);
+});
+
+
+test('a shadow falls toward its angle on the slide, however its item is rotated', () => {
+  // Arrange
+  const shadow = { color: '#1B1B1B', opacity: 40, blur: 4, distance: 3, angle: 90 };
+
+  // Act
+  const upright = shadowFilter(shadow);
+  const rotated = shadowFilter(shadow, 90);
+
+  // Assert
+  assert.equal(upright, 'drop-shadow(0px 3px 4px rgba(27, 27, 27, 0.4))');
+  assert.equal(rotated, 'drop-shadow(3px 0px 4px rgba(27, 27, 27, 0.4))');
 });

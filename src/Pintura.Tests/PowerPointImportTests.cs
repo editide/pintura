@@ -269,6 +269,50 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_pictures_border_and_shadow_come_back_and_an_inner_shadow_or_a_glow_with_a_finding()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = Reads();
+    foreach (JsonNode? layout in reads["layouts"]!.AsArray().Where(layout => (string?)layout!["name"] != "Cover"))
+    {
+      foreach (JsonNode? picture in layout!["read"]!["picture_elements"]?.AsArray() ?? [])
+      {
+        picture!["shape_style"] = JsonNode.Parse("""
+          {
+            "border_color": { "scheme": "accent2" }, "border_weight": 2, "border_dash_type": "dot",
+            "effects": { "shadow": { "color": { "rgb": "#000000", "alpha": 50 }, "blur": 8, "distance": 5, "angle": 135 } }
+          }
+          """);
+      }
+    }
+    JsonObject shape = reads["slides"]![5]!["read"]!["shape_elements"]!.AsArray()
+      .Single(element => (int?)element!["id"] == 4)!.AsObject();
+    shape["shape_style"] = JsonNode.Parse("""
+      {
+        "effects": {
+          "shadow": { "color": { "scheme": "dk1" }, "inner": true }, "glow": { "color": { "scheme": "accent1" }, "radius": 4 }
+        }
+      }
+      """);
+
+    // Act
+    PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
+    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Element logo = PresentationLoader.Load(output.PathTo("imported")).Theme.Elements
+      .Single(element => element.Kind == "picture");
+
+    // Assert
+    logo.Stroke.ShouldNotBeNull();
+    (logo.Stroke.Color!.Theme, logo.Stroke.Width, logo.Stroke.Dash).ShouldBe(("accent2", 2.0, "dot"));
+    logo.Shadow.ShouldNotBeNull();
+    (logo.Shadow.Color!.Hex, logo.Shadow.Opacity, logo.Shadow.Blur, logo.Shadow.Distance, logo.Shadow.Angle)
+      .ShouldBe(("#000000", 50.0, 8.0, 5.0, 135.0));
+    mapped.Findings.ShouldContain(finding => finding.EndsWith("an inner shadow has no match in the format and is left out"));
+    mapped.Findings.ShouldContain(finding => finding.EndsWith("a glow has no match in the format and is left out"));
+  }
+
+  [Fact]
   public void A_placeholder_of_one_line_stays_a_placeholder_named_for_its_prompt()
   {
     // Arrange

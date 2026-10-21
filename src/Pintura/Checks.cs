@@ -687,6 +687,24 @@ public static class Checks
         }
       }
     }
+    if (element.Shadow is { } shadow)
+    {
+      if (shadow.None == true)
+      {
+        yield return "shadow: none";
+      }
+      foreach ((string key, object? value) in new (string, object?)[]
+      {
+        ("color", shadow.Color), ("opacity", shadow.Opacity), ("blur", shadow.Blur), ("distance", shadow.Distance),
+        ("angle", shadow.Angle)
+      })
+      {
+        if (value is not null)
+        {
+          yield return $"shadow.{key}: {Display(value)}";
+        }
+      }
+    }
     if (element.Opacity is double opacity)
     {
       yield return $"opacity: {Display(opacity)}";

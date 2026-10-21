@@ -531,6 +531,7 @@ public partial class PresentationLoader
 
     Color? shapeFill = null;
     Stroke? shapeStroke = null;
+    Shadow? shapeShadow = null;
     if (map.Take("shape") is Node shapeNode)
     {
       MapNode shapeMap = shapeNode.AsMap();
@@ -542,6 +543,10 @@ public partial class PresentationLoader
       if (shapeMap.Take("stroke") is Node stroke)
       {
         shapeStroke = ReadStroke(stroke);
+      }
+      if (shapeMap.Take("shadow") is Node shadow)
+      {
+        shapeShadow = ReadShadow(shadow);
       }
       shapeMap.Done();
     }
@@ -593,6 +598,7 @@ public partial class PresentationLoader
         {
           Fill = TakeShape("fill") is Node fill ? ReadColor(fill) : null,
           Stroke = TakeShape("stroke") is Node stroke ? ReadStroke(stroke) : null,
+          Shadow = TakeShape("shadow") is Node shadow ? ReadShadow(shadow) : null,
           Opacity = TakeShape("opacity") is Node opacity ? ReadOpacity(opacity) : null,
           Origins = shapeOrigins
         };
@@ -669,6 +675,7 @@ public partial class PresentationLoader
       ShapeText = shapeText,
       ShapeFill = shapeFill,
       ShapeStroke = shapeStroke,
+      ShapeShadow = shapeShadow,
       PictureFit = pictureFit,
       LineStroke = lineStroke,
       Styles = named,
@@ -895,6 +902,49 @@ public partial class PresentationLoader
     }
     map.Done();
     return stroke;
+  }
+
+  private Shadow ReadShadow(Node node)
+  {
+    var shadow = new Shadow();
+    if (node.IsNone)
+    {
+      shadow.None = true;
+      shadow.Origins["none"] = node.Origin;
+      return shadow;
+    }
+    MapNode map = node.AsMap();
+    if (map.Take("color") is Node color)
+    {
+      shadow.Color = ReadColor(color, false);
+      shadow.Origins["color"] = color.Origin;
+    }
+    if (map.Take("opacity") is Node opacity)
+    {
+      shadow.Opacity = ReadOpacity(opacity);
+      shadow.Origins["opacity"] = opacity.Origin;
+    }
+    double? Points(string key)
+    {
+      if (map.Take(key) is not Node points)
+      {
+        return null;
+      }
+      shadow.Origins[key] = points.Origin;
+      return points.AsNumber() is >= 0 and double value ? value : throw points.Error($"{points.Name} must be 0 or more");
+    }
+
+    shadow.Blur = Points("blur");
+    shadow.Distance = Points("distance");
+    if (map.Take("angle") is Node angle)
+    {
+      shadow.Angle = angle.AsNumber() is >= 0 and < 360 and double degrees
+        ? degrees
+        : throw angle.Error($"{angle.Name} must be 0 or more and under 360");
+      shadow.Origins["angle"] = angle.Origin;
+    }
+    map.Done();
+    return shadow;
   }
 
   private void ReadTextProperties(MapNode map, TextProperties target, string[] allowed)
@@ -1443,6 +1493,7 @@ public partial class PresentationLoader
     Stroke? stroke = kind is not ("chart" or "table") && Take("stroke") is Node strokeNode
       ? ReadStroke(strokeNode)
       : null;
+    Shadow? shadow = boxed && Take("shadow") is Node shadowNode ? ReadShadow(shadowNode) : null;
     var properties = new TextProperties();
     List<Paragraph>? text = null;
     if (texted)
@@ -1607,6 +1658,7 @@ public partial class PresentationLoader
       Style = style,
       Fill = fill,
       Stroke = stroke,
+      Shadow = shadow,
       Opacity = opacity,
       Decorative = decorative,
       Properties = properties,

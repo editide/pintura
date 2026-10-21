@@ -63,6 +63,7 @@ public record ItemPayload
   public double? Opacity { get; init; }
   public string? Fill { get; init; }
   public StrokePayload? Stroke { get; init; }
+  public ShadowPayload? Shadow { get; init; }
   public string? Shape { get; init; }
   public string? Direction { get; init; }
   public Dictionary<string, double>? Adjust { get; init; }
@@ -186,6 +187,10 @@ public record FormatPayload(double Scale, int Decimals, bool Separator, string P
   string? NegativeColor);
 
 public record StrokePayload(string Color, double Width, string Dash);
+
+/// <summary>A shadow's blur and distance in points, its angle in degrees clockwise from the right, and its
+/// opacity from 0 to 100.</summary>
+public record ShadowPayload(string Color, double Opacity, double Blur, double Distance, double Angle);
 
 public record TextPayload
 {
@@ -401,6 +406,7 @@ public static class PayloadBuilder
       Opacity = Number("opacity"),
       Fill = fill,
       Stroke = Stroke(properties, theme),
+      Shadow = Shadow(properties, theme),
       Shape = Get<string>("shape"),
       Direction = item.Kind == "shape" ? Get<string>("direction") : null,
       Adjust = adjust.Count == 0 ? null : adjust,
@@ -623,6 +629,22 @@ public static class PayloadBuilder
     }
     string dash = properties.TryGetValue($"{key}.dash", out Resolved? value) ? (string)value.Value : "solid";
     return new StrokePayload(Hex(color.Value, theme)!, Convert.ToDouble(width.Value), dash);
+  }
+
+  /// <summary>A shadow with a color, any number it leaves out 0 and its opacity full.</summary>
+  private static ShadowPayload? Shadow(Dictionary<string, Resolved> properties, Theme theme)
+  {
+    if (!properties.TryGetValue("shadow.color", out Resolved? color))
+    {
+      return null;
+    }
+    double Number(string key, double absent)
+    {
+      return properties.TryGetValue($"shadow.{key}", out Resolved? value) ? Convert.ToDouble(value.Value) : absent;
+    }
+
+    return new ShadowPayload(Hex(color.Value, theme)!, Number("opacity", 100), Number("blur", 0), Number("distance", 0),
+      Number("angle", 0));
   }
 
   private static TextPayload Text(SceneItem item, Theme theme)

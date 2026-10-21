@@ -201,6 +201,22 @@ function transform(item, node) {
   }
 }
 
+function shade(item, node) {
+  if (item.shadow) {
+    node.style.filter = shadowFilter(item.shadow, item.rotate);
+  }
+}
+
+// A drop shadow follows what the item draws, as PowerPoint's does: a shape's outline, an image's opaque pixels. The
+// filter turns with a rotated item, where PowerPoint's shadow keeps its direction on the slide, so it turns back.
+function shadowFilter({ color, opacity, blur, distance, angle }, rotate = 0) {
+  const radians = (angle - rotate) * Math.PI / 180;
+  const round = (value) => Math.round(value * 100) / 100;
+  const [red, green, blue] = [1, 3, 5].map((start) => parseInt(color.slice(start, start + 2), 16));
+  return `drop-shadow(${round(distance * Math.cos(radians))}px ${round(distance * Math.sin(radians))}px ${blur}px ` +
+    `rgba(${red}, ${green}, ${blue}, ${opacity / 100}))`;
+}
+
 function flipped(item, svg, width, height) {
   if (item.flip === 'horizontal') {
     svg.setAttribute('transform', `matrix(-1 0 0 1 ${width} 0)`);
@@ -213,6 +229,7 @@ function renderShape(item, parent) {
   const node = element('div', 'item shape', parent);
   place(node, item.frame);
   transform(item, node);
+  shade(item, node);
   const [x, y, width] = item.frame;
   const opacity = item.opacity === undefined ? null : item.opacity / 100;
   const tail = item.tail ? [item.tail[0] - x, item.tail[1] - y] : null;
@@ -243,6 +260,7 @@ function renderTextItem(item, parent) {
   const node = element('div', 'item text', parent);
   place(node, item.frame);
   transform(item, node);
+  shade(item, node);
   if (item.fill || item.stroke) {
     const svg = svgElement('svg', { width: '100%', height: '100%' }, node);
     const opacity = item.opacity === undefined ? null : item.opacity / 100;
@@ -325,6 +343,7 @@ function renderPicture(item, parent) {
   const node = element('div', 'item picture-item', parent);
   place(node, item.frame);
   transform(item, node);
+  shade(item, node);
   if (item.opacity !== undefined) {
     node.style.opacity = item.opacity / 100;
   }
@@ -667,5 +686,5 @@ function measureCharts(stage) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { countLines, overflow, fitted };
+  module.exports = { countLines, overflow, fitted, shadowFilter };
 }
