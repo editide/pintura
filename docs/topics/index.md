@@ -10,7 +10,7 @@ Run `pintura --docs <topic>` for one topic: its keys, a complete example, and th
 - `layouts`: variations on the theme: the title, placeholders, areas, elements, and background.
 - `slides`: picking a layout, writing the title and placeholders, and placing elements.
 - `text`: the markup for paragraphs, bullets, numbering, bold, italic, links, spans, and fields.
-- `shapes`: the sixteen shapes, lines and arrowheads, pictures, fill and stroke.
+- `shapes`: the sixteen shapes, lines and arrowheads, pictures, fill, stroke, and shadow.
 - `charts`: chart files, CSV data, chart types, and chart styles.
 - `tables`: table files, CSV data, table styles, columns, rows, cells, merges, and formats.
 - `books`: including Libreta books, and references to them in text, charts, and tables.

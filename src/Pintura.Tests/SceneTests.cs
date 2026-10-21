@@ -270,6 +270,41 @@ public class SceneTests
   }
 
   [Fact]
+  public void A_shadow_merges_key_by_key_from_the_shape_base_through_the_style_to_the_element()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("theme/styles.yaml", DeckFixture.Styles
+      .Replace("shape: {", "shape: { shadow: { color: dark1, opacity: 40, blur: 4, distance: 3, angle: 90 },")
+      .Replace("styles:\n", "styles:\n  lifted: { shadow: { distance: 8 } }\n"));
+    deck.Write("deck/media/photo.png", "not read");
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      elements:
+        - { id: card, shape: rectangle, frame: content, style: lifted, shadow: { color: accent1 } }
+        - { id: flat, shape: rectangle, frame: left, shadow: none }
+        - { id: note, text: Note, frame: left, style: lifted }
+        - { id: photo, picture: ../media/photo.png, frame: [0, 0, 24, 24], shadow: { color: dark1, blur: 2 } }
+      """);
+
+    // Act
+    SceneItem card = deck.Item("two", "card");
+    SceneItem flat = deck.Item("two", "flat");
+    SceneItem note = deck.Item("two", "note");
+    SceneItem photo = deck.Item("two", "photo");
+
+    // Assert
+    card.Properties["shadow.color"].Value.ShouldBe(new Color { Theme = "accent1" });
+    card.Properties["shadow.distance"].Origin!.Path.ShouldBe("styles.lifted.shadow.distance");
+    card.Properties["shadow.blur"].Origin!.Path.ShouldBe("shape.shadow.blur");
+    flat.Properties["shadow"].Value.ShouldBe("none");
+    flat.Properties.Keys.ShouldNotContain(key => key.StartsWith("shadow."));
+    note.Properties["shadow.distance"].Value.ShouldBe(8.0);
+    note.Properties.ContainsKey("shadow.color").ShouldBeFalse();
+    photo.Properties["shadow.blur"].Value.ShouldBe(2.0);
+  }
+
+  [Fact]
   public void A_lines_endpoints_name_their_lines()
   {
     // Arrange

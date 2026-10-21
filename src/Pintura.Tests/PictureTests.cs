@@ -211,6 +211,29 @@ public class PictureTests
   }
 
   [Fact]
+  public void A_shadow_reaches_the_page_with_its_numbers_left_out_as_0_and_its_opacity_full()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/media/photo.png", "not read");
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      elements:
+        - { id: lifted, picture: ../media/photo.png, frame: [0, 0, 24, 24], shadow: { color: accent1, distance: 4 } }
+        - { id: colorless, picture: ../media/photo.png, frame: [40, 0, 24, 24], shadow: { blur: 4 } }
+      """);
+
+    // Act
+    List<ShadowPayload?> shadows = PayloadBuilder.Build(deck.Load(), 1, (path, fill) => path).Slides[1].Items!
+      .Where(item => item.Kind == "picture")
+      .Select(item => item.Shadow)
+      .ToList();
+
+    // Assert
+    shadows.ShouldBe([new ShadowPayload("#4472C4", 100, 0, 4, 0), null]);
+  }
+
+  [Fact]
   public void A_fill_on_a_picture_that_isnt_an_svg_is_refused()
   {
     // Arrange

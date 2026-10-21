@@ -9,7 +9,7 @@ Slides name what a thing is (`style: caption`, `[+12%]{.positive}`), and this fi
 | --- | --- |
 | `text` | The base every text box starts from: text properties, `insets`, and bullet `levels`. |
 | `shape_text` | Text properties layered over `text` for text inside a shape, usually `align` and `valign`. |
-| `shape` | The base every shape starts from, usually `fill` and `stroke`. |
+| `shape` | The base every shape starts from, usually `fill` and `stroke`, and any `shadow`. |
 | `picture` | The base every picture starts from, usually `fit`. |
 | `line` | The base every line starts from, usually `stroke`. |
 | `chart` | The base every chart starts from (see `charts`). |
@@ -34,12 +34,12 @@ Level 1 is `- item`; each two spaces of indentation in the markup is one level d
 A named style can change bullets too, with its own `levels` taking only the bullet keys, for levels the theme's `text` has.
 A box or paragraph in that style takes them over the theme's level, key by key, and a paragraph's style wins over its box's: a pros-and-cons grid is two styles, not two themes.
 
-A named style can also set `insets` and the box itself: `fill`, `stroke`, and `opacity`, as a slide writes them (see `shapes`).
-A text box or shape in that style takes them over the theme's `shape` base, and its own keys win over the style's, key by key for `stroke`.
-A picture in that style takes its `stroke` and `opacity`, and an SVG its `fill` too, so every icon or screenshot is one style.
+A named style can also set `insets` and the box itself: `fill`, `stroke`, `shadow`, and `opacity`, as a slide writes them (see `shapes`).
+A text box or shape in that style takes them over the theme's `shape` base, and its own keys win over the style's, key by key for `stroke` and `shadow`.
+A picture in that style takes its `stroke`, `shadow`, and `opacity`, and an SVG its `fill` too, so every icon or screenshot is one style.
 The same band on several slides, such as a dark strip behind a photo credit, is one style rather than the same keys on each slide.
 
-A style used on a box applies all its properties; on a paragraph, all but `valign`, `insets`, `fill`, `stroke`, and `opacity`; on a run (`[text]{.name}`), only `font`, `size`, `color`, `bold`, `italic`, and `underline`.
+A style used on a box applies all its properties; on a paragraph, all but `valign`, `insets`, `fill`, `stroke`, `shadow`, and `opacity`; on a run (`[text]{.name}`), only `font`, `size`, `color`, `bold`, `italic`, and `underline`.
 
 ## Formats
 

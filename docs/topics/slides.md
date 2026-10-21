@@ -31,7 +31,8 @@ The key naming the kind carries its content or its reference.
 Every element has an `id`, unique within its slide, which `--check` and `--element` use to name it.
 Every element but a line has a `frame`: `[x, y, w, h]` in points from the top-left corner, or an area's name.
 
-Shared keys: `id`, `frame`, `rotate` (degrees clockwise), `flip` (`horizontal`, `vertical`), `style`, `fill`, `stroke`, `opacity`, `decorative`.
+Shared keys: `id`, `frame`, `rotate` (degrees clockwise), `flip` (`horizontal`, `vertical`), `style`, `fill`, `stroke`, `shadow`, `opacity`, `decorative`.
+Lines, charts, and tables take no `shadow` (see `shapes`).
 `decorative: true` marks decoration rather than content, such as a watermark or a band bleeding off the slide, and the geometry checks leave it out; charts and tables can't be decorative.
 Shape keys: `direction`, `adjust`, and `tail` (see `shapes`).
 Line keys: `start` and `end` (see `shapes`).
