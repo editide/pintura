@@ -730,7 +730,7 @@ public static partial class Patcher
 
   private static string Text(string text, ValueEdit edit, MarkupContext context)
   {
-    (YamlNode? node, _, _) = Locate(Parse(text), edit.Path);
+    (YamlNode? node, YamlNode? parent, _) = Locate(Parse(text), edit.Path);
     if (node is null)
     {
       throw Conflict(edit);
@@ -768,6 +768,9 @@ public static partial class Patcher
       case ScalarStyle.Folded:
       case not ScalarStyle.Literal when !OneLine(scalar):
         throw new PatchException($"{edit.Path} is written across lines; write it as a block (|) to edit it here");
+      // Markup of more than one line reads best as a block, as an agent writes it.
+      case not ScalarStyle.Literal when !plain && updated.Contains('\n'):
+        return First(edit, Written, Block(text, scalar, parent, updated), Splice(text, scalar, DoubleQuoted(updated)));
       case ScalarStyle.SingleQuoted:
         return First(edit, Written, Splice(text, scalar, $"'{updated.Replace("'", "''")}'"),
           Splice(text, scalar, DoubleQuoted(updated)));
@@ -788,7 +791,7 @@ public static partial class Patcher
     List<Paragraph> parsed = Parse(body, plain, context);
     if (parsed.Count != paragraphs.Count)
     {
-      throw new PatchException("editing on the slide rewords paragraphs; add or join them in the file");
+      return Regroup(body, parsed, paragraphs, context) + (trailing ? "\n" : "");
     }
     for (int index = 0; index < parsed.Count; index++)
     {
@@ -838,6 +841,83 @@ public static partial class Patcher
     bool same = reread.Count == parsed.Count && reread.Select((paragraph, index) =>
       Plain(paragraph) == paragraphs[index] && paragraph.Level == parsed[index].Level &&
       paragraph.Style == parsed[index].Style).All(match => match);
+    return same ? updated : throw new PatchException("that text would read as markup; write it in the file");
+  }
+
+  /// <summary>The value with paragraphs split or joined: the paragraphs read as one text with a newline between
+  /// each, and each changed stretch replaced in the value, so that a newline typed into a paragraph starts another at
+  /// its level and in its style.</summary>
+  private static string Regroup(string body, List<Paragraph> parsed, List<string> paragraphs, MarkupContext context)
+  {
+    string[] lines = body.Split('\n');
+    var starts = new int[lines.Length];
+    for (int index = 1; index < lines.Length; index++)
+    {
+      starts[index] = starts[index - 1] + lines[index - 1].Length + 1;
+    }
+    int End(Paragraph paragraph) => starts[paragraph.Line] + lines[paragraph.Line].Length;
+    int Content(Paragraph paragraph) => starts[paragraph.Line] + paragraph.Start;
+
+    // A paragraph break spans from the end of one paragraph's line to the start of the next one's text, taking in
+    // its style line and list marker.
+    var old = new List<(char Character, int Start, int End, string? Field)>();
+    for (int index = 0; index < parsed.Count; index++)
+    {
+      Paragraph paragraph = parsed[index];
+      if (index > 0)
+      {
+        old.Add(('\n', End(parsed[index - 1]), Content(paragraph), null));
+      }
+      int line = starts[paragraph.Line];
+      old.AddRange(Characters(paragraph).Select(character =>
+        (character.Character, line + character.Start, line + character.End, character.Field)));
+    }
+    string before = new string(old.Select(character => character.Character).ToArray());
+    var text = new StringBuilder(body);
+    foreach ((int start, int end, string typed) in Hunks(before, string.Join('\n', paragraphs)).AsEnumerable()
+      .Reverse())
+    {
+      List<(char Character, int Start, int End, string? Field)> removed = old[start..end];
+      if (removed.FirstOrDefault(character => character.Field is not null).Field is string field)
+      {
+        throw new PatchException($"${{{field}}} is a field and stays as written; change it in the file");
+      }
+      if (typed.Contains(FieldMark))
+      {
+        throw new PatchException("a field can't be typed on the slide; write it in the file");
+      }
+      int from;
+      int to;
+      if (removed.Count > 0)
+      {
+        from = removed[0].Start;
+        to = removed[^1].End;
+        if (removed.Sum(character => character.End - character.Start) != to - from)
+        {
+          throw new PatchException("that edit crosses formatting, such as bold or a span; make it in the file");
+        }
+      }
+      else if (start > 0 && typed.StartsWith('\n') && (start == old.Count || old[start].Character == '\n'))
+      {
+        // A break typed at a paragraph's end goes after whatever closes its last run.
+        from = to = old[start - 1].Character == '\n'
+          ? old[start - 1].End
+          : End(parsed.Last(paragraph => Content(paragraph) <= old[start - 1].Start));
+      }
+      else
+      {
+        from = to = start > 0 ? old[start - 1].End : old.Count > 0 ? old[0].Start : 0;
+      }
+      Paragraph home = parsed.LastOrDefault(paragraph => Content(paragraph) <= from) ?? parsed[0];
+      string opening = (home.Style is null ? "" : $"{{.{home.Style}}}\n") + lines[home.Line][..home.Start];
+      text.Remove(from, to - from);
+      text.Insert(from, Escape(typed, false).Replace("\n", "\n" + opening));
+    }
+    string updated = text.ToString();
+
+    List<Paragraph> reread = Parse(updated, false, context);
+    bool same = reread.Count == paragraphs.Count &&
+      reread.Select((paragraph, index) => Plain(paragraph) == paragraphs[index]).All(match => match);
     return same ? updated : throw new PatchException("that text would read as markup; write it in the file");
   }
 
@@ -1136,6 +1216,16 @@ public static partial class Patcher
     string sampleLine = text[lines[first + sample].Start..lines[first + sample].End];
     int indent = Leading(sampleLine) - Leading(before[sample]);
     var patched = new StringBuilder(text);
+    if (before.Length != after.Length)
+    {
+      // A kept final newline splits off an empty last entry, which is the line after the block.
+      int kept = value.EndsWith('\n') ? 1 : 0;
+      int start = lines[first].Start;
+      int end = lines[first + before.Length - 1 - kept].End;
+      patched.Remove(start, end - start);
+      patched.Insert(start, Indented(after[..^kept], indent));
+      return patched.ToString();
+    }
     for (int index = before.Length - 1; index >= 0; index--)
     {
       if (before[index] == after[index])
@@ -1147,6 +1237,26 @@ public static partial class Patcher
       patched.Insert(start, after[index].Length == 0 ? "" : new string(' ', indent) + after[index]);
     }
     return patched.ToString();
+  }
+
+  private static string Indented(IEnumerable<string> lines, int indent)
+  {
+    return string.Join('\n', lines.Select(line => line.Length == 0 ? "" : new string(' ', indent) + line));
+  }
+
+  /// <summary>A value written as a literal block in place of <paramref name="scalar"/>, indented under its key.
+  /// </summary>
+  private static string Block(string text, YamlScalarNode scalar, YamlNode? parent, string updated)
+  {
+    YamlNode? key = (parent as YamlMappingNode)?.Children.FirstOrDefault(pair => pair.Value == scalar).Key;
+    if (key is null)
+    {
+      return text;
+    }
+    bool kept = updated.EndsWith('\n');
+    string[] lines = (kept ? updated[..^1] : updated).Split('\n');
+    int indent = (int)key.Start.Column - 1 + 2;
+    return Splice(text, scalar, $"{(kept ? "|" : "|-")}\n{Indented(lines, indent)}");
   }
 
   private static List<(int Start, int End)> LineSpans(string text)

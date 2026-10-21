@@ -280,6 +280,82 @@ public class PatcherTests
   }
 
   [Fact]
+  public void A_line_break_in_the_title_is_written_as_an_escaped_newline_on_its_line()
+  {
+    // Arrange
+    var broken = new ValueEdit("title", "Connectivity revenue nearly tripled",
+      Paragraphs: ["Connectivity revenue\nnearly tripled"]);
+
+    // Act
+    string patched = Apply(Slide, broken);
+    string undone = Undo(Slide, broken);
+
+    // Assert
+    Changed(Slide, patched).ShouldBe(["title: \"Connectivity revenue\\nnearly tripled\""]);
+    undone.ShouldBe(Slide);
+  }
+
+  [Fact]
+  public void Splitting_a_bullet_writes_a_bullet_at_its_level_after_it()
+  {
+    // Arrange
+    string source = Patcher.SourceAt(Slide, "elements.takeaway.text")!;
+    var split = new ValueEdit("elements.takeaway.text", source,
+      Paragraphs: ["Revenue of $11.4B in \uFFFC", "Up 33%", "on 2024"]);
+
+    // Act
+    string patched = Apply(Slide, split);
+    string undone = Undo(Slide, split);
+
+    // Assert
+    patched.ShouldEndWith("      - Up **33%**\n      - on 2024");
+    undone.ShouldBe(Slide);
+  }
+
+  [Fact]
+  public void Splitting_a_styled_paragraph_styles_both_halves()
+  {
+    // Arrange
+    string source = Patcher.SourceAt(Slide, "elements.takeaway.text")!;
+
+    // Act
+    string patched = Apply(Slide, new ValueEdit("elements.takeaway.text", source,
+      Paragraphs: ["Revenue of ", "$11.4B in \uFFFC", "Up 33% on 2024"]));
+
+    // Assert
+    patched.ShouldEndWith(
+      "      {.lead}\n      Revenue of \n      {.lead}\n      [$11.4B]{.positive} in ${date}\n      - Up **33%** on 2024");
+  }
+
+  [Fact]
+  public void Joining_two_paragraphs_writes_them_on_one_line()
+  {
+    // Arrange
+    string source = Patcher.SourceAt(Slide, "elements.takeaway.text")!;
+
+    // Act
+    string patched = Apply(Slide, new ValueEdit("elements.takeaway.text", source,
+      Paragraphs: ["Revenue of $11.4B in \uFFFC, up 33% on 2024"]));
+
+    // Assert
+    patched.ShouldEndWith("      {.lead}\n      Revenue of [$11.4B]{.positive} in ${date}, up **33%** on 2024");
+  }
+
+  [Fact]
+  public void Splitting_text_written_on_one_line_writes_it_as_a_block()
+  {
+    // Arrange
+    const string note = "elements:\n  - id: note\n    text: Plain words\n    frame: [0, 0, 100, 50]\n";
+
+    // Act
+    string patched = Apply(note, new ValueEdit("elements.note.text", "Plain words", Paragraphs: ["Plain", "words"]));
+
+    // Assert
+    patched.ShouldBe(
+      "elements:\n  - id: note\n    text: |-\n      Plain\n      words\n    frame: [0, 0, 100, 50]\n");
+  }
+
+  [Fact]
   public void A_plain_title_that_needs_quotes_after_an_edit_gets_them()
   {
     // Act

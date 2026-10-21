@@ -363,15 +363,16 @@ public partial class PowerPointMapping
     return result;
   }
 
-  private List<Paragraph> ExpandElement(JsonObject element, Layers layers, string where)
+  private List<Paragraph> ExpandElement(JsonObject element, Layers layers, string where, bool lines = false)
   {
-    return Expand(element["text_component"], layers, where, package.Breaks(where, (int?)element["id"]));
+    return Expand(element["text_component"], layers, where, package.Breaks(where, (int?)element["id"]), lines);
   }
 
-  /// <summary>The paragraphs of <paramref name="component"/>, with a space for each line break in
-  /// <paramref name="breaks"/>, which the read tools leave out.</summary>
+  /// <summary>The paragraphs of <paramref name="component"/>, with each line break in <paramref name="breaks"/>,
+  /// which the read tools leave out, kept where <paramref name="lines"/> says the text takes them, as the title and
+  /// placeholders do, and otherwise a space.</summary>
   private List<Paragraph> Expand(JsonNode? component, Layers layers, string where,
-    List<(int Runs, HashSet<int> Broken)>? breaks = null)
+    List<(int Runs, HashSet<int> Broken)>? breaks = null, bool lines = false)
   {
     var paragraphs = new List<Paragraph>();
     foreach ((JsonObject paragraph, int number) in component?["paragraph_list"]?.AsArray()
@@ -410,10 +411,12 @@ public partial class PowerPointMapping
             character["underline"] = true;
           }
         }
-        // The format has no line break inside a paragraph, so a break, or a character PowerPoint draws as one, is a
-        // space.
-        string words = LineBreaks().Replace((string?)run["text"] ?? "", " ");
-        if (broken.Contains(index) && index > 0)
+        string words = LineBreaks().Replace((string?)run["text"] ?? "", lines ? "\n" : " ");
+        if (broken.Contains(index) && index > 0 && lines)
+        {
+          words = "\n" + words;
+        }
+        else if (broken.Contains(index) && index > 0)
         {
           findings.Add($"{where}: a line break inside a paragraph is kept as a space");
           if (!words.StartsWith(' ') && runs.Count > 0 && !runs[^1].Text.EndsWith(' '))
@@ -1512,18 +1515,19 @@ public partial class PowerPointMapping
     {
       return (false, null);
     }
-    List<Paragraph> paragraphs = ExpandElement(element, ElementLayers(layers, element), where);
+    List<Paragraph> paragraphs = ExpandElement(element, ElementLayers(layers, element), where, lines: true);
     if (paragraphs.Count == 0)
     {
       return (true, null);
     }
     if (paragraphs.Count > 1)
     {
-      findings.Add($"{where}: a {(title ? "title" : "placeholder")} of {paragraphs.Count} paragraphs is joined into one");
+      findings.Add($"{where}: a {(title ? "title" : "placeholder")} of {paragraphs.Count} paragraphs is joined into " +
+        "one, a line each");
     }
     List<Run> runs = paragraphs.SelectMany((paragraph, position) => position == 0
       ? paragraph.Runs
-      : paragraph.Runs.Prepend(new Run(" ", null, null, paragraph.Runs.FirstOrDefault()?.Properties ??
+      : paragraph.Runs.Prepend(new Run("\n", null, null, paragraph.Runs.FirstOrDefault()?.Properties ??
         new JsonObject()))).ToList();
     var joined = paragraphs[0] with { Runs = runs };
     var properties = new JsonObject { ["frame"] = Frame(element) };
