@@ -386,10 +386,33 @@ function renderLayoutPanel(panel) {
     chips: [['Layout', 'layout']],
     title: layout.name || words(layout.id),
     meta: [`Used by ${countLabel(layout.slides.length, 'slide')} · `,
-      copyTag({ file: layout.file }, 'Copy path', 'link', null)]
+      copyTag({ file: layout.file }, 'Copy path', 'link', null), ' · ', overlaysToggle()]
   });
   fact('Drag or nudge the title, placeholders, areas, and elements. Each edit writes the file that sets the value: ' +
     'this layout for its own, theme.yaml for what it inherits from the theme.', section(panel, null), 'hint');
+  const items = layout.stage.items.map((item, index) => ({ item, index }));
+  const list = (title, entries) => {
+    if (entries.length === 0) {
+      return;
+    }
+    const node = section(panel, title, 'elements');
+    for (const { index } of entries) {
+      elementRow(layout.stage, index, new Set(), node);
+    }
+  };
+  list('Placeholders', items.filter(({ item }) => item.role));
+  list('Elements', items.filter(({ item }) => !item.role && item.kind !== 'area'));
+  list('Areas', items.filter(({ item }) => item.kind === 'area'));
+}
+
+function overlaysToggle() {
+  const button = element('button', 'link');
+  button.type = 'button';
+  button.textContent = state.guides ? 'Hide overlays' : 'Show overlays';
+  button.title = 'Show areas and placeholders (O)';
+  button.setAttribute('aria-pressed', String(state.guides));
+  button.addEventListener('click', () => toggle('guides'));
+  return button;
 }
 
 function renderAreaPanel(item, panel) {
@@ -1364,13 +1387,7 @@ function renderSlidePanel(slide, panel) {
   }
   // Overlays draw on the one slide, not the grid's.
   if (state.view === 'slide') {
-    const overlays = element('button', 'link');
-    overlays.type = 'button';
-    overlays.textContent = state.guides ? 'Hide overlays' : 'Show overlays';
-    overlays.title = 'Show areas and placeholders (O)';
-    overlays.setAttribute('aria-pressed', String(state.guides));
-    overlays.addEventListener('click', () => toggle('guides'));
-    meta.push(overlays);
+    meta.push(overlaysToggle());
   }
   if (meta.at(-1) === ' · ') {
     meta.pop();
