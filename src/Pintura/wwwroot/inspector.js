@@ -345,10 +345,17 @@ function renderInspector() {
     inspector.open.clear();
   }
   panel.replaceChildren();
+  const item = selection && currentSlide()?.items?.[selection.index];
   if (state.view === 'theme') {
     renderThemePanel(panel);
   } else if (!selection) {
-    renderSlidePanel(currentSlide(), panel);
+    if (state.layout) {
+      renderLayoutPanel(panel);
+    } else {
+      renderSlidePanel(currentSlide(), panel);
+    }
+  } else if (item?.kind === 'area') {
+    renderAreaPanel(item, panel);
   } else if (!state.detail) {
     element('p', 'hint', panel).textContent = 'Loading…';
   } else {
@@ -357,8 +364,34 @@ function renderInspector() {
   panel.scrollTop = scroll;
 }
 
+// A layout on the slide view: what moving its parts writes, and how many slides follow.
+function renderLayoutPanel(panel) {
+  const layout = state.themeView.layouts.find((candidate) => candidate.id === state.layout);
+  renderHeader(panel, {
+    chips: [['Layout', 'layout']],
+    title: layout.name || words(layout.id),
+    meta: [`Used by ${countLabel(layout.slides.length, 'slide')} · `,
+      copyTag({ file: layout.file }, 'Copy path', 'link', null)]
+  });
+  fact('Drag or nudge the title, placeholders, areas, and elements. Each edit writes the file that sets the value: ' +
+    'this layout for its own, theme.yaml for what it inherits from the theme.', section(panel, null), 'hint');
+}
+
+function renderAreaPanel(item, panel) {
+  const origin = originOf(item.edit.file);
+  renderHeader(panel, {
+    chips: [[origin.label, origin.level]],
+    title: `${words(item.id)} area`,
+    meta: [copyTag(origin, origin.file.split('/').pop(), 'file-link', null)]
+  });
+  fact(`[${item.frame.join(', ')}]`, section(panel, 'Frame'));
+}
+
 // The checks need the slide measured headless, so they arrive after the rest, once per slide and version.
 async function loadFindings() {
+  if (state.layout) {
+    return;
+  }
   const slide = currentSlide();
   const key = slide && `${state.deck.version}:${slide.id}`;
   if (!slide || state.findings?.key === key) {
@@ -496,11 +529,14 @@ function propertyOf(detail, key) {
 
 function renderElementPanel(detail, selection, panel) {
   renderElementHeader(detail, panel);
+  const item = currentSlide()?.items?.[selection.index];
+  if (!reviewing()) {
+    renderPaint(item, panel);
+  }
   const where = `${detail.slide}/${detail.id}`;
   renderIssues(state.findings?.list?.filter((finding) => finding.where === where), panel);
   renderItemChanges(selection, panel);
   const node = selectedNode();
-  const item = currentSlide()?.items?.[selection.index];
   const box = node ? measureBox(node) : null;
   renderGlance(detail, { item, node, box, selection }, panel);
   renderNumbers(detail.paragraphs || [], panel);

@@ -66,7 +66,10 @@ public record StylePayload
 public record StyleSamplePayload(string Text, string Slide);
 
 /// <summary>A layout drawn on its own, its title and placeholders holding their names.</summary>
-public record LayoutPayload(string Id, string Name, string File, SlidePayload Slide, List<string> Slides);
+/// <summary>A layout drawn with specimen words: <paramref name="Slide"/> as a slide on it looks, and
+/// <paramref name="Stage"/> with the theme's and layout's files for the mouse to write.</summary>
+public record LayoutPayload(string Id, string Name, string File, SlidePayload Slide, SlidePayload Stage,
+  List<string> Slides);
 
 public record TableStylePayload(string Name, OriginPayload? Origin, List<TableRowSamplePayload> Rows, string? Banded,
   UsesPayload Uses);
@@ -188,9 +191,18 @@ public static class ThemeView
 
   private static LayoutPayload Layout(Presentation presentation, Layout layout, PictureUrl pictureUrl)
   {
-    Theme theme = presentation.Theme;
+    Slide specimen = Specimen(presentation.Theme, layout);
+    return new LayoutPayload(layout.Id, layout.Name, $"{presentation.Theme.Display}/layouts/{layout.Id}.yaml",
+      PayloadBuilder.Slide(presentation, specimen, pictureUrl),
+      PayloadBuilder.Slide(presentation, specimen, pictureUrl, layout),
+      presentation.Slides.Where(slide => slide.Layout == layout.Id).Select(slide => slide.Id).ToList());
+  }
+
+  /// <summary>A slide on the layout naming each of its placeholders in its words.</summary>
+  public static Slide Specimen(Theme theme, Layout layout)
+  {
     IEnumerable<string> placeholders = theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct();
-    var specimen = new Slide
+    return new Slide
     {
       Id = layout.Id,
       Layout = layout.Id,
@@ -198,9 +210,6 @@ public static class ThemeView
       Title = layout.TitleRemoved ? null : Words("Title"),
       Placeholders = placeholders.ToDictionary(name => name, Words)
     };
-    return new LayoutPayload(layout.Id, layout.Name, $"{theme.Display}/layouts/{layout.Id}.yaml",
-      PayloadBuilder.Slide(presentation, specimen, pictureUrl),
-      presentation.Slides.Where(slide => slide.Layout == layout.Id).Select(slide => slide.Id).ToList());
   }
 
   private static Placeholder Words(string name)

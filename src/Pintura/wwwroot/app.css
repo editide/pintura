@@ -1273,6 +1273,18 @@ body.moving * {
   white-space: nowrap;
 }
 
+/* An area draws over the layout's text and elements, so only its label takes the pointer. */
+.area-item {
+  border: calc(1px / var(--scale, 1)) dashed var(--area);
+  background: color-mix(in oklab, var(--area) 6%, transparent);
+  pointer-events: none;
+}
+
+.area-item .guide-label {
+  pointer-events: auto;
+  cursor: move;
+}
+
 .guide.placeholder .guide-label {
   right: 0;
   left: auto;
@@ -2885,6 +2897,12 @@ button.issue:hover {
   cursor: pointer;
 }
 
+/* Inline-block keeps the link's underline off the arrow. */
+.link-arrow {
+  display: inline-block;
+  margin-right: 4px;
+}
+
 .revert {
   margin-top: 10px;
   padding: 4px 10px;
@@ -3473,4 +3491,148 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Fill and outline, picked from the theme. */
+.paint-row {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 2px;
+}
+
+.paint-button {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.paint-button:hover {
+  border-color: var(--strong-rule);
+  background: var(--hover);
+}
+
+.paint-button .swatch {
+  flex: none;
+  margin: 0;
+}
+
+.swatch.empty {
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--bad) 50%, transparent calc(50% + 1px));
+}
+
+.paint-label {
+  color: var(--muted);
+}
+
+.paint-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paint-popover {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  font-size: 12px;
+}
+
+.paint-none {
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.paint-none:hover,
+.paint-weight:hover {
+  background: var(--hover);
+}
+
+.paint-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 18px);
+  gap: 3px;
+}
+
+/* The base colors sit apart from their shades, as PowerPoint's palette does. */
+.paint-grid > :nth-child(-n + 10) {
+  margin-bottom: 5px;
+}
+
+.paint-named {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.paint-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid color-mix(in oklab, var(--shadow-tint) 18%, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.paint-swatch:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.paint-swatch.current,
+.paint-none.current,
+.paint-weight.current {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.paint-heading {
+  color: var(--muted);
+}
+
+.paint-weights {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+
+.paint-weight {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  padding: 5px 4px 3px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.paint-weight-line {
+  width: 100%;
+  border-top: 1px solid var(--ink);
 }

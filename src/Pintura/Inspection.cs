@@ -236,6 +236,18 @@ public static class HeadlessRunner
     return index >= 0 && index < items.Count ? Detail(presentation.Theme, slide, items[index]) : null;
   }
 
+  /// <summary>An item on a layout's specimen, as the layout's stage draws it.</summary>
+  public static ElementDetail? LayoutDetail(Presentation presentation, string layoutId, int index)
+  {
+    if (!presentation.Theme.Layouts.TryGetValue(layoutId, out Layout? layout))
+    {
+      return null;
+    }
+    Slide specimen = ThemeView.Specimen(presentation.Theme, layout);
+    List<SceneItem> items = SceneBuilder.Build(presentation, specimen).Items;
+    return index >= 0 && index < items.Count ? Detail(presentation.Theme, specimen, items[index]) : null;
+  }
+
   /// <summary>The box's properties in full, then for each paragraph and run only what differs from the level above,
   /// so every property drawn is accounted for once.</summary>
   public static ElementDetail Detail(Theme theme, Slide slide, SceneItem item)

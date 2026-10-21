@@ -22,11 +22,12 @@ public class PatchException : Exception
 
 /// <summary>One value a mouse edit writes: its key path in the slide's file, its source as the page drew it or null
 /// where the key was absent, and either numbers to a hundredth of a point, for a frame or a point, each paragraph's
-/// text with <see cref="Patcher.FieldMark"/> where a field sits, or the source to restore, as an undo writes back. A
+/// text with <see cref="Patcher.FieldMark"/> where a field sits, a scalar <paramref name="Value"/> such as a color or
+/// a width, or the source to restore, as an undo writes back. A
 /// delete removes the element at the path; a restore without a source puts one back after the element named by
 /// <paramref name="After"/>, or first. A format applies to the paragraphs once reworded.</summary>
 public record ValueEdit(string Path, string? Source, double[]? Numbers = null, List<string>? Paragraphs = null,
-  string? Restore = null, bool Delete = false, string? After = null, TextFormat? Format = null);
+  string? Restore = null, bool Delete = false, string? After = null, TextFormat? Format = null, string? Value = null);
 
 /// <summary>Bold, italic, or underline turned on or off over stretches of paragraphs, in characters of the text the
 /// page reads back, with <see cref="Patcher.FieldMark"/> for a field.</summary>
@@ -140,13 +141,15 @@ public static partial class Patcher
         undo.Insert(0, new ValueEdit(edit.Path, SourceAt(text, edit.Path), Delete: true));
         continue;
       }
-      string anchor = Locate(Parse(text), edit.Path).Node is null ? Parent(edit.Path) : edit.Path;
+      string anchor = Existing(Parse(text), edit.Path);
       string? before = SourceAt(text, anchor);
       text = edit.Numbers is not null ? Numbers(text, edit) : edit.Paragraphs is not null
         ? Text(text, edit, context)
-        : edit.Restore is not null
-          ? Restore(text, edit)
-          : throw new PatchException($"the edit to {edit.Path} carries no value");
+        : edit.Value is not null
+          ? Scalar(text, edit)
+          : edit.Restore is not null
+            ? Restore(text, edit)
+            : throw new PatchException($"the edit to {edit.Path} carries no value");
       string? after = SourceAt(text, anchor);
       if (before is not null && after is not null && before != after)
       {
@@ -277,6 +280,105 @@ public static partial class Patcher
   private static string Indent(YamlNode node)
   {
     return new string(' ', (int)node.Start.Column - 1);
+  }
+
+  #endregion
+
+  #region Scalars
+
+  // The keys a new one goes after, in the order the docs write an element's keys.
+  private static readonly string[] KeyOrder = ["id", "shape", "line", "direction", "adjust", "frame", "fill", "stroke"];
+
+  /// <summary>Writes one value, such as a color or a width. A key the file lacks is added with any maps it needs,
+  /// replacing a <c>none</c> that stood for the map.</summary>
+  private static string Scalar(string text, ValueEdit edit)
+  {
+    YamlNode root = Parse(text);
+    string value = edit.Value!;
+
+    bool Written(string candidate)
+    {
+      return Locate(Parse(candidate), edit.Path).Node is YamlScalarNode { Value: string written } && written == value;
+    }
+
+    if (Locate(root, edit.Path).Node is YamlNode node)
+    {
+      Expect(text, node, edit);
+      if (!OneLine(node))
+      {
+        throw new PatchException($"{edit.Path} is written across lines; change it in the file");
+      }
+      return First(edit, Written, Splice(text, node, value), Splice(text, node, DoubleQuoted(value)));
+    }
+    if (edit.Source is not null)
+    {
+      throw Conflict(edit);
+    }
+    string holder = Existing(root, edit.Path);
+    YamlNode parent = Locate(root, holder).Node!;
+    string[] missing = edit.Path[(holder.Length + 1)..].Split('.');
+
+    string Entry(string written)
+    {
+      string nested = written;
+      for (int index = missing.Length - 1; index > 0; index--)
+      {
+        nested = $"{{ {missing[index]}: {nested} }}";
+      }
+      return $"{missing[0]}: {nested}";
+    }
+
+    string[] Candidates(Func<string, string> place)
+    {
+      return [place(Entry(value)), place(Entry(DoubleQuoted(value)))];
+    }
+
+    switch (parent)
+    {
+      case YamlScalarNode { Value: "none" } none when OneLine(none):
+        return First(edit, Written, Candidates(entry => Splice(text, none, $"{{ {entry} }}")));
+      case YamlMappingNode { Style: MappingStyle.Flow } map:
+        (int mapStart, int mapEnd) = Node.Extent(text, map);
+        int at = mapEnd - 1;
+        while (at > 0 && text[at - 1] == ' ')
+        {
+          at--;
+        }
+        return First(edit, Written, Candidates(entry => map.Children.Count == 0
+          ? Splice(text, mapStart, mapEnd, $"{{ {entry} }}")
+          : Splice(text, at, at, $", {entry}")));
+      case YamlMappingNode map:
+        (YamlNode key, int end) = KeyBefore(text, map, missing[0]);
+        return First(edit, Written, Candidates(entry => Splice(text, end, end, $"\n{Indent(key)}{entry}")));
+      default:
+        throw new PatchException($"{holder} isn't a map; give it a {missing[0]} in the file");
+    }
+  }
+
+  /// <summary>The key of the one-line entry a new <paramref name="key"/> goes after, and where that entry's line
+  /// ends: the last entry the docs write before it, or else the first.</summary>
+  private static (YamlNode Key, int End) KeyBefore(string text, YamlMappingNode map, string key)
+  {
+    int rank = Array.IndexOf(KeyOrder, key);
+    KeyValuePair<YamlNode, YamlNode>[] entries = map.Children
+      .Where(pair => OneLine(pair.Value) && pair.Key.Start.Line == pair.Value.Start.Line).ToArray();
+    KeyValuePair<YamlNode, YamlNode> after = entries.LastOrDefault(pair =>
+      pair.Key is YamlScalarNode { Value: string name } && Array.IndexOf(KeyOrder, name) is int at && at >= 0 &&
+      (rank < 0 || at < rank));
+    if (after.Key is null)
+    {
+      after = entries.FirstOrDefault();
+    }
+    if (after.Key is null)
+    {
+      throw new PatchException($"there's no line to write {key} after; add it in the file");
+    }
+    int end = Node.Extent(text, after.Value).End;
+    while (end < text.Length && text[end] is not ('\n' or '\r'))
+    {
+      end++;
+    }
+    return (after.Key, end);
   }
 
   #endregion
@@ -1153,6 +1255,16 @@ public static partial class Patcher
   private static string Parent(string path)
   {
     return path[..path.LastIndexOf('.')];
+  }
+
+  /// <summary>The path itself if the file has it, or its nearest ancestor the file has.</summary>
+  private static string Existing(YamlNode root, string path)
+  {
+    while (Locate(root, path).Node is null && path.Contains('.'))
+    {
+      path = Parent(path);
+    }
+    return path;
   }
 
   private static void Expect(string text, YamlNode node, ValueEdit edit)

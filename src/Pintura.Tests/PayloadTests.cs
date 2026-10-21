@@ -130,6 +130,66 @@ public class PayloadTests
   }
 
   [Fact]
+  public void A_layout_s_stage_writes_each_frame_where_it_is_set_and_draws_its_areas_as_items()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    ThemeViewPayload theme = ThemeView.Build(deck.Load(), (path, _) => path);
+
+    // Act
+    List<string> cover = theme.Layouts.Single(layout => layout.Id == "cover").Stage.Items!
+      .Select(item => $"{item.Kind} {item.Id} {item.Edit.File} {item.Edit.Frame?.Path} {item.Edit.Frame?.Source}")
+      .ToList();
+    List<string> content = theme.Layouts.Single(layout => layout.Id == "content").Stage.Items!
+      .Select(item => $"{item.Kind} {item.Id} {item.Edit.File} {item.Edit.Frame?.Path} {item.Edit.Frame?.Source}")
+      .ToList();
+
+    // Assert
+    cover.ShouldBe([
+      "text title theme/layouts/cover.yaml title.frame [60, 190, 840, 90]",
+      "text subtitle theme/layouts/cover.yaml placeholders.subtitle.frame [60, 290, 840, 40]",
+      "area content theme/theme.yaml areas.content [40, 100, 880, 380]",
+      "area left theme/layouts/cover.yaml areas.left [60, 340, 400, 100]"
+    ]);
+    content.ShouldBe([
+      "text page theme/theme.yaml elements.page.frame [860, 510, 60, 16]",
+      "text title theme/theme.yaml title.frame [40, 24, 880, 56]",
+      "area content theme/theme.yaml areas.content [40, 100, 880, 380]",
+      "area left theme/theme.yaml areas.left [40, 100, 430, 380]"
+    ]);
+  }
+
+  [Fact]
+  public void A_shape_carries_where_its_fill_and_outline_are_written_whether_or_not_it_sets_them()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      elements:
+        - id: box
+          shape: rectangle
+          frame: [10, 10, 100, 40]
+          stroke: { width: 2 }
+        - id: arrow
+          line: { from: [10, 20], to: [30, 40] }
+      """);
+
+    // Act
+    List<ItemPayload> items = Slide(deck, "two").Items!;
+
+    // Assert
+    EditPayload box = items.Single(item => item.Id == "box").Edit;
+    box.Fill.ShouldBe(new SourcePayload("elements.box.fill", null));
+    box.Stroke.ShouldBe(new SourcePayload("elements.box.stroke", "{ width: 2 }"));
+    box.StrokeColor.ShouldBe(new SourcePayload("elements.box.stroke.color", null));
+    box.StrokeWidth.ShouldBe(new SourcePayload("elements.box.stroke.width", "2"));
+    EditPayload arrow = items.Single(item => item.Id == "arrow").Edit;
+    arrow.Fill.ShouldBeNull();
+    arrow.Stroke.ShouldBe(new SourcePayload("elements.arrow.stroke", null));
+  }
+
+  [Fact]
   public void A_title_the_layout_places_writes_its_frame_into_the_slide()
   {
     // Arrange

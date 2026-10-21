@@ -61,8 +61,8 @@ Ids stay stable across edits.
 
 ## 10. The mouse nudges; it doesn't design
 
-Dragging, resizing, and rewording write the same one-line diff an agent would.
-Anything that can't be a small text edit belongs to the agent: no ribbon, no format panes.
+Dragging, resizing, rewording, and picking a theme color or an outline weight write the same one-line diff an agent would.
+The mouse picks from what the theme already names and moves what has a frame; anything else belongs to the agent: no ribbon, no format panes.
 
 ## 11. The engine knows no design
 

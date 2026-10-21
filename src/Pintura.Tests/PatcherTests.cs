@@ -1033,4 +1033,124 @@ public class PatcherTests
 
   #endregion
 
+  #region Fill and outline
+
+  private const string Shapes = """
+    elements:
+      - id: step
+        shape: chevron
+        frame: [40, 200, 180, 60]
+        fill: accent1
+        stroke: none
+        text: Launch
+      - id: note
+        shape: rectangle
+        frame: [320, 120, 200, 56]
+        stroke: { color: accent3, width: 1.5 }
+        text: |
+          Twelve launches
+          in the quarter
+      - id: link
+        line: { from: [230, 230], to: [300, 230] }
+    """;
+
+  [Fact]
+  public void A_new_fill_replaces_the_old_on_its_line()
+  {
+    // Act
+    string patched = Apply(Shapes, new ValueEdit("elements.step.fill", "accent1", Value: "accent2 lighter 40"));
+
+    // Assert
+    Changed(Shapes, patched).ShouldBe(["    fill: accent2 lighter 40"]);
+  }
+
+  [Fact]
+  public void A_hex_fill_is_quoted_so_it_isnt_read_as_a_comment()
+  {
+    // Act
+    string patched = Apply(Shapes, new ValueEdit("elements.step.fill", "accent1", Value: "#C0392B"));
+
+    // Assert
+    Changed(Shapes, patched).ShouldBe(["    fill: \"#C0392B\""]);
+  }
+
+  [Fact]
+  public void A_fill_the_element_lacks_goes_on_the_line_after_its_frame()
+  {
+    // Act
+    string patched = Apply(Shapes, new ValueEdit("elements.note.fill", null, Value: "light2"));
+
+    // Assert
+    patched.ShouldBe(Shapes.Replace("[320, 120, 200, 56]\n", "[320, 120, 200, 56]\n    fill: light2\n"));
+  }
+
+  [Fact]
+  public void A_width_goes_into_the_stroke_map_beside_its_color()
+  {
+    // Act
+    string patched = Apply(Shapes, new ValueEdit("elements.note.stroke.width", "1.5", Value: "3"));
+
+    // Assert
+    Changed(Shapes, patched).ShouldBe(["    stroke: { color: accent3, width: 3 }"]);
+  }
+
+  [Fact]
+  public void An_outline_on_a_shape_with_none_replaces_the_none()
+  {
+    // Act
+    string patched = Apply(Shapes,
+      new ValueEdit("elements.step.stroke.color", null, Value: "dark1"),
+      new ValueEdit("elements.step.stroke.width", null, Value: "1"));
+
+    // Assert
+    Changed(Shapes, patched).ShouldBe(["    stroke: { color: dark1, width: 1 }"]);
+  }
+
+  [Fact]
+  public void An_outline_on_an_element_without_a_stroke_adds_one()
+  {
+    // Act
+    string patched = Apply(Shapes, new ValueEdit("elements.link.stroke.width", null, Value: "2.25"));
+
+    // Assert
+    patched.ShouldBe(Shapes + "\n    stroke: { width: 2.25 }");
+  }
+
+  [Fact]
+  public void No_outline_replaces_the_whole_stroke()
+  {
+    // Act
+    string patched = Apply(Shapes, new ValueEdit("elements.note.stroke", "{ color: accent3, width: 1.5 }",
+      Value: "none"));
+
+    // Assert
+    Changed(Shapes, patched).ShouldBe(["    stroke: none"]);
+  }
+
+  [Fact]
+  public void Undoing_an_added_outline_takes_it_out_again()
+  {
+    // Act
+    string undone = Undo(Shapes,
+      new ValueEdit("elements.step.stroke.color", null, Value: "dark1"),
+      new ValueEdit("elements.step.stroke.width", null, Value: "1"),
+      new ValueEdit("elements.note.fill", null, Value: "light2"));
+
+    // Assert
+    undone.ShouldBe(Shapes);
+  }
+
+  [Fact]
+  public void A_fill_an_agent_changed_since_is_a_conflict()
+  {
+    // Act
+    PatchException exception = Should.Throw<PatchException>(() =>
+      Apply(Shapes, new ValueEdit("elements.step.fill", "accent4", Value: "accent2")));
+
+    // Assert
+    exception.Conflict.ShouldBeTrue();
+  }
+
+  #endregion
+
 }

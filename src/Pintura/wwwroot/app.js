@@ -25,6 +25,8 @@ const state = {
   // What the theme view draws, fetched beside the deck.
   themeView: null,
   current: null,
+  // The layout whose specimen the slide view shows for its frames, areas, and elements to be moved.
+  layout: null,
   view: ['grid', 'theme'].includes(saved.view) ? saved.view : 'slide',
   guides: Boolean(saved.guides),
   inspector: saved.inspector ?? false,
@@ -73,6 +75,10 @@ function thumbnailWidth(size) {
 }
 
 function currentSlide() {
+  const layout = state.layout && state.themeView?.layouts.find((candidate) => candidate.id === state.layout);
+  if (layout) {
+    return layout.stage;
+  }
   const slides = state.deck.slides;
   return slides.find((slide) => slide.id === state.current) || removedSlide(state.current) || slides[0];
 }
@@ -135,9 +141,9 @@ function renderSidebar() {
 
 function renderToolbar() {
   const pressed = {
-    slide: state.view === 'slide',
+    slide: state.view === 'slide' && !state.layout,
     grid: state.view === 'grid',
-    theme: state.view === 'theme',
+    theme: state.view === 'theme' || Boolean(state.layout),
     guides: state.guides,
     inspector: state.inspector,
     before: state.before,
@@ -207,7 +213,7 @@ function renderSlide() {
   const frame = document.getElementById('slide-frame');
   frame.classList.toggle('reviewing', reviewing(slide));
   const stage = shown ? mountStage(frame, shown, deck.size, available) : mountAbsent(frame, deck.size, available);
-  if (state.guides && shown && !shown.error) {
+  if (state.guides && shown && !shown.error && !state.layout) {
     renderGuides(shown, stage);
   }
   if (state.changes && comparing()) {
@@ -219,6 +225,10 @@ function renderSlide() {
     node.classList.toggle('rewordable', Boolean(edit?.text));
   }
   markSelection();
+  if (state.layout) {
+    layoutCaption();
+    return;
+  }
   if (shown && !shown.error && !reviewing(slide)) {
     renderComments(shown, frame, deck.size);
   }
@@ -227,6 +237,19 @@ function renderSlide() {
   const caption = [`Slide ${drawn.number} of ${deck.slides.length}`, reviewing(slide) && revision,
     state.zoom !== 1 && `${Math.round(state.zoom * 100)}%`];
   document.getElementById('slide-caption').textContent = caption.filter(Boolean).join(' · ');
+}
+
+// The layout's stage names the layout, how many slides it moves, and the way back to the theme.
+function layoutCaption() {
+  const layout = state.themeView.layouts.find((candidate) => candidate.id === state.layout);
+  const caption = document.getElementById('slide-caption');
+  const name = layout.name || words(layout.id);
+  caption.replaceChildren(`${name} layout · used by ${countLabel(layout.slides.length, 'slide')} · `);
+  const back = element('button', 'link', caption);
+  back.type = 'button';
+  element('span', 'link-arrow', back).textContent = '←';
+  back.append('Back to the theme');
+  back.addEventListener('click', leaveLayout);
 }
 
 function renderGuides(slide, stage) {
@@ -299,6 +322,11 @@ function renderCurrent() {
 
 function select(id) {
   flushNudge();
+  if (state.layout) {
+    state.layout = null;
+    state.selected = null;
+    state.detail = null;
+  }
   if (id !== state.current) {
     state.selected = null;
     state.detail = null;
@@ -325,6 +353,10 @@ function pickSlide(id) {
 
 // Filtering to the changed slides narrows stepping through them too, but presenting always shows every slide.
 function step(offset) {
+  if (state.layout) {
+    stepLayout(offset);
+    return;
+  }
   const slides = state.deck.slides;
   if (filteringChanges() && !state.presenting) {
     const changed = new Set(state.compare.diff.slides.map((slide) => slide.id));
@@ -440,6 +472,12 @@ function zoomKey(event) {
 // #endregion
 
 function setView(view) {
+  flushNudge();
+  if (state.layout) {
+    state.layout = null;
+    state.selected = null;
+    state.detail = null;
+  }
   state.view = view;
   save();
   unflipUnchanged();
@@ -454,6 +492,31 @@ function showLayout(id, push = true) {
     history.pushState({ ...history.state, layout: id }, '');
   }
   layoutReturn = state.view;
+  setView('theme');
+  const card = document.querySelector(`#theme-view .layout-card[data-layout="${CSS.escape(id)}"]`);
+  card?.scrollIntoView({ block: 'center' });
+}
+
+// A layout's specimen on the slide view, where dragging its title, placeholders, areas, and elements writes the
+// theme's and layout's files.
+function editLayout(id) {
+  setView('slide');
+  state.layout = id;
+  renderMain();
+}
+
+// The wheel and arrow keys turn through the theme's layouts as they would through slides.
+function stepLayout(offset) {
+  const layouts = state.themeView.layouts;
+  const index = layouts.findIndex((layout) => layout.id === state.layout);
+  const next = layouts[Math.min(Math.max(index + offset, 0), layouts.length - 1)];
+  if (next.id !== state.layout) {
+    editLayout(next.id);
+  }
+}
+
+function leaveLayout() {
+  const id = state.layout;
   setView('theme');
   const card = document.querySelector(`#theme-view .layout-card[data-layout="${CSS.escape(id)}"]`);
   card?.scrollIntoView({ block: 'center' });
@@ -568,7 +631,7 @@ async function loadDetail() {
   if (!selection) {
     return;
   }
-  const query = `slide=${encodeURIComponent(selection.slide)}&index=${selection.index}`;
+  const query = `${state.layout ? 'layout' : 'slide'}=${encodeURIComponent(selection.slide)}&index=${selection.index}`;
   const response = await fetch(`api/element?${query}`, { cache: 'no-store' });
   const detail = response.ok ? await response.json() : null;
   if (state.selected === selection) {
@@ -872,8 +935,8 @@ document.addEventListener('keydown', (event) => {
   }
   const offsets = { ArrowRight: 1, ArrowDown: 1, PageDown: 1, ' ': 1, ArrowLeft: -1, ArrowUp: -1, PageUp: -1 };
   const commands = {
-    Home: () => select(state.deck.slides[0].id),
-    End: () => select(state.deck.slides[state.deck.slides.length - 1].id),
+    Home: () => (state.layout ? stepLayout(-Infinity) : select(state.deck.slides[0].id)),
+    End: () => (state.layout ? stepLayout(Infinity) : select(state.deck.slides[state.deck.slides.length - 1].id)),
     Enter: () => state.view === 'grid' && setView('slide'),
     Escape: () => (state.presenting ? stopPresenting() : selectItem(null)),
     s: () => setView('slide'),

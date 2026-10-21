@@ -333,6 +333,72 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task Moving_a_layout_s_area_writes_the_layout_file()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    await using Served served = await Served.Start(deck);
+    string file = served.Store.Theme!.Layouts.Single(layout => layout.Id == "cover").File;
+    var edit = new
+    {
+      file,
+      edits = new[]
+      {
+        new { path = "areas.left", source = "[60, 340, 400, 100]", numbers = new[] { 80.0, 340, 400, 120 } }
+      }
+    };
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+
+    // Assert
+    response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("theme/layouts/cover.yaml")).ShouldContain("left: [80, 340, 400, 120]");
+  }
+
+  [Fact]
+  public async Task A_fill_picked_for_a_slide_element_is_written_on_it()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Folder.Write("deck/slides/one.yaml", """
+      layout: cover
+      elements:
+        - id: box
+          shape: rectangle
+          frame: [400, 400, 100, 40]
+      """);
+    await using Served served = await Served.Start(deck);
+    var edit = new { slide = "one", edits = new[] { new { path = "elements.box.fill", source = (string?)null,
+      value = "accent2 lighter 40" } } };
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+
+    // Assert
+    response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml")).ShouldContain("    fill: accent2 lighter 40");
+  }
+
+  [Fact]
+  public async Task An_edit_to_a_file_outside_the_theme_s_layouts_is_refused()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    await using Served served = await Served.Start(deck);
+    string file = served.Store.Theme!.Layouts.Single(layout => layout.Id == "cover").File
+      .Replace("layouts/cover", "styles");
+    var edit = new { file, edits = new[] { new { path = "shape.fill", source = "light2", value = "accent1" } } };
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+
+    // Assert
+    response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    File.ReadAllText(deck.Folder.PathTo("theme/styles.yaml")).ShouldContain("shape: { fill: light2");
+  }
+
+  [Fact]
   public async Task An_edit_to_a_key_the_mouse_never_writes_is_refused()
   {
     // Arrange
