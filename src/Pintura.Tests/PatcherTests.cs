@@ -328,6 +328,39 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Splitting_inside_a_span_closes_it_before_the_break_and_opens_it_again_after()
+  {
+    // Arrange
+    string source = Patcher.SourceAt(Slide, "elements.takeaway.text")!;
+    var split = new ValueEdit("elements.takeaway.text", source,
+      Paragraphs: ["Revenue of $11.", "4B in ￼", "Up 33% on 2024"]);
+
+    // Act
+    string patched = Apply(Slide, split);
+    string undone = Undo(Slide, split);
+
+    // Assert
+    patched.ShouldEndWith(
+      "      {.lead}\n      Revenue of [$11.]{.positive}\n      {.lead}\n      [4B]{.positive} in ${date}\n" +
+      "      - Up **33%** on 2024");
+    undone.ShouldBe(Slide);
+  }
+
+  [Fact]
+  public void Splitting_inside_bold_closes_it_before_the_break_and_opens_it_again_after()
+  {
+    // Arrange
+    string source = Patcher.SourceAt(Slide, "elements.takeaway.text")!;
+
+    // Act
+    string patched = Apply(Slide, new ValueEdit("elements.takeaway.text", source,
+      Paragraphs: ["Revenue of $11.4B in ￼", "Up 3", "3% on 2024"]));
+
+    // Assert
+    patched.ShouldEndWith("      - Up **3**\n      - **3%** on 2024");
+  }
+
+  [Fact]
   public void Joining_two_paragraphs_writes_them_on_one_line()
   {
     // Arrange
