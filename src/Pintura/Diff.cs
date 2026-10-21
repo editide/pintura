@@ -615,9 +615,9 @@ public static partial class Differ
 /// <summary><c>--diff</c>: what changed since a revision, or between two, as a listing or JSON.</summary>
 public static partial class DiffCommand
 {
-  /// <summary>What the export can't carry yet: the tools write no sections or alt text and normalize a callout's
-  /// tail, so a deck shows these changed though no one changed them.</summary>
-  public static readonly string[] ExportGaps = ["section", "tail", "alt", "decorative"];
+  /// <summary>What the export can't carry yet: the tools write no alt text and normalize a callout's tail, so a deck
+  /// shows these changed though no one changed them.</summary>
+  public static readonly string[] ExportGaps = ["tail", "alt", "decorative"];
 
   public static bool IsDeck(string revision)
   {

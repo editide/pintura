@@ -83,8 +83,6 @@ public class PowerPointImportTests
           item.Changes.Any(change => !exportGaps.Contains(change.Key))))
       .Select(slide => slide.Id)
       .ShouldBeEmpty(listing.ToString());
-    // Fails once sections export, as a reminder to drop "section" from the gaps above.
-    diff.Slides.SelectMany(slide => slide.Changes).Select(change => change.Key).ShouldContain("section");
   }
 
   [Fact]
@@ -101,6 +99,21 @@ public class PowerPointImportTests
     var listing = new StringWriter();
     DiffCommand.Write(diff, "example against its deck", listing);
     diff.Slides.ShouldBeEmpty(listing.ToString());
+  }
+
+  [Fact]
+  public void A_leading_default_section_reads_as_the_slides_before_the_first_section()
+  {
+    // Arrange
+    using var output = new TempFolder();
+
+    // Act
+    PowerPointDeck mapped = PowerPointMapping.Map(Reads(), Fixture("example.pptx"), output.PathTo("media"));
+
+    // Assert
+    mapped.Deck["slides"]!.AsArray().Select(slide => (string?)slide!["section"]).ShouldBe([null,
+      "Financial performance", "Financial performance", "Financial performance", "Financial performance",
+      "Capital allocation"]);
   }
 
   [Fact]

@@ -725,15 +725,6 @@ public static class Checks
   public static List<Finding> Export(Presentation presentation)
   {
     var findings = new List<Finding>();
-    void Whole(string message)
-    {
-      findings.Add(new Finding("warning", "export", "presentation", message));
-    }
-    if (presentation.Sections.Any(section => section.Name is not null))
-    {
-      Whole("sections: the export has none, so the slides come out in one run");
-    }
-
     var candidates = new List<Candidate>();
     foreach (Slide slide in presentation.Slides.Where(slide => slide.Error is null))
     {

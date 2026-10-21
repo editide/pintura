@@ -2835,14 +2835,16 @@ public partial class PowerPointMapping
       return file;
     }
 
-    /// <summary>Each slide's section, by slide number, from PowerPoint's section list.</summary>
+    /// <summary>Each slide's section, by slide number, from PowerPoint's section list, leaving out the slides of a
+    /// first section PowerPoint named by default, as those come before a presentation's first.</summary>
     public Dictionary<int, string> Sections()
     {
       XDocument? presentation = Xml("ppt/presentation.xml");
       List<string> ids = (presentation?.Root?.Element(P + "sldIdLst")?.Elements(P + "sldId") ?? [])
         .Select(slide => (string)slide.Attribute("id")!).ToList();
       var sections = new Dictionary<int, string>();
-      foreach (XElement section in presentation?.Descendants(P14 + "section") ?? [])
+      foreach (XElement section in (presentation?.Descendants(P14 + "section") ?? [])
+        .Where((section, order) => order > 0 || (string?)section.Attribute("name") != Exporter.DefaultSection))
       {
         foreach (XElement slide in section.Descendants(P14 + "sldId"))
         {

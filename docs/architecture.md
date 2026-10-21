@@ -343,13 +343,13 @@ Export runs on an editide API account, metered by slides delivered.
 | Picture | `p:pic` |
 | Chart | `p:graphicFrame`, chart part, embedded workbook |
 | Table | `p:graphicFrame` with `a:tbl` |
-| Section | `p14:sectionLst`, not written |
+| Section | `p14:sectionLst`, the slides before the first in PowerPoint's "Default Section" |
 | Element id | shape name, `p:cNvPr/@name`, not written |
 
 ### Pipeline
 
 The exporter replays the model as calls to editide's tools, `POST /api/tools/{tool}`, with no language model involved.
-It starts from a copy of the blank 16:9 deck Pintura carries, resized to the presentation, then makes `edit_theme`, `edit_slide` on the master and on each layout (created with `create_layout`), and `add_slide` and `edit_slide` for each slide.
+It starts from a copy of the blank 16:9 deck Pintura carries, resized to the presentation, then makes `edit_theme`, `edit_slide` on the master and on each layout (created with `create_layout`), and `add_slide` and `edit_slide` for each slide, and ends with one `edit_sections`.
 That is about five calls a slide and twenty for the theme and layouts, and it isn't atomic.
 A re-export starts from the last one and rewrites only the slides whose model changed, through a manifest beside the deck.
 
@@ -358,7 +358,7 @@ A re-export starts from the last one and rewrites only the slides whose model ch
 What the export can't write, which it reports rather than approximates:
 
 - Picture crop.
-- Sections.
+- Sections, on editide before 1.0.7, which has no `edit_sections`.
 - Callout tails, which come out normalized.
 - Font embedding, needed before a brand font survives on a machine without it.
 

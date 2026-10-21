@@ -71,6 +71,10 @@ public partial class Exporter
     ("underline", "is_underlined", node => node.DeepClone(), true)
   ];
 
+  /// <summary>What PowerPoint names the slides before the first section, and so what a presentation's are named.
+  /// </summary>
+  public const string DefaultSection = "Default Section";
+
   private readonly ITools tools;
   private readonly Func<string, string?, (string Name, string Source)> media;
   private SortedSet<string> gaps = new SortedSet<string>(StringComparer.Ordinal);
@@ -2309,6 +2313,7 @@ public partial class Exporter
 
     Call("delete_slides", new JsonObject { ["slide_indices"] = new JsonArray(1) });
     Call("delete_layout", new JsonObject { ["layout_name"] = kept, ["theme_name"] = themeName });
+    Sections(deck, false);
   }
 
   /// <summary>Brings a deck an earlier export wrote, with the same design, up to <paramref name="deck"/>: slides
@@ -2371,6 +2376,43 @@ public partial class Exporter
         ["slide_indices"] = Array(Enumerable.Range(slides.Count + 1, current.Count - slides.Count)
           .Select(index => (JsonNode?)index))
       });
+    }
+    Sections(deck, true);
+  }
+
+  /// <summary>Gives the deck the presentation's sections, naming the slides before the first one as PowerPoint
+  /// does, or with <paramref name="clear"/>, removes any an earlier export wrote from a presentation that has none.
+  /// </summary>
+  private void Sections(JsonObject deck, bool clear)
+  {
+    List<string?> names = Items(deck["slides"]).OfType<JsonNode>()
+      .Where(slide => Text(Get(slide, "error")) is null)
+      .Select(slide => Text(Get(slide, "section")))
+      .ToList();
+    bool named = names.Any(name => name is not null);
+    if (!named && !clear)
+    {
+      return;
+    }
+    var sections = new JsonArray();
+    for (int index = 0; named && index < names.Count; index++)
+    {
+      if (index == 0 || names[index] != names[index - 1])
+      {
+        sections.Add(new JsonObject { ["name"] = names[index] ?? DefaultSection, ["first_slide"] = index + 1 });
+      }
+    }
+    try
+    {
+      Call("edit_sections", new JsonObject { ["sections"] = sections });
+    }
+    catch (InvalidOperationException error) when (error.Message.Contains("Unknown tool"))
+    {
+      Workaround("sections: editide before 1.0.7 has no edit_sections");
+      if (named)
+      {
+        gaps.Add("sections aren't exported, as this editide has no edit_sections");
+      }
     }
   }
 

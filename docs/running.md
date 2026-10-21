@@ -216,7 +216,7 @@ Alone it prints a line a slide, counting the elements reworded, moved, restyled,
 A paragraph added or removed whole is one line with its words.
 The export keeps no ids, so slides pair by number and elements by kind, then frame, then text, and each is named by the presentation's id; an element added in PowerPoint lists what it draws.
 Values compare as drawn, so a number a reference renders matches the same number typed in the deck, a text element matches the rectangle PowerPoint keeps it as, and a frame within a point of where it was hasn't moved.
-What the export can't carry, such as sections and alt text, is left out, and an element the deck's reading couldn't import is listed as not compared.
+What the export can't carry, such as alt text, is left out, and an element the deck's reading couldn't import is listed as not compared.
 A slide inserted or deleted in PowerPoint shifts the pairing of every slide after it.
 
 ```bash
