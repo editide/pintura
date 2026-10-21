@@ -155,7 +155,6 @@ public class CheckTests
       "warning consistency moved-title/title",
       "warning consistency small-body/body",
       "warning consistency off-slide/note",
-      "warning export presentation",
       "warning export off-slide/pointer"
     ]);
     Finding broken = findings[0];

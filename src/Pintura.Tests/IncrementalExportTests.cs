@@ -509,5 +509,115 @@ public class IncrementalExportTests
     after.ShouldNotBe(before);
   }
 
+  /// <summary>The fixture's presentation with <paramref name="slides"/> as its list.</summary>
+  private static void Slides(DeckFixture fixture, params string[] slides)
+  {
+    fixture.Write("deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nfields:\n  footer: Confidential\n" +
+      "slides:\n" + string.Concat(slides.Select(slide => $"  - {slide}\n")));
+  }
+
+  private static JsonNode? Sections(BlandTools tools)
+  {
+    return tools.Inputs.LastOrDefault(call => call.Tool == "edit_sections").Input?["sections"];
+  }
+
+  [Fact]
+  public void Sections_export_after_the_slides_with_the_run_before_the_first_as_powerpoints_default()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    var tools = new BlandTools();
+
+    // Act
+    Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
+
+    // Assert
+    tools.Calls.Last(call => call != "attach").ShouldBe("edit_sections");
+    Sections(tools)!.ToJsonString().ShouldBe(
+      """[{"name":"Default Section","first_slide":1},{"name":"Results","first_slide":2}]""");
+  }
+
+  [Fact]
+  public void A_first_export_of_a_presentation_without_sections_writes_none()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    Slides(fixture, "one", "two");
+    var tools = new BlandTools();
+
+    // Act
+    Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
+
+    // Assert
+    tools.Calls.ShouldNotContain("edit_sections");
+  }
+
+  [Fact]
+  public void A_renamed_section_is_written_again_on_a_second_export()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    string output = fixture.Folder.PathTo("out/deck.pptx");
+    Exporter.Write(fixture.Load(), output, new BlandTools());
+    Slides(fixture, "one", "section: Outlook", "two");
+    var tools = new BlandTools();
+
+    // Act
+    Exporter.Write(fixture.Load(), output, tools);
+
+    // Assert
+    Sections(tools)!.ToJsonString().ShouldBe(
+      """[{"name":"Default Section","first_slide":1},{"name":"Outlook","first_slide":2}]""");
+  }
+
+  [Fact]
+  public void An_update_that_drops_the_sections_clears_them_from_the_deck()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    string output = fixture.Folder.PathTo("out/deck.pptx");
+    Exporter.Write(fixture.Load(), output, new BlandTools());
+    Slides(fixture, "one", "two");
+    var tools = new BlandTools();
+
+    // Act
+    Exporter.Write(fixture.Load(), output, tools);
+
+    // Assert
+    Sections(tools)!.ToJsonString().ShouldBe("[]");
+  }
+
+  [Fact]
+  public void Tools_without_edit_sections_leave_the_deck_whole_and_report_the_sections_as_a_gap()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    var tools = new BlandTools { Missing = "edit_sections" };
+
+    // Act
+    ExportReport report = Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
+
+    // Assert
+    report.Gaps.ShouldContain(gap => gap.StartsWith("sections aren't exported"));
+    File.Exists(fixture.Folder.PathTo("out/deck.pptx")).ShouldBeTrue();
+  }
+
+  [Fact]
+  public void Tools_without_edit_sections_raise_no_gap_for_a_presentation_without_sections()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    string output = fixture.Folder.PathTo("out/deck.pptx");
+    Exporter.Write(fixture.Load(), output, new BlandTools());
+    Slides(fixture, "one", "two");
+    var tools = new BlandTools { Missing = "edit_sections" };
+
+    // Act
+    ExportReport report = Exporter.Write(fixture.Load(), output, tools);
+
+    // Assert
+    report.Gaps.ShouldNotContain(gap => gap.StartsWith("sections"));
+  }
+
 
 }

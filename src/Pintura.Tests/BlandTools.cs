@@ -14,6 +14,9 @@ public sealed class BlandTools : IToolHost
   /// <summary>Runs before each save writes, such as to fail it.</summary>
   public Action<string>? Saving { get; init; }
 
+  /// <summary>A tool these tools fail, as an older editide does one it lacks.</summary>
+  public string? Missing { get; init; }
+
   public string Version => "bland";
 
   public int? MostPictures => 25;
@@ -38,6 +41,10 @@ public sealed class BlandTools : IToolHost
     {
       tools.Calls.Add(tool);
       tools.Inputs.Add((tool, input));
+      if (tool == tools.Missing)
+      {
+        throw new InvalidOperationException($"{tool} failed: Unknown tool: '{tool}'");
+      }
       return tool switch
       {
         "list_slide_layouts" => JsonNode.Parse("""

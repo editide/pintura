@@ -13,7 +13,7 @@ It exits 1 when there are errors, and lists warnings without failing.
 | Geometry | Elements running off the slide; boxes partly overlapping, where a box wholly inside another is layering; text crossing a chart's axis, data, or legend labels, even inside the chart's frame; an edge within 3pt of the same side of another element or area without meeting it, unless the two share a centre line. None of these count an element marked `decorative: true`. | warning |
 | Consistency | A title or placeholder moved from its layout's frame; text at another size on one slide than the rest of the presentation has for its style and level; the same one-off text properties on three or more slides. | warning |
 | Comments | A comment on a slide or element that no longer exists. | warning |
-| Export | With `--export`: sections, picture crops, callout tails, text columns, and the other features the export can't reproduce. | warning |
+| Export | With `--export`: picture crops, callout tails, text columns, and the other features the export can't reproduce. | warning |
 
 Each finding names the slide and element, `revenue/takeaway`, and a structure error names the file, the line, and the topic to read.
 A theme or layout element is one finding, named by the first slide showing it.
