@@ -314,8 +314,8 @@ public class CommandLineOptions
     writer.WriteLine("  pintura [<presentation>] --element <slide> <id> [--json]   (effective properties, " +
       "each with the file and line that set it)");
     writer.WriteLine("  pintura [<presentation>] --screenshot <slide>|all|theme [--diff [<rev>]] [--output <png>]   " +
-      "(the slide as a PNG, a contact sheet of every slide, or the preview's theme view; --diff draws a slide before " +
-      "and after, with the changes marked)");
+      "(the slide, by id or number, as a PNG, a contact sheet of every slide, or the preview's theme view; --diff " +
+      "draws a slide before and after, with the changes marked)");
     writer.WriteLine("  pintura [<presentation>] --check [--export] [--diff [<rev>|<a>..<b>]] [--json]   (structure, " +
       "text, geometry, and consistency findings; --export adds what the PowerPoint export can't reproduce, and " +
       "--diff keeps only those the change introduced)");

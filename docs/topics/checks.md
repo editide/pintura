@@ -31,7 +31,7 @@ checks: { shrink: 70 }      # warn when fit: shrink scales text below 70%
 - `--list`: slides with their layouts and titles.
 - `--slide <stem>`: its elements with their effective frames.
 - `--element <slide> <id>`: effective properties, each with the file and line that set it; for a table, each cell's too.
-- `--screenshot <slide>`: a PNG of the slide; `--screenshot all` for a contact sheet.
+- `--screenshot <slide>`: a PNG of the slide, named by id or number; `--screenshot all` for a contact sheet.
 
 ## Usual mistakes
 

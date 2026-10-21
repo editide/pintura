@@ -380,14 +380,24 @@ public static class HeadlessRunner
 
   public static Slide FindSlide(Presentation presentation, string id)
   {
-    Slide slide = presentation.Slides.FirstOrDefault(candidate => candidate.Id == id)
+    Slide slide = SlideNamed(presentation, id)
       ?? throw new InvalidDataException($"No slide '{id}'. Available: " +
-        string.Join(", ", presentation.Slides.Select(candidate => candidate.Id)));
+        string.Join(", ", presentation.Slides.Select(candidate => candidate.Id)) +
+        $", or 1-{presentation.Slides.Count}");
     if (slide.Error is not null)
     {
       throw slide.Error;
     }
     return slide;
+  }
+
+  /// <summary>The slide with the id, or failing that, the slide at that number from 1.</summary>
+  public static Slide? SlideNamed(Presentation presentation, string id)
+  {
+    List<Slide> slides = presentation.Slides;
+    return slides.FirstOrDefault(candidate => candidate.Id == id)
+      ?? (int.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out int number) && number >= 1 &&
+        number <= slides.Count ? slides[number - 1] : null);
   }
 
   private static string PlainText(List<SceneParagraph> paragraphs)

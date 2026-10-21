@@ -302,5 +302,21 @@ public class CommandLineTests
       .ShouldBe("No element 'chart' on slide 'two'. Available: page, title");
   }
 
+  [Fact]
+  public void A_slide_is_found_by_its_number_where_no_slide_has_that_id()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Presentation presentation = PresentationLoader.Load(deck.Folder.PathTo("deck"));
+
+    // Act
+    Slide slide = HeadlessRunner.FindSlide(presentation, "2");
+    Action missing = () => HeadlessRunner.FindSlide(presentation, "3");
+
+    // Assert
+    slide.Id.ShouldBe("two");
+    missing.ShouldThrow<InvalidDataException>().Message.ShouldBe("No slide '3'. Available: one, two, or 1-2");
+  }
+
 
 }

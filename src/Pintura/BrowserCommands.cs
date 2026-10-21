@@ -34,16 +34,18 @@ public static class BrowserCommands
       throw new InvalidDataException("--screenshot --diff draws a revision beside the working tree, so it takes one " +
         "revision rather than two");
     }
+    string? slide = options.Slide;
     // A slide the change removed is only in the revision, which the page answers for.
-    if (options.Command == HeadlessCommand.Screenshot && options.Slide is not ("all" or "theme") &&
-      options.Revision is null)
+    if (options.Command == HeadlessCommand.Screenshot && slide is not ("all" or "theme"))
     {
-      HeadlessRunner.FindSlide(presentation, options.Slide!);
+      slide = options.Revision is null
+        ? HeadlessRunner.FindSlide(presentation, slide!).Id
+        : HeadlessRunner.SlideNamed(presentation, slide!)?.Id ?? slide;
     }
     string url = await HeadlessServer.Find(root, registry);
     using var client = new HttpClient { BaseAddress = new Uri($"{url}/"), Timeout = Timeout };
     return options.Command == HeadlessCommand.Screenshot
-      ? await Screenshot(client, presentation, root, options.Slide!, options.Revision, options.Output, output)
+      ? await Screenshot(client, presentation, root, slide!, options.Revision, options.Output, output)
       : await Check(client, presentation, options, output);
   }
 
