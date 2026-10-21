@@ -1,8 +1,9 @@
 'use strict';
 
 // Mouse edits on the slide view: handles on the selected item, dragging, resizing, and arrow-key nudges that snap to
-// the slide, its areas and placeholders, and other items, rewording text in place on a double click or a click on
-// the selected item, deleting an element, and reordering slides by dragging them in the sidebar. An edit goes to the
+// the slide, its areas and placeholders, and other items, a box dragged across the slide that selects several items
+// to move or delete together, rewording text in place on a double click or a click on the selected item, deleting
+// an element, and reordering slides by dragging them in the sidebar. An edit goes to the
 // server as the values it writes and the source each replaces; the server patches the file, and the page redraws
 // from it, so nothing lives only in the page. The server answers each edit with the edit that writes it back, which
 // undo and redo send in turn.
@@ -19,8 +20,8 @@ function stops(start, length) {
   return [start, start + length / 2, start + length];
 }
 
-// The positions a moving item snaps to, in points: the slide's edges and middle, and the edges and middles of its
-// areas, placeholders, and every item but the one moving.
+// The positions moving items snap to, in points: the slide's edges and middle, and the edges and middles of its
+// areas, placeholders, and every item but those moving, by index.
 function snapTargets(slide, size, skip) {
   const targets = { x: [0, size[0] / 2, size[0]], y: [0, size[1] / 2, size[1]] };
   const add = ([left, top, width, height]) => {
@@ -31,7 +32,7 @@ function snapTargets(slide, size, skip) {
     add(guide.rect);
   }
   (slide.items || []).forEach((item, index) => {
-    if (index === skip) {
+    if (skip.includes(index)) {
       return;
     }
     if (item.frame) {
@@ -155,8 +156,7 @@ function movePoint([x, y], dx, dy, targets, threshold) {
 
 // A whole line moved, snapped by the box its ends span.
 function moveLine(from, to, dx, dy, targets, threshold) {
-  const box = [Math.min(from[0], to[0]), Math.min(from[1], to[1]), Math.abs(to[0] - from[0]),
-    Math.abs(to[1] - from[1])];
+  const box = itemBox({ from, to });
   const moved = moveBox(box, dx, dy, targets, threshold);
   const shiftX = moved.box[0] - box[0];
   const shiftY = moved.box[1] - box[1];
@@ -165,6 +165,86 @@ function moveLine(from, to, dx, dy, targets, threshold) {
     to: [to[0] + shiftX, to[1] + shiftY],
     lines: moved.lines
   };
+}
+
+// The box an item spans: its frame, or the box a line's ends span.
+function itemBox(item) {
+  if (item.frame) {
+    return item.frame;
+  }
+  const [x1, y1] = item.from;
+  const [x2, y2] = item.to;
+  return [Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)];
+}
+
+function unionBox(boxes) {
+  const left = Math.min(...boxes.map((box) => box[0]));
+  const top = Math.min(...boxes.map((box) => box[1]));
+  const right = Math.max(...boxes.map((box) => box[0] + box[2]));
+  const bottom = Math.max(...boxes.map((box) => box[1] + box[3]));
+  return [left, top, right - left, bottom - top];
+}
+
+function movable(item) {
+  return !item.edit.locked && Boolean(item.edit.frame || item.edit.from);
+}
+
+// Whether a line crosses a box, by clipping it to the box's edges.
+function lineCrosses([x1, y1], [x2, y2], [left, top, width, height]) {
+  let start = 0;
+  let end = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  for (const [p, q] of [[-dx, x1 - left], [dx, left + width - x1], [-dy, y1 - top], [dy, top + height - y1]]) {
+    if (p === 0) {
+      if (q < 0) {
+        return false;
+      }
+    } else if (p < 0) {
+      start = Math.max(start, q / p);
+    } else {
+      end = Math.min(end, q / p);
+    }
+  }
+  return start <= end;
+}
+
+// The movable items a box dragged across the slide touches, by index. One that holds the whole box is passed over,
+// since the box was drawn inside it, as over a full-bleed picture.
+function boxPicks(items, box) {
+  const [left, top, width, height] = box;
+  const picked = [];
+  items.forEach((item, index) => {
+    if (!movable(item)) {
+      return;
+    }
+    if (item.from) {
+      if (lineCrosses(item.from, item.to, box)) {
+        picked.push(index);
+      }
+      return;
+    }
+    const [x, y, w, h] = item.frame;
+    const touches = x <= left + width && x + w >= left && y <= top + height && y + h >= top;
+    const holds = x <= left && y <= top && x + w >= left + width && y + h >= top + height;
+    if (touches && !holds) {
+      picked.push(index);
+    }
+  });
+  return picked;
+}
+
+// Items moved together, snapped by the box around them all, each shifted as that box is.
+function moveGroup(items, dx, dy, targets, threshold) {
+  const box = unionBox(items.map(itemBox));
+  const moved = moveBox(box, dx, dy, targets, threshold);
+  const shiftX = moved.box[0] - box[0];
+  const shiftY = moved.box[1] - box[1];
+  const shift = ([x, y]) => [x + shiftX, y + shiftY];
+  const changes = items.map((item) => (item.from
+    ? { from: shift(item.from), to: shift(item.to) }
+    : { frame: [...shift(item.frame), item.frame[2], item.frame[3]] }));
+  return { changes, lines: moved.lines };
 }
 
 // #endregion
@@ -223,10 +303,22 @@ function itemNode(index) {
 }
 
 // Handles on the selected item: eight on a box, one on each end of a line, none on a rotated box or on an item the
-// slide doesn't own.
+// slide doesn't own. A group has no handles, only a box around it all, and a box drawn across the slide shows while
+// it picks one.
 function drawSelection() {
   const stage = slideStage();
   stage?.querySelector(':scope > .selection')?.remove();
+  if (stage && editing.gesture?.marquee?.box) {
+    place(element('div', 'marquee', element('div', 'selection', stage)), editing.gesture.marquee.box);
+    return;
+  }
+  const indexes = selectedIndexes();
+  if (stage && indexes.length > 1) {
+    const boxes = indexes.map(itemNode).filter(Boolean)
+      .map((node) => [node.offsetLeft, node.offsetTop, node.offsetWidth, node.offsetHeight]);
+    place(element('div', 'group-box', element('div', 'selection', stage)), unionBox(boxes));
+    return;
+  }
   const node = selectedNode();
   if (!stage || !node || editing.text) {
     return;
@@ -269,14 +361,36 @@ function drawSnaps(stage, lines) {
 }
 
 // An item drawn again in place with changed geometry, so a resized shape redraws its path and its text rewraps.
-function redraw(gesture, changed) {
+function redrawItem(index, node, changed) {
   const stage = slideStage();
   const fresh = renderItem(changed, stage);
-  fresh.dataset.index = gesture.index;
+  fresh.dataset.index = index;
   fresh.classList.add('selected');
-  gesture.node.replaceWith(fresh);
-  gesture.node = fresh;
+  node.replaceWith(fresh);
   fitText(stage);
+  return fresh;
+}
+
+function redraw(gesture, changed) {
+  gesture.node = redrawItem(gesture.index, gesture.node, changed);
+}
+
+// Items moving together shown where they would land: a box by its place alone, a line drawn again.
+function showMoves(move) {
+  move.items.forEach((item, at) => {
+    const change = move.changes[at];
+    if (item.from) {
+      move.nodes[at] = redrawItem(move.indexes[at], move.nodes[at], { ...item, ...change });
+    } else {
+      move.nodes[at].style.left = `${Math.round(change.frame[0])}px`;
+      move.nodes[at].style.top = `${Math.round(change.frame[1])}px`;
+    }
+  });
+}
+
+// Why an item stays put under the mouse.
+function unmoved(item) {
+  return item.edit.locked || `${item.id} can't be moved with the mouse`;
 }
 
 // Geometry puts what an edit moves on a whole point or a snap target, and leaves the rest as the layout gave it, such
@@ -298,16 +412,32 @@ function valueEdits(item, change) {
   return edits;
 }
 
-// Edits to the slide's file, or with a file to the theme's or a layout's, undone from whichever slide made them.
-function send(slide, edits, kind = 'edit', file = null) {
+// Edits to the slide's file, and those naming one to the theme's or a layout's, undone from whichever slide made
+// them.
+function send(slide, edits, kind = 'edit') {
   const layout = state.layout;
-  return post('api/edit', file ? { file, edits } : { slide, edits },
-    (undo) => (undo?.length > 0 ? { slide, file, layout, edits: undo } : null), kind);
+  return post('api/edit', { slide, edits },
+    (undo) => (undo?.length > 0 ? { slide, layout, edits: undo } : null), kind);
+}
+
+// An item's edits, each naming the theme's or layout's file where the item is written there.
+function ownEdits(item, edits) {
+  return item.edit.file ? edits.map((edit) => ({ ...edit, file: item.edit.file })) : edits;
 }
 
 function sendEdits(item, edits) {
   if (edits.length > 0) {
-    send(currentSlide().id, edits, 'edit', item.edit.file);
+    send(currentSlide().id, ownEdits(item, edits));
+  }
+}
+
+// What items moved together write, or nothing where none moved.
+function sendMoves(slide, move) {
+  const edits = move.items.flatMap((item, at) => ownEdits(item, valueEdits(item, move.changes[at])));
+  if (edits.length > 0) {
+    send(slide, edits);
+  } else {
+    afterEditing();
   }
 }
 
@@ -347,19 +477,37 @@ async function post(url, request, entry, kind) {
   }
 }
 
+// A press on an item starts dragging it, or the whole group where it is one of a group's; on the slide's empty space
+// or the pasteboard around it, a box that picks what it touches, adding to the selection with Shift or Ctrl.
 function startGesture(event) {
   flushNudge();
   if (event.button !== 0 || editing.busy || editing.text || state.view !== 'slide' || reviewing()) {
     return;
   }
   const handle = event.target.closest('.handle');
-  const node = handle ? selectedNode() : event.target.closest('.item');
+  const node = handle ? selectedNode() : event.target.closest('#slide-frame .item');
+  const slide = currentSlide();
+  const stage = slideStage();
   if (!node) {
+    const view = event.currentTarget;
+    const scrollbar = event.target === view &&
+      (event.offsetX >= view.clientWidth || event.offsetY >= view.clientHeight);
+    if (stage && !scrollbar && !event.target.closest('button, a, input, textarea, .format-bar')) {
+      const added = event.shiftKey || event.ctrlKey || event.metaKey;
+      editing.gesture = {
+        slide: slide.id,
+        pointer: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        started: false,
+        marquee: { kept: added ? selectedIndexes() : [], picked: null, box: null }
+      };
+    }
     return;
   }
-  const slide = currentSlide();
   const index = Number(node.dataset.index);
-  const stage = slideStage();
+  const indexes = selectedIndexes();
+  const group = !handle && indexes.length > 1 && indexes.includes(index) ? indexes : null;
   editing.gesture = {
     slide: slide.id,
     pointer: event.pointerId,
@@ -371,8 +519,9 @@ function startGesture(event) {
     handle: handle ? handle.dataset.handle || handle.dataset.end : null,
     started: false,
     scale: stageScale(stage),
-    targets: snapTargets(slide, state.deck.size, index),
-    change: null
+    targets: snapTargets(slide, state.deck.size, group || [index]),
+    change: null,
+    group: group && { indexes: group, items: group.map((at) => slide.items[at]), nodes: group.map(itemNode) }
   };
 }
 
@@ -387,25 +536,34 @@ function moveGesture(event) {
     if (Math.hypot(screenX, screenY) < DRAG_PIXELS) {
       return;
     }
-    const { edit } = gesture.item;
-    if (edit.locked || !(edit.frame || edit.from)) {
-      notice(edit.locked || `${gesture.item.id} can't be moved with the mouse`);
+    const stuck = gesture.marquee ? null : (gesture.group?.items || [gesture.item]).find((item) => !movable(item));
+    if (stuck) {
+      notice(unmoved(stuck));
       editing.gesture = null;
       return;
     }
     gesture.started = true;
     document.getElementById('slide-frame').setPointerCapture(event.pointerId);
+    if (gesture.marquee) {
+      moveMarquee(gesture, event);
+      return;
+    }
     if (!gesture.handle) {
       document.body.classList.add('moving');
     }
-    if (!state.selected || state.selected.index !== gesture.index) {
+    if (!gesture.group && (!state.selected || state.selected.index !== gesture.index)) {
       const { item } = gesture;
       state.selected = { slide: currentSlide().id, index: gesture.index, id: item.id, owner: item.owner };
+      state.group = null;
       state.detail = null;
       markSelection();
       renderInspector();
       loadDetail();
     }
+  }
+  if (gesture.marquee) {
+    moveMarquee(gesture, event);
+    return;
   }
   let dx = screenX / gesture.scale;
   let dy = screenY / gesture.scale;
@@ -416,7 +574,12 @@ function moveGesture(event) {
   const threshold = SNAP_PIXELS / gesture.scale;
   const { item } = gesture;
   let lines;
-  if (item.from) {
+  if (gesture.group) {
+    const moved = moveGroup(gesture.group.items, dx, dy, targets, threshold);
+    gesture.group.changes = moved.changes;
+    lines = moved.lines;
+    showMoves(gesture.group);
+  } else if (item.from) {
     const moved = gesture.handle
       ? movePoint(item[gesture.handle], dx, dy, targets, threshold)
       : moveLine(item.from, item.to, dx, dy, targets, threshold);
@@ -439,6 +602,19 @@ function moveGesture(event) {
   drawSelection();
 }
 
+// The box from where the press began to the pointer, in the slide's points, outlining what it picks as it goes.
+function moveMarquee(gesture, event) {
+  const stage = slideStage();
+  const scale = stageScale(stage);
+  const origin = stage.getBoundingClientRect();
+  const x = [gesture.startX, event.clientX].map((value) => (value - origin.left) / scale);
+  const y = [gesture.startY, event.clientY].map((value) => (value - origin.top) / scale);
+  const marquee = gesture.marquee;
+  marquee.box = [Math.min(...x), Math.min(...y), Math.abs(x[1] - x[0]), Math.abs(y[1] - y[0])];
+  marquee.picked = [...new Set([...marquee.kept, ...boxPicks(currentSlide().items || [], marquee.box)])];
+  markSelection(marquee.picked);
+}
+
 function endGesture(event) {
   const gesture = editing.gesture;
   if (!gesture || event.pointerId !== gesture.pointer) {
@@ -448,51 +624,57 @@ function endGesture(event) {
   if (!gesture.started) {
     return;
   }
-  document.body.classList.remove('moving');
   editing.suppressClick = true;
+  if (gesture.marquee) {
+    selectGroup(gesture.marquee.picked);
+    afterEditing();
+    return;
+  }
+  document.body.classList.remove('moving');
   drawSnaps(slideStage(), []);
+  if (gesture.group) {
+    sendMoves(gesture.slide, gesture.group);
+    return;
+  }
   const edits = gesture.change ? valueEdits(gesture.item, gesture.change) : [];
   if (edits.length > 0) {
-    send(gesture.slide, edits, 'edit', gesture.item.edit.file);
+    send(gesture.slide, ownEdits(gesture.item, edits));
   } else {
     afterEditing();
   }
 }
 
-// Arrow keys nudge the selected item a point, or ten with Shift, and write once the keys rest. Returns whether the
-// key was a nudge.
+// Arrow keys nudge the selected item or group a point, or ten with Shift, and write once the keys rest. Returns
+// whether the key was a nudge.
 function nudgeKey(event) {
   const steps = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-  if (!(event.key in steps) || !state.selected || state.view !== 'slide' || state.presenting || !selectedNode()) {
+  const indexes = selectedIndexes();
+  if (!(event.key in steps) || indexes.length === 0 || state.presenting) {
     return false;
   }
   if (editing.busy) {
     return true;
   }
-  const item = currentSlide().items[state.selected.index];
-  if (item.edit.locked || !(item.edit.frame || item.edit.from)) {
-    notice(item.edit.locked || `${item.id} can't be moved with the mouse`);
+  const slide = currentSlide();
+  const items = indexes.map((index) => slide.items[index]);
+  const stuck = items.find((item) => !movable(item));
+  if (stuck) {
+    notice(unmoved(stuck));
     return true;
   }
-  const size = event.shiftKey ? 10 : 1;
-  if (editing.nudge && (editing.nudge.slide !== currentSlide().id || editing.nudge.index !== state.selected.index)) {
+  const key = `${slide.id} ${indexes.join(' ')}`;
+  if (editing.nudge && editing.nudge.key !== key) {
     flushNudge();
     return true;
   }
+  const size = event.shiftKey ? 10 : 1;
   const nudge = editing.nudge ||
-    { slide: currentSlide().id, index: state.selected.index, item, node: selectedNode(), dx: 0, dy: 0 };
+    { key, slide: slide.id, indexes, items, nodes: indexes.map(itemNode), dx: 0, dy: 0 };
   editing.nudge = nudge;
   nudge.dx += steps[event.key][0] * size;
   nudge.dy += steps[event.key][1] * size;
-  if (item.from) {
-    const moved = moveLine(item.from, item.to, nudge.dx, nudge.dy, null, 0);
-    nudge.change = { from: moved.from, to: moved.to };
-    redraw(nudge, { ...item, ...nudge.change });
-  } else {
-    nudge.change = { frame: moveBox(item.frame, nudge.dx, nudge.dy, null, 0).box };
-    nudge.node.style.left = `${nudge.change.frame[0]}px`;
-    nudge.node.style.top = `${nudge.change.frame[1]}px`;
-  }
+  nudge.changes = moveGroup(items, nudge.dx, nudge.dy, null, 0).changes;
+  showMoves(nudge);
   drawSelection();
   clearTimeout(nudge.timer);
   nudge.timer = setTimeout(flushNudge, NUDGE_DELAY);
@@ -500,7 +682,7 @@ function nudgeKey(event) {
 }
 
 // Writes a nudge still waiting for the keys to rest. Whatever changes the selection calls this first, so the next
-// arrow key starts a nudge of its own rather than adding to the last item's.
+// arrow key starts a nudge of its own rather than adding to the last one's.
 function flushNudge() {
   const nudge = editing.nudge;
   if (!nudge) {
@@ -508,31 +690,33 @@ function flushNudge() {
   }
   clearTimeout(nudge.timer);
   editing.nudge = null;
-  const edits = valueEdits(nudge.item, nudge.change);
-  if (edits.length > 0) {
-    send(nudge.slide, edits, 'edit', nudge.item.edit.file);
-  } else {
-    afterEditing();
-  }
+  sendMoves(nudge.slide, nudge);
 }
 
-// Delete or Backspace removes the selected element from the slide's file. Returns whether the key was one of them.
+// Delete or Backspace removes the selected elements from the slide's file, leaving those the layout or theme gives.
+// Returns whether the key was one of them.
 function deleteKey(event) {
-  if (!(event.key === 'Delete' || event.key === 'Backspace') || !state.selected || state.view !== 'slide' ||
-    state.presenting || !selectedNode()) {
+  const indexes = selectedIndexes();
+  if (!(event.key === 'Delete' || event.key === 'Backspace') || indexes.length === 0 || state.presenting) {
     return false;
   }
   if (editingActive()) {
     return true;
   }
-  const item = currentSlide().items[state.selected.index];
-  if (!item.edit.delete) {
-    notice(item.edit.locked || `${item.id} is a placeholder the layout gives; empty it in the file`);
+  const slide = currentSlide();
+  const items = indexes.map((index) => slide.items[index]);
+  const kept = items.filter((item) => !item.edit.delete);
+  if (kept.length > 0) {
+    notice(kept.length > 1
+      ? `${kept.map(elementName).join(', ')} stay: the layout or theme gives them`
+      : kept[0].edit.locked || `${kept[0].id} is a placeholder the layout gives; empty it in the file`);
+  }
+  const deleted = items.filter((item) => item.edit.delete);
+  if (deleted.length === 0) {
     return true;
   }
-  const slide = currentSlide().id;
   selectItem(null);
-  send(slide, [{ path: item.edit.delete.path, source: item.edit.delete.source, delete: true }]);
+  send(slide.id, deleted.map(({ edit }) => ({ path: edit.delete.path, source: edit.delete.source, delete: true })));
   return true;
 }
 
@@ -603,7 +787,7 @@ function stepHistory(kind) {
     } else if (entry.comment) {
       sendComment(entry.comment, entry.slide, kind);
     } else {
-      send(entry.slide, entry.edits, kind, entry.file);
+      send(entry.slide, entry.edits, kind);
     }
   } else {
     editing.queued.length = 0;
@@ -1133,11 +1317,11 @@ function installReordering(container, { draggable, picture, scroller, slot }) {
 
 // #endregion
 
-function installEditing(frame) {
-  frame.addEventListener('pointerdown', startGesture);
-  frame.addEventListener('pointermove', moveGesture);
-  frame.addEventListener('pointerup', endGesture);
-  frame.addEventListener('pointercancel', endGesture);
+function installEditing(frame, view) {
+  view.addEventListener('pointerdown', startGesture);
+  view.addEventListener('pointermove', moveGesture);
+  view.addEventListener('pointerup', endGesture);
+  view.addEventListener('pointercancel', endGesture);
   frame.addEventListener('dblclick', startText);
   document.addEventListener('selectionchange', markFormatBar);
   // Firefox drags a picture as an image to drop elsewhere, which cancels the pointer's events.
@@ -1145,5 +1329,5 @@ function installEditing(frame) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { snapTargets, moveBox, resizeBox, movePoint, moveLine, valueEdits };
+  module.exports = { snapTargets, moveBox, resizeBox, movePoint, moveLine, moveGroup, boxPicks, valueEdits };
 }

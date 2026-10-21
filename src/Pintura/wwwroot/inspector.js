@@ -337,8 +337,10 @@ function renderInspector() {
   }
   const panel = document.getElementById('inspector-panel');
   const selection = state.selected;
+  const group = selectedIndexes().length > 1 ? state.group : null;
   const key = state.view === 'theme' ? `theme ${themeDetail?.kind}:${themeDetail?.name}`
-    : selection ? `${selection.slide}/${selection.owner}/${selection.id}` : `slide ${state.current}`;
+    : group ? `group ${group.map((item) => `${item.owner}/${item.id}`).join(' ')}`
+      : selection ? `${selection.slide}/${selection.owner}/${selection.id}` : `slide ${state.current}`;
   const scroll = key === inspector.key ? panel.scrollTop : 0;
   if (key !== inspector.key) {
     inspector.key = key;
@@ -348,6 +350,8 @@ function renderInspector() {
   const item = selection && currentSlide()?.items?.[selection.index];
   if (state.view === 'theme') {
     renderThemePanel(panel);
+  } else if (group) {
+    renderGroupPanel(group, panel);
   } else if (!selection) {
     if (state.layout) {
       renderLayoutPanel(panel);
@@ -362,6 +366,17 @@ function renderInspector() {
     renderElementPanel(state.detail, selection, panel);
   }
   panel.scrollTop = scroll;
+}
+
+function renderGroupPanel(group, panel) {
+  const slide = currentSlide();
+  renderHeader(panel, { chips: [['Selection', 'slide']], title: `${group.length} elements` });
+  const node = section(panel, null, 'elements');
+  for (const { index } of group) {
+    elementRow(slide, index, new Set(), node);
+  }
+  element('p', 'hint', panel).textContent =
+    'Drag or nudge them together, or press Delete to remove them. Shift- or Ctrl-click one to leave it out.';
 }
 
 // A layout on the slide view: what moving its parts writes, and how many slides follow.
@@ -1389,23 +1404,28 @@ function renderElementList(slide, panel) {
       return;
     }
     const node = section(panel, title, 'elements');
-    for (const { item, index } of entries) {
-      const row = element('button', 'element-row', node);
-      row.type = 'button';
-      element('span', `chip kind-${item.kind}`, row).textContent = kindName(item);
-      element('span', 'element-name', row).textContent = elementName(item);
-      element('span', 'element-text', row).textContent = itemText(item);
-      if (issues.has(`${slide.id}/${item.id}`)) {
-        element('span', 'issue-dot', row).title = 'Has issues';
-      }
-      row.addEventListener('click', () => pickItem(slide, index));
-      row.addEventListener('pointerenter', () => hoverItem(index, true));
-      row.addEventListener('pointerleave', () => hoverItem(index, false));
+    for (const { index } of entries) {
+      elementRow(slide, index, issues, node);
     }
   };
   list('On this slide', own);
   list('From the layout and theme', inherited);
   element('p', 'hint', panel).textContent = 'Click an element, here or on the slide, to inspect it.';
+}
+
+function elementRow(slide, index, issues, parent) {
+  const item = slide.items[index];
+  const row = element('button', 'element-row', parent);
+  row.type = 'button';
+  element('span', `chip kind-${item.kind}`, row).textContent = kindName(item);
+  element('span', 'element-name', row).textContent = elementName(item);
+  element('span', 'element-text', row).textContent = itemText(item);
+  if (issues.has(`${slide.id}/${item.id}`)) {
+    element('span', 'issue-dot', row).title = 'Has issues';
+  }
+  row.addEventListener('click', () => pickItem(slide, index));
+  row.addEventListener('pointerenter', () => hoverItem(index, true));
+  row.addEventListener('pointerleave', () => hoverItem(index, false));
 }
 
 function hoverItem(index, on) {

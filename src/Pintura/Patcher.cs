@@ -20,14 +20,16 @@ public class PatchException : Exception
   public bool Conflict { get; }
 }
 
-/// <summary>One value a mouse edit writes: its key path in the slide's file, its source as the page drew it or null
-/// where the key was absent, and either numbers to a hundredth of a point, for a frame or a point, each paragraph's
-/// text with <see cref="Patcher.FieldMark"/> where a field sits, a scalar <paramref name="Value"/> such as a color or
-/// a width, or the source to restore, as an undo writes back. A
-/// delete removes the element at the path; a restore without a source puts one back after the element named by
-/// <paramref name="After"/>, or first. A format applies to the paragraphs once reworded.</summary>
+/// <summary>One value a mouse edit writes: its key path in the slide's file, or in <paramref name="File"/> where it
+/// names the theme's or a layout's as origins name them, its source as the page drew it or null where the key was
+/// absent, and either numbers to a hundredth of a point, for a frame or a point, each paragraph's text with
+/// <see cref="Patcher.FieldMark"/> where a field sits, a scalar <paramref name="Value"/> such as a color or a width, or
+/// the source to restore, as an undo writes back. A delete removes the element at the path; a restore without a
+/// source puts one back after the element named by <paramref name="After"/>, or first. A format applies to the
+/// paragraphs once reworded.</summary>
 public record ValueEdit(string Path, string? Source, double[]? Numbers = null, List<string>? Paragraphs = null,
-  string? Restore = null, bool Delete = false, string? After = null, TextFormat? Format = null, string? Value = null);
+  string? Restore = null, bool Delete = false, string? After = null, TextFormat? Format = null, string? Value = null,
+  string? File = null);
 
 /// <summary>Bold, italic, or underline turned on or off over stretches of paragraphs, in characters of the text the
 /// page reads back, with <see cref="Patcher.FieldMark"/> for a field.</summary>

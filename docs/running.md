@@ -100,7 +100,10 @@ In the one-slide view, the mouse moves, resizes, and rewords what the slide owns
 - An element may be dragged past the slide's edges, where it is drawn faded and `--check` warns that it runs off the slide.
 - The arrow keys nudge the selected element a point, or ten with Shift, and write once they rest; with nothing selected they still move between slides.
 - A line moves whole, or by the handle on either end.
-- Delete or Backspace removes the selected element from the slide's file; the title and placeholders come from the layout and stay.
+- Drag across the slide's empty space, or the pasteboard around it, to select what the box touches, passing over an element that holds the whole box and what the layout and theme lock; Shift or Ctrl adds to the selection.
+- Shift- or Ctrl-click an element to add it to the selection or take it out; Ctrl-click on a number linked to Libreta still opens it there.
+- Several selected elements drag, nudge, and delete together, snapping by the box around them all, as one edit that one Ctrl+Z undoes; they have no handles.
+- Delete or Backspace removes the selected elements from the slide's file; the title and placeholders come from the layout and stay.
 - Double-click text, or click it once it's selected, to reword it in place, then press Enter or click away to write it, or Escape to drop it.
   Fields such as `${date}` stay as written, and an edit that would cross formatting, such as the edge of a bold run, is refused.
 - While rewording, a bar above the text, or Ctrl+B, Ctrl+I, and Ctrl+U, makes the selected words bold, italic, or underlined, writing `**`, `*`, or `[…]{underline=true}` around them, or takes the mark off where all of them have it.

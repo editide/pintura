@@ -261,6 +261,7 @@ The gap is measured per text box as line counts, the plainest metric there is: d
 ## Mouse edits
 
 Select, drag, resize, nudge with arrow keys, and snap to areas, guides, and other elements' edges and centers.
+A selection of several elements moves or deletes as one request to `api/edit`, whose edits each name their file where it is the theme's or a layout's; the server checks them all before writing any, puts back the files it wrote if a later one fails, and answers with one undo.
 
 Write-back is a patch, never a re-serialization.
 The loader keeps the source of each value, and the page sends it back with the edit: the value's key path, such as `elements.chart.frame`, where a list entry is named by its id, the source it drew, and the new value.

@@ -1183,6 +1183,18 @@ body.moving * {
   position: absolute;
 }
 
+.group-box {
+  position: absolute;
+  outline: calc(1px / var(--scale, 1)) dashed var(--accent);
+  outline-offset: calc(4px / var(--scale, 1));
+}
+
+.marquee {
+  position: absolute;
+  border: calc(1px / var(--scale, 1)) solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 .handle {
   position: absolute;
   width: calc(9px / var(--scale, 1));

@@ -53,6 +53,8 @@ const state = {
   // The server addresses an item by its place in the slide's drawing order; its id and owner find it again after an
   // edit reorders the slide.
   selected: null,
+  // Items picked together, each as selected names it, to move or delete at once; selected is then null.
+  group: null,
   detail: null,
   findings: null,
   // Whether the page's event stream is open; null until it first opens or fails.
@@ -325,10 +327,12 @@ function select(id) {
   if (state.layout) {
     state.layout = null;
     state.selected = null;
+    state.group = null;
     state.detail = null;
   }
   if (id !== state.current) {
     state.selected = null;
+    state.group = null;
     state.detail = null;
   }
   state.current = id;
@@ -476,6 +480,7 @@ function setView(view) {
   if (state.layout) {
     state.layout = null;
     state.selected = null;
+    state.group = null;
     state.detail = null;
   }
   state.view = view;
@@ -590,40 +595,79 @@ function renderPresent() {
 function selectItem(selection) {
   flushNudge();
   state.selected = selection;
+  state.group = null;
   state.detail = null;
   markSelection();
   renderInspector();
   loadDetail();
 }
 
+// Several items, by index, picked on the current slide; fewer than two select the one or none.
+function selectGroup(indexes) {
+  const slide = currentSlide();
+  const items = [...new Set(indexes)].sort((one, other) => one - other)
+    .map((index) => ({ slide: slide.id, index, id: slide.items[index].id, owner: slide.items[index].owner }));
+  if (items.length < 2) {
+    selectItem(items[0] ? { ...items[0], paragraph: null, cell: null } : null);
+    return;
+  }
+  flushNudge();
+  state.selected = null;
+  state.group = items;
+  state.detail = null;
+  markSelection();
+  renderInspector();
+}
+
+// The revision's drawing numbers its items differently, and nothing on it is editable.
+function selectionShown(selection) {
+  return state.view === 'slide' && selection.slide === currentSlide().id && !reviewing();
+}
+
 function selectedNode() {
   const selection = state.selected;
-  // The revision's drawing numbers its items differently, and nothing on it is editable.
-  if (!selection || state.view !== 'slide' || selection.slide !== currentSlide().id || reviewing()) {
+  if (!selection || !selectionShown(selection)) {
     return null;
   }
   return document.querySelector(`#slide-frame .item[data-index="${selection.index}"]`);
 }
 
-function markSelection() {
+// The indexes of the selected item or group, where the slide view shows them.
+function selectedIndexes() {
+  if (state.group) {
+    return selectionShown(state.group[0]) ? state.group.map((selection) => selection.index) : [];
+  }
+  return selectedNode() ? [state.selected.index] : [];
+}
+
+function markSelection(indexes = selectedIndexes()) {
   for (const node of document.querySelectorAll('#slide-frame .item.selected')) {
     node.classList.remove('selected');
   }
-  selectedNode()?.classList.add('selected');
+  for (const index of indexes) {
+    document.querySelector(`#slide-frame .item[data-index="${index}"]`)?.classList.add('selected');
+  }
   drawSelection();
 }
 
 // After a reload, the selected item is the one with the same id and owner, wherever the slide now draws it.
-function reselect() {
-  const selection = state.selected;
-  if (!selection) {
-    return;
-  }
+function reselected(selection) {
   const slide = state.deck.slides.find((candidate) => candidate.id === selection.slide);
   const index = slide && slide.items
     ? slide.items.findIndex((item) => item.id === selection.id && item.owner === selection.owner)
     : -1;
-  state.selected = index < 0 ? null : { ...selection, index };
+  return index < 0 ? null : { ...selection, index };
+}
+
+function reselect() {
+  if (state.selected) {
+    state.selected = reselected(state.selected);
+  }
+  if (state.group) {
+    const group = state.group.map(reselected).filter(Boolean);
+    state.group = group.length > 1 ? group : null;
+    state.selected = group.length === 1 ? { ...group[0], paragraph: null, cell: null } : null;
+  }
 }
 
 async function loadDetail() {
@@ -788,6 +832,14 @@ document.getElementById('slide-view').addEventListener('click', (event) => {
     return;
   }
   const node = event.target.closest('.item');
+  if (event.shiftKey || event.ctrlKey || event.metaKey) {
+    if (node) {
+      const index = Number(node.dataset.index);
+      const indexes = selectedIndexes();
+      selectGroup(indexes.includes(index) ? indexes.filter((other) => other !== index) : [...indexes, index]);
+    }
+    return;
+  }
   if (!node) {
     selectItem(null);
     return;
@@ -866,7 +918,7 @@ document.getElementById('book-pop-out').addEventListener('click', () => {
   traceInTab(state.traced);
 });
 
-installEditing(document.getElementById('slide-frame'));
+installEditing(document.getElementById('slide-frame'), document.getElementById('slide-view'));
 installReordering(document.getElementById('thumbnails'), {
   draggable: '.thumbnail',
   picture: '.preview',
