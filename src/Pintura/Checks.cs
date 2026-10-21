@@ -342,8 +342,9 @@ public static class Checks
   }
 
   /// <summary>An edge a few points from the same side of another item or area without meeting it: a left edge
-  /// against left edges, a top against tops. Facing edges a few points apart are spacing. The later item of a pair
-  /// is the one reported, since it is the one placed against the other, but an edge meeting anything is aligned.
+  /// against left edges, a top against tops. Facing edges a few points apart are spacing, and items sharing a centre
+  /// line, such as an icon beside its label, are aligned on it. The later item of a pair is the one reported, since
+  /// it is the one placed against the other, but an edge meeting anything is aligned.
   /// </summary>
   private static IEnumerable<Candidate> NearMisses(Slide slide, List<Placed> items, List<Placed> areas)
   {
@@ -376,7 +377,8 @@ public static class Checks
         }
         (Placed Owner, Edge Edge)? nearest = before
           .SelectMany(other => other.Edges().Select(candidate => (Owner: other, Edge: candidate)))
-          .Where(pair => edge.Matches(pair.Edge) && Math.Abs(pair.Edge.At - edge.At) <= NearMiss)
+          .Where(pair => edge.Matches(pair.Edge) && Math.Abs(pair.Edge.At - edge.At) <= NearMiss &&
+            !item.Centred(pair.Owner, edge.Vertical))
           .OrderBy(pair => Math.Abs(pair.Edge.At - edge.At))
           .Select(pair => ((Placed, Edge)?)pair)
           .FirstOrDefault();
@@ -885,6 +887,14 @@ public static class Checks
     public double Top => Math.Min(Rect[1], Rect[1] + Rect[3]);
     public double Right => Math.Max(Rect[0], Rect[0] + Rect[2]);
     public double Bottom => Math.Max(Rect[1], Rect[1] + Rect[3]);
+
+    /// <summary>Whether the two share a centre in x for vertical edges, in y for horizontal ones.</summary>
+    public bool Centred(Placed other, bool vertical)
+    {
+      double centre = vertical ? Left + Right : Top + Bottom;
+      double otherCentre = vertical ? other.Left + other.Right : other.Top + other.Bottom;
+      return Math.Abs(centre - otherCentre) / 2 <= Meets;
+    }
 
     /// <summary>How far the item draws: the rotated box's bounds, and a callout's tail.</summary>
     public (double Left, double Top, double Right, double Bottom) Reach
