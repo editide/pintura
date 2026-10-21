@@ -120,6 +120,7 @@ Moving an element placed in an area writes numbers in place of the area's name, 
 Theme and layout elements don't move on a slide, and the page names the file that owns them; a chart's or a table's text is edited in its files.
 
 Edit on a layout in the theme view opens the layout on the slide view, its title and placeholders holding their names, with its areas drawn dashed and moved by their labels.
+The overlays toggle (O) hides the areas, or shows them with the placeholders' frames outlined, and the inspector lists the layout's placeholders, elements and areas, to pick one buried under another.
 There the mouse moves and resizes the title, placeholders, areas, and elements, and picks the elements' fill and outline, writing each value in the file that sets it: the layout's own file, or `theme.yaml` for what the layout inherits, which moves it on every layout inheriting it.
 The caption counts the slides using the layout, and Back to the theme, or picking a slide, leaves it.
 

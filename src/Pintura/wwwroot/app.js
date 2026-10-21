@@ -214,6 +214,8 @@ function renderSlide() {
   const shown = shownSlide(slide);
   const frame = document.getElementById('slide-frame');
   frame.classList.toggle('reviewing', reviewing(slide));
+  frame.classList.toggle('layout-overlays', Boolean(state.layout) && state.guides);
+  frame.classList.toggle('layout-bare', Boolean(state.layout) && !state.guides);
   const stage = shown ? mountStage(frame, shown, deck.size, available) : mountAbsent(frame, deck.size, available);
   if (state.guides && shown && !shown.error && !state.layout) {
     renderGuides(shown, stage);
@@ -225,6 +227,7 @@ function renderSlide() {
     const edit = shown.items[node.dataset.index].edit;
     node.classList.toggle('fixed', !edit || Boolean(edit.locked || !(edit.frame || edit.from)));
     node.classList.toggle('rewordable', Boolean(edit?.text));
+    node.classList.toggle('placeholder-item', Boolean(shown.items[node.dataset.index].role));
   }
   markSelection();
   if (state.layout) {
