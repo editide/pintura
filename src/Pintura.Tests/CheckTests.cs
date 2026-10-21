@@ -418,6 +418,33 @@ public class CheckTests
   }
 
   [Fact]
+  public void Items_sharing_a_centre_line_are_aligned_rather_than_near_misses()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: label
+          text: Label
+          frame: [60, 140, 100, 20]
+        - id: icon
+          shape: ellipse
+          frame: [170, 142, 16, 16]
+        - id: off_centre
+          shape: ellipse
+          frame: [200, 141, 16, 16]
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    findings.Select(finding => finding.Where).ShouldBe(["two/off_centre"]);
+  }
+
+  [Fact]
   public void Text_inside_a_charts_frame_is_reported_where_its_lines_cross_the_charts_labels()
   {
     // Arrange

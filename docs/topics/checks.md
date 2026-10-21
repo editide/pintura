@@ -10,7 +10,7 @@ It exits 1 when there are errors, and lists warnings without failing.
 | Text | Text running past its frame, or under `fit: shrink` past its insets even shrunk; table rows growing past the bottom of the table's frame. | error |
 | Text | Text shrunk below the theme's `checks: { shrink }` percent; fonts that aren't installed. | warning |
 | Geometry | Table columns wider than the table's frame. | error |
-| Geometry | Elements running off the slide; boxes partly overlapping, where a box wholly inside another is layering; text crossing a chart's axis, data, or legend labels, even inside the chart's frame; an edge within 3pt of the same side of another element or area without meeting it. None of these count an element marked `decorative: true`. | warning |
+| Geometry | Elements running off the slide; boxes partly overlapping, where a box wholly inside another is layering; text crossing a chart's axis, data, or legend labels, even inside the chart's frame; an edge within 3pt of the same side of another element or area without meeting it, unless the two share a centre line. None of these count an element marked `decorative: true`. | warning |
 | Consistency | A title or placeholder moved from its layout's frame; text at another size on one slide than the rest of the presentation has for its style and level; the same one-off text properties on three or more slides. | warning |
 | Comments | A comment on a slide or element that no longer exists. | warning |
 | Export | With `--export`: sections, picture crops, callout tails, text columns, and the other features the export can't reproduce. | warning |
