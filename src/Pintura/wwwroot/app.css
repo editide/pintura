@@ -235,19 +235,26 @@ button {
   padding: 14px 10px 10px 16px;
 }
 
+.brand {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 3px 0 16px;
+  font-weight: 600;
+}
+
+.brand img {
+  width: 22px;
+  height: 22px;
+}
+
+.layout.strip .brand {
+  display: none;
+}
+
 .sidebar-tools {
   display: flex;
   gap: 2px;
-}
-
-.logo {
-  height: 18px;
-  margin: 5px 0 18px;
-}
-
-:root:not([data-theme="dark"]) .logo-dark,
-:root[data-theme="dark"] .logo-light {
-  display: none;
 }
 
 .deck-name {
@@ -434,10 +441,6 @@ body.reordering * {
   flex-direction: column;
   padding: 8px 4px;
   border-right: 1px solid var(--rule);
-}
-
-.layout.strip .logo {
-  display: none;
 }
 
 .layout.strip .inspector {
