@@ -266,6 +266,7 @@ public class SceneBuilder
         {
           Fill(properties, element, look?.Fill, look?.Origins.GetValueOrDefault("fill"));
         }
+        Strokes(properties, "stroke", look?.Stroke, element.Stroke);
         break;
       case "chart":
         Set("chart", element.Chart);

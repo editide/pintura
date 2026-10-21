@@ -38,7 +38,8 @@ A `brace` or `bracket` points in its `direction`: `direction: right` opens to th
 | `crop` | `[left, top, right, bottom]` in the image's pixels, trimmed before fitting. |
 | `alt` | Alternative text. |
 | `fill` | An SVG's one color: every fill and stroke in it but `none` takes it, as for an icon. |
-| `style` | A named style, whose `fill` and `opacity` the picture takes. |
+| `stroke` | An outline around the image, `{ color, width, dash }`; the picture's style sets the default. |
+| `style` | A named style, whose `fill`, `stroke`, and `opacity` the picture takes. |
 
 An icon is an SVG from any set, such as Lucide, Tabler, or Material, saved in `media/` and given a `fill` or a style with one, so it follows the theme.
 A `fill` on an SVG of several colors, such as a logo, paints them all in one, and `--check` warns.

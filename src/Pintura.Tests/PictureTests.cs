@@ -185,6 +185,32 @@ public class PictureTests
   }
 
   [Fact]
+  public void A_picture_takes_its_styles_stroke_under_its_own_key_by_key()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/media/photo.png", "not read");
+    deck.Write("theme/styles.yaml", DeckFixture.Styles.Replace("styles:\n",
+      "styles:\n  screenshot: { stroke: { color: accent2, width: 0.5 } }\n"));
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      elements:
+        - { id: own, picture: ../media/photo.png, frame: [0, 0, 24, 24], stroke: { color: accent1, width: 1, dash: dot } }
+        - { id: styled, picture: ../media/photo.png, frame: [40, 0, 24, 24], style: screenshot, stroke: { width: 2 } }
+        - { id: plain, picture: ../media/photo.png, frame: [80, 0, 24, 24] }
+      """);
+
+    // Act
+    List<StrokePayload?> strokes = PayloadBuilder.Build(deck.Load(), 1, (path, fill) => path).Slides[1].Items!
+      .Where(item => item.Kind == "picture")
+      .Select(item => item.Stroke)
+      .ToList();
+
+    // Assert
+    strokes.ShouldBe([new StrokePayload("#4472C4", 1, "dot"), new StrokePayload("#ED7D31", 2, "solid"), null]);
+  }
+
+  [Fact]
   public void A_fill_on_a_picture_that_isnt_an_svg_is_refused()
   {
     // Arrange

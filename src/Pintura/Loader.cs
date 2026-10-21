@@ -1440,7 +1440,7 @@ public partial class PresentationLoader
     bool? decorative = kind is not ("chart" or "table") ? Take("decorative")?.AsBoolean() : null;
     string? style = (texted || kind == "picture") && Take("style") is Node styleNode ? ReadStyleName(styleNode) : null;
     Color? fill = texted && Take("fill") is Node fillNode ? ReadColor(fillNode) : null;
-    Stroke? stroke = kind is "text" or "shape" or "line" && Take("stroke") is Node strokeNode
+    Stroke? stroke = kind is not ("chart" or "table") && Take("stroke") is Node strokeNode
       ? ReadStroke(strokeNode)
       : null;
     var properties = new TextProperties();

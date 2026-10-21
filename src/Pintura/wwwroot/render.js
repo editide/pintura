@@ -334,7 +334,10 @@ function renderPicture(item, parent) {
     image.src = item.picture;
     image.alt = item.alt || '';
     image.style.objectFit = { contain: 'contain', cover: 'cover', stretch: 'fill' }[item.fit];
-    node.loaded = image.decode().catch(() => {});
+    node.loaded = Promise.all([
+      image.decode().catch(() => {}),
+      item.stroke && imageSize(item.picture).then((size) => outline(item, node, size)).catch(() => {})
+    ]);
     return node;
   }
   // A crop needs the image's own size before the visible part can be fitted into the frame.
@@ -348,12 +351,32 @@ function renderPicture(item, parent) {
       'aria-label': item.alt || null
     }, node);
     const image = svgElement('image', { href: item.picture, width, height, preserveAspectRatio: 'none' }, svg);
+    if (item.stroke) {
+      outline(item, node, [width - left - right, height - top - bottom]);
+    }
     return new Promise((resolve) => {
       image.addEventListener('load', resolve);
       image.addEventListener('error', resolve);
     });
   }).catch(() => {});
   return node;
+}
+
+// Where in its frame a picture is drawn, as [x, y, width, height], given the size of the part of the image it shows.
+function fitted(fit, width, height, [imageWidth, imageHeight]) {
+  if (fit !== 'contain' || !imageWidth || !imageHeight) {
+    return [0, 0, width, height];
+  }
+  const scale = Math.min(width / imageWidth, height / imageHeight);
+  return [(width - imageWidth * scale) / 2, (height - imageHeight * scale) / 2, imageWidth * scale, imageHeight * scale];
+}
+
+// A picture's outline hugs the image, as PowerPoint's does, rather than a contained picture's frame.
+function outline(item, node, size) {
+  const [, , frameWidth, frameHeight] = item.frame;
+  const [x, y, width, height] = fitted(item.fit, frameWidth, frameHeight, size);
+  const svg = svgElement('svg', { width: frameWidth, height: frameHeight }, node);
+  svgElement('rect', { x, y, width, height, fill: 'none', ...strokeAttributes(item.stroke) }, svg);
 }
 
 // An SVG's size is its width and height, or else its viewBox; browsers invent 300 × 150 for one with only a viewBox.
@@ -644,5 +667,5 @@ function measureCharts(stage) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { countLines, overflow };
+  module.exports = { countLines, overflow, fitted };
 }
