@@ -105,9 +105,24 @@
             <span class="label">Theme</span>
           </button>
         </div>
-      </div>
-      <div class="group heading">
-        <span class="deck-title" id="deck-title"></span>
+        <div class="saving" id="saving">
+          <button type="button" class="tool save-button" id="save-button" popovertarget="save-menu"
+                  aria-haspopup="dialog" aria-expanded="false" hidden>
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4.5 3.5h9l2 2v11h-11zM7 3.5v4h6v-4M7 16.5v-5h6v5"></path>
+            </svg>
+            <span class="label">Save</span>
+          </button>
+          <button type="button" class="tool versions-button" id="versions-button" popovertarget="versions-menu"
+                  aria-haspopup="menu" aria-expanded="false" hidden>
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3.5 10a6.5 6.5 0 1 0 1.9-4.6M3.5 3.5v3h3"></path>
+              <path d="M10 6.5V10l2.5 1.5"></path>
+            </svg>
+            <span class="label" id="versions-label"></span>
+            <svg class="icon caret" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 8l4 4 4-4"></path></svg>
+          </button>
+        </div>
         <div class="group compare" id="compare">
           <button type="button" class="tool" data-action="before" data-compare="Flip to the revision (B)">
             <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7.5h11.5l-3-3M16 12.5H4.5l3 3"></path></svg>
@@ -120,16 +135,10 @@
             </svg>
             <span class="label">Changes</span>
           </button>
-          <button type="button" class="tool versions-button" id="versions-button" popovertarget="versions-menu"
-                  aria-haspopup="menu" aria-expanded="false" title="Compare with an earlier version">
-            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M3.5 10a6.5 6.5 0 1 0 1.9-4.6M3.5 3.5v3h3"></path>
-              <path d="M10 6.5V10l2.5 1.5"></path>
-            </svg>
-            <span class="label" id="versions-label">Since last save</span>
-            <svg class="icon caret" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 8l4 4 4-4"></path></svg>
-          </button>
         </div>
+      </div>
+      <div class="heading">
+        <span class="deck-title" id="deck-title"></span>
       </div>
       <div class="group">
         <button type="button" class="tool" data-action="inspector" title="Inspector (I)">
@@ -176,8 +185,17 @@
     </div>
     <iframe id="book-frame" title="Book"></iframe>
   </div>
-  <div class="versions-menu" id="versions-menu" popover role="menu" aria-label="Compare with an earlier version">
+  <div class="versions-menu" id="versions-menu" popover role="menu" aria-label="Show the changes since a version">
   </div>
+  <form class="save-menu" id="save-menu" popover aria-labelledby="save-heading">
+    <label for="save-message" id="save-heading"></label>
+    <input type="text" id="save-message" autocomplete="off" placeholder="Describing the changes…">
+    <p class="save-error" id="save-error" hidden></p>
+    <div class="save-actions">
+      <span class="save-hint">Enter to save, Esc to cancel</span>
+      <button type="submit" class="tool primary" id="save-submit">Save</button>
+    </div>
+  </form>
   <div class="export-menu" id="export-menu" popover role="menu" aria-label="Export the presentation">
     <button type="button" role="menuitem" data-format="pptx">PowerPoint<span>.pptx</span></button>
     <button type="button" role="menuitem" data-format="pdf">PDF<span>.pdf</span></button>
@@ -226,8 +244,9 @@
     </dl>
     <h3>Changes</h3>
     <dl>
+      <dt><kbd>Ctrl</kbd> + <kbd>S</kbd></dt><dd>Save the changes as a new version</dd>
       <dt><kbd>D</kbd></dt><dd>Show only the changed slides, or every slide</dd>
-      <dt><kbd>B</kbd></dt><dd>Flip to the revision compared against</dd>
+      <dt><kbd>B</kbd></dt><dd>Flip to the version compared against</dd>
       <dt><kbd>C</kbd></dt><dd>Mark the changes since it</dd>
     </dl>
     <p class="shortcuts-foot"><kbd>?</kbd> Show this list</p>

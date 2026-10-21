@@ -11,11 +11,20 @@ namespace Pintura;
 /// name into a folder of its own.</summary>
 public record Revision(string Name, string Commit, string Folder, string Root, string DisplayBase);
 
-/// <summary>A commit that changed a presentation, as the page lists it to compare against.</summary>
-public record DeckVersion(string Commit, DateTimeOffset Date, string Subject, string Author, bool Mine,
+/// <summary>A commit that changed a presentation, as the page lists it to compare against, numbered from its first.
+/// </summary>
+public record DeckVersion(int Number, string Commit, DateTimeOffset Date, string Subject, string Author, bool Mine,
   List<string> Tags);
 
-public record VersionChanges(int Slides, bool First);
+/// <summary>The repository's top, the presentation's folder in it, and the paths its versions cover: the folder and
+/// theme it saves, and the books it reads, which Libreta saves.</summary>
+public record VersionScope(string Top, string Presentation, List<string> Saved, List<string> Books)
+{
+  public string CommentFile => $"{(Presentation == "." ? "" : Presentation + "/")}{Pintura.CommentFile.Name}";
+
+  /// <summary>Comments are about a version rather than part of one.</summary>
+  public string Comments => $":(exclude){CommentFile}";
+}
 
 /// <summary>Presentations at a git revision. Each commit is extracted once, under the temporary folder, and loaded by
 /// the same loader as the working tree, with origins named as the working tree names them.</summary>
@@ -110,28 +119,35 @@ public static class Revisions
     }
   }
 
+  /// <summary>The paths a presentation's versions cover, as the working tree's manifest names them.</summary>
+  public static VersionScope Scope(string root)
+  {
+    root = Path.GetFullPath(root);
+    (string top, string spelled, string presentation) = Locate(root);
+    string manifest = File.ReadAllText(Path.Combine(root, "presentation.yaml"));
+    List<(string? Book, string Path)> linked = Linked(root, spelled, manifest, "HEAD").ToList();
+    return new VersionScope(top, presentation,
+      [presentation, .. linked.Where(path => path.Book is null).Select(path => path.Path)],
+      [.. linked.Where(path => path.Book is not null).Select(path => path.Path)]);
+  }
+
   /// <summary>The commits on the current branch that changed the presentation, its theme, or its books, newest first;
   /// empty outside a repository or before the presentation's first commit.</summary>
   public static List<DeckVersion> Versions(string root, int limit = 50)
   {
-    root = Path.GetFullPath(root);
     try
     {
-      (string top, string spelled, string presentation) = Locate(root);
-      string manifest = File.ReadAllText(Path.Combine(root, "presentation.yaml"));
-      List<string> paths = Linked(root, spelled, manifest, "HEAD").Select(linked => linked.Path)
-        .Prepend(presentation).ToList();
-      // Comments are about a version rather than part of one.
-      string comments = $":(exclude){(presentation == "." ? "" : presentation + "/")}{CommentFile.Name}";
-      (int exit, string output, _) = Run(top, ["log", "--first-parent", $"-n{limit}", $"--format={Format}", "HEAD",
-        "--", .. paths, comments]);
+      VersionScope scope = Scope(root);
+      (int exit, string output, _) = Run(scope.Top, ["log", "--first-parent", $"-n{limit}", $"--format={Format}",
+        "HEAD", "--", .. scope.Saved, .. scope.Books, scope.Comments]);
       if (exit != 0)
       {
         return [];
       }
-      string email = Run(top, "config", "user.email").Output.Trim();
+      int count = Count(scope, "HEAD");
+      string email = Run(scope.Top, "config", "user.email").Output.Trim();
       return output.Split('\x1e', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .Select(record => Version(record, email))
+        .Select((record, index) => Version(count - index, record, email))
         .ToList();
     }
     catch (Exception exception) when (exception is InvalidDataException or IOException)
@@ -140,46 +156,38 @@ public static class Revisions
     }
   }
 
+  /// <summary>How many versions the presentation had as of a commit, which numbers the newest of them.</summary>
+  public static int Count(VersionScope scope, string commit)
+  {
+    (int exit, string output, _) = Run(scope.Top, ["rev-list", "--count", "--first-parent", commit, "--",
+      .. scope.Saved, .. scope.Books, scope.Comments]);
+    return exit == 0 ? int.Parse(output.Trim(), CultureInfo.InvariantCulture) : 0;
+  }
+
   /// <summary>One commit as a version, named by its full hash.</summary>
   public static DeckVersion Describe(string root, string commit)
   {
-    string top = TopLevel(root);
-    (int exit, string output, _) = Run(top, "log", "-1", $"--format={Format}", commit, "--");
+    VersionScope scope = Scope(root);
+    (int exit, string output, _) = Run(scope.Top, "log", "-1", $"--format={Format}", commit, "--");
     if (exit != 0)
     {
       throw new InvalidDataException($"no revision '{commit}'");
     }
-    return Version(output.Trim().TrimEnd('\x1e'), Run(top, "config", "user.email").Output.Trim());
-  }
-
-  /// <summary>How many slides a commit changed from its first parent, or every slide it has when it's the
-  /// presentation's first.</summary>
-  public static VersionChanges Changes(string root, string revision)
-  {
-    Presentation after = Load(root, revision);
-    Presentation before;
-    try
-    {
-      before = Load(root, Commit(root, $"{Commit(root, revision)}^"));
-    }
-    catch (InvalidDataException)
-    {
-      return new VersionChanges(after.Slides.Count, true);
-    }
-    return new VersionChanges(Differ.Compare(before, after).Slides.Count, false);
+    return Version(Count(scope, commit), output.Trim().TrimEnd('\x1e'),
+      Run(scope.Top, "config", "user.email").Output.Trim());
   }
 
   // Unit and record separators, which no subject or name holds.
   private const string Format = "%H%x1f%aI%x1f%an%x1f%ae%x1f%D%x1f%s%x1e";
 
-  private static DeckVersion Version(string record, string email)
+  private static DeckVersion Version(int number, string record, string email)
   {
     string[] fields = record.Split('\x1f');
     List<string> tags = fields[4].Split(", ", StringSplitOptions.RemoveEmptyEntries)
       .Where(reference => reference.StartsWith("tag: ", StringComparison.Ordinal))
       .Select(reference => reference["tag: ".Length..])
       .ToList();
-    return new DeckVersion(fields[0], DateTimeOffset.Parse(fields[1], CultureInfo.InvariantCulture), fields[5],
+    return new DeckVersion(number, fields[0], DateTimeOffset.Parse(fields[1], CultureInfo.InvariantCulture), fields[5],
       fields[2], email.Length > 0 && string.Equals(fields[3], email, StringComparison.OrdinalIgnoreCase), tags);
   }
 
@@ -366,7 +374,8 @@ public static class Revisions
     return exit == 0 ? output.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToList() : [];
   }
 
-  private static IEnumerable<string> FileValues(YamlNode node)
+  /// <summary>The paths a YAML node names as pictures or CSVs, as written.</summary>
+  public static IEnumerable<string> FileValues(YamlNode node)
   {
     if (node is YamlSequenceNode sequence)
     {
@@ -387,7 +396,7 @@ public static class Revisions
     return Path.GetRelativePath(from, to).Replace('\\', '/');
   }
 
-  private static (int Exit, string Output, string Error) Run(string folder, params string[] arguments)
+  public static (int Exit, string Output, string Error) Run(string folder, params string[] arguments)
   {
     ProcessStartInfo start = Start(folder, arguments);
     Process process;

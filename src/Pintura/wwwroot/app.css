@@ -567,6 +567,7 @@ main {
 .toolbar {
   grid-column: 2 / 4;
   container-type: inline-size;
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -647,7 +648,40 @@ main {
   filter: brightness(1.08);
 }
 
+/* Save and the version it would follow, joined as one control. */
+.saving {
+  display: flex;
+  margin-left: 4px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+}
+
+.saving:not(:has(> :not([hidden]))) {
+  display: none;
+}
+
+.saving .tool {
+  height: 28px;
+  border-radius: 0;
+}
+
+.saving .tool:first-child:not([hidden]),
+.saving .tool[hidden] + .tool {
+  border-top-left-radius: calc(var(--radius-md) - 1px);
+  border-bottom-left-radius: calc(var(--radius-md) - 1px);
+}
+
+.saving .tool:last-child {
+  border-top-right-radius: calc(var(--radius-md) - 1px);
+  border-bottom-right-radius: calc(var(--radius-md) - 1px);
+}
+
+.saving .tool:not([hidden]) + .tool:not([hidden]) {
+  border-left: 1px solid var(--rule);
+}
+
 .export-button[aria-expanded="true"],
+.save-button[aria-expanded="true"],
 .versions-button[aria-expanded="true"] {
   background: var(--hover);
   color: var(--ink);
@@ -707,19 +741,81 @@ main {
 }
 
 .versions-button {
-  padding-right: 6px;
+  gap: 5px;
+  padding: 0 4px 0 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.versions-button .caret {
+  margin-left: -2px;
 }
 
 .versions-button .label {
-  max-width: 16rem;
+  max-width: 10rem;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.save-menu {
+  position: fixed;
+  inset: auto;
+  width: min(30rem, calc(100vw - 16px));
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-pop);
+  font-size: 13px;
+}
+
+.save-menu label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.save-menu input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--strong-rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.save-menu input:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent-soft);
+}
+
+.save-error {
+  margin: 8px 0 0;
+  color: var(--bad);
+}
+
+.save-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.save-hint {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.save-actions .tool.primary {
+  margin-left: 0;
 }
 
 .versions-menu {
   position: fixed;
   inset: auto;
-  width: 22rem;
+  width: 26rem;
   max-height: min(28rem, 70vh);
   margin: 0;
   padding: 4px;
@@ -737,12 +833,28 @@ main {
   font-size: 13px;
 }
 
+.versions-heading {
+  padding: 6px 10px 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.versions-day {
+  padding: 10px 10px 4px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* One line a version, its subject cut short, so the list reads down its numbers and times. */
 .version {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
   width: 100%;
-  padding: 6px 10px 6px 26px;
+  padding: 6px 10px;
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
@@ -750,7 +862,6 @@ main {
   font-size: 13px;
   text-align: left;
   cursor: pointer;
-  position: relative;
 }
 
 .version:hover,
@@ -759,23 +870,33 @@ main {
   outline: none;
 }
 
-.version[aria-checked="true"]::before {
-  content: "✓";
-  position: absolute;
-  top: 6px;
-  left: 9px;
+.version[aria-checked="true"] {
+  background: var(--selected);
+}
+
+.version-number {
+  flex: none;
+  width: 2.25rem;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.version[aria-checked="true"] .version-number {
   color: var(--accent);
 }
 
-.version-head {
-  display: flex;
-  gap: 6px;
-  align-items: center;
+.version-subject {
+  flex: 1;
   min-width: 0;
-  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .version-tag {
+  flex: none;
   padding: 0 6px;
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
@@ -783,26 +904,21 @@ main {
   font-size: 11.5px;
 }
 
-.version-count {
+.version-when {
+  flex: none;
   color: var(--muted);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.version-subject {
-  grid-column: 1 / -1;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Takes only the room the controls leave, so a long name truncates rather than wrapping the toolbar. */
+/* Centred on the toolbar rather than between its groups, so Before and Changes coming and going don't move it; the
+   script narrows it to the room the groups leave. */
 .toolbar .heading {
-  flex: 1 1 0;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  translate: -50% -50%;
 }
 
 .deck-title {
@@ -827,20 +943,15 @@ main {
 /* A narrow view keeps the toolbar on one line by dropping labels, which the buttons' titles still give, and the
    deck's name, which would truncate to a letter or two. */
 @container (max-width: 860px) {
-  .tool:not(.primary, .versions-button) .label,
+  .tool:not(.primary, .versions-button, .save-button) .label,
   .deck-title {
     display: none;
-  }
-
-  /* The version compared against isn't in any title, so it stays, shortened. */
-  .versions-button .label {
-    max-width: 8rem;
   }
 }
 
 @container (max-width: 560px) {
   .segmented .label,
-  .versions-button .label {
+  .save-button .label {
     display: none;
   }
 }
@@ -3671,9 +3782,12 @@ kbd {
 
 .tooltip {
   position: fixed;
-  z-index: 100;
+  inset: auto;
   max-width: 352px;
+  margin: 0;
   padding: 4px 8px;
+  border: 0;
+  overflow: visible;
   border-radius: var(--radius-md);
   background: var(--ink);
   color: var(--surface);
@@ -3685,6 +3799,3 @@ kbd {
   pointer-events: none;
 }
 
-.tooltip[hidden] {
-  display: none;
-}

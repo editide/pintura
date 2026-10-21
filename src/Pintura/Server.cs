@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -66,7 +65,18 @@ public static class PreviewServer
     app.MapGet("/api/compare", (string? @base) => comparison.Answer(@base ?? "HEAD"));
     app.MapPost("/api/revert", (RevertRequest request) => comparison.Revert(request));
     app.MapGet("/api/versions", () => Results.Json(Revisions.Versions(store.Root), PayloadJson.Options));
-    app.MapGet("/api/versions/changes", (string commit) => comparison.Changes(commit));
+    app.MapGet("/api/save", () => Saving(() => Saves.Status(store.Root)));
+    app.MapGet("/api/save/draft", () => Saving(() =>
+    {
+      store.Refresh();
+      return new { Message = store.Deck.Error is null ? Saves.Draft(store.Root, store.Presentation) : "" };
+    }));
+    app.MapPost("/api/save", (SaveRequest request) => Saving(() =>
+    {
+      // A nudge just made may still be in the watcher's debounce, and the draft must describe it.
+      store.Refresh();
+      return Saves.Save(store.Root, request.Message, store.Deck.Error is null ? store.Presentation : null);
+    }));
     app.MapGet("/api/media", (HttpContext context, string path, string? fill) =>
     {
       if (!store.TryGetMedia(path, out string? contentType) && !comparison.TryGetMedia(path, out contentType))
@@ -530,6 +540,18 @@ public static class PreviewServer
     return Results.Json(new { Error = message }, PayloadJson.Options, statusCode: status);
   }
 
+  private static IResult Saving<T>(Func<T> answer)
+  {
+    try
+    {
+      return Results.Json(answer(), PayloadJson.Options);
+    }
+    catch (Exception exception) when (exception is InvalidDataException or LoadException or IOException)
+    {
+      return Refused(exception.Message, StatusCodes.Status409Conflict);
+    }
+  }
+
   /// <summary>Whether a request names this machine as its host and, if it asks the API for anything or changes
   /// anything, comes from no other site.</summary>
   public static bool FromThisMachine(HttpRequest request)
@@ -658,8 +680,6 @@ public class Comparison
   private readonly object gate = new object();
   private Side? before;
   private (string Base, string Commit, Presentation After, string Json)? answer;
-  private readonly ConcurrentDictionary<string, VersionChanges> changes =
-    new ConcurrentDictionary<string, VersionChanges>(StringComparer.Ordinal);
 
   public Comparison(PresentationStore store)
   {
@@ -688,20 +708,6 @@ public class Comparison
         answer = (revision, commit, current, json);
         return Results.Text(json, "application/json");
       }
-    }
-    catch (Exception exception) when (exception is InvalidDataException or LoadException)
-    {
-      return Refused(exception.Message);
-    }
-  }
-
-  /// <summary>How many slides a version changed, kept per commit since neither it nor its parent ever moves.</summary>
-  public IResult Changes(string revision)
-  {
-    try
-    {
-      string commit = Revisions.Commit(store.Root, revision);
-      return Results.Json(changes.GetOrAdd(commit, _ => Revisions.Changes(store.Root, commit)), PayloadJson.Options);
     }
     catch (Exception exception) when (exception is InvalidDataException or LoadException)
     {

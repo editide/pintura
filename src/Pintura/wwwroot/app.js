@@ -45,6 +45,8 @@ const state = {
   folds: saved.folds || {},
   // The revision compared against, as drawn, and what changed since; its error when there's nothing to compare.
   compare: null,
+  // Whether the presentation has changes to save, and the number its next version takes; null outside saving's reach.
+  saving: null,
   before: false,
   presenting: false,
   // The slide's zoom over its fit, kept between slides but not between visits.
@@ -155,10 +157,7 @@ function renderToolbar() {
   for (const button of document.querySelectorAll('.toolbar [data-action]')) {
     button.setAttribute('aria-pressed', String(pressed[button.dataset.action]));
   }
-  // A version that failed to compare still shows its picker, to choose another.
-  document.getElementById('compare').hidden = !comparing() && compareBase() === 'HEAD';
-  const since = namedBase() || 'last save';
-  document.getElementById('versions-label').textContent = `Since ${since}`;
+  renderSaving();
   renderStatus();
   for (const button of document.querySelectorAll('.toolbar [data-compare]')) {
     button.hidden = !changesToShow();
@@ -789,8 +788,8 @@ function load() {
 }
 
 async function loadOnce() {
-  const [response, compare, theme] = await Promise.all([fetch('api/presentation', { cache: 'no-store' }),
-    fetchCompare(), fetch('api/theme', { cache: 'no-store' })]);
+  const [response, compare, theme, saving] = await Promise.all([fetch('api/presentation', { cache: 'no-store' }),
+    fetchCompare(), fetch('api/theme', { cache: 'no-store' }), fetchSaving()]);
   const deck = await response.json();
   await useFonts(deck.fonts);
   // An edit begun while this waited would have its slide redrawn out from under it.
@@ -802,6 +801,7 @@ async function loadOnce() {
     state.themeView = await theme.json();
   }
   state.compare = compare;
+  state.saving = saving;
   if (!comparing()) {
     state.before = false;
   }
@@ -1201,8 +1201,7 @@ function versionItems() {
   return [...document.getElementById('versions-menu').querySelectorAll('[role="menuitemradio"]')];
 }
 
-// The deck's versions, newest first, the newest standing for the last commit, with what each changed counted one at
-// a time while the menu stays open, since counting loads the version and the one before it.
+// The deck's versions, newest first and under the day each was saved, the newest standing for the last save.
 async function renderVersions(menu) {
   menu.replaceChildren();
   element('div', 'versions-note', menu).textContent = 'Loading versions…';
@@ -1220,9 +1219,15 @@ async function renderVersions(menu) {
     element('div', 'versions-note', menu).textContent = 'No saved versions of this presentation yet';
     return;
   }
+  element('div', 'versions-heading', menu).textContent = 'Show the changes since';
   const chosen = compareBase();
-  const counts = [];
+  let day = null;
   versions.forEach((version, index) => {
+    const date = new Date(version.date);
+    if (versionDay(date) !== day) {
+      day = versionDay(date);
+      element('div', 'versions-day', menu).textContent = day;
+    }
     const latest = index === 0;
     const selected = latest ? chosen === 'HEAD' : chosen !== 'HEAD' && version.commit.startsWith(chosen);
     const button = element('button', 'version', menu);
@@ -1230,35 +1235,20 @@ async function renderVersions(menu) {
     button.setAttribute('role', 'menuitemradio');
     button.setAttribute('aria-checked', String(selected));
     button.dataset.commit = latest ? '' : version.commit;
-    const when = versionName(new Date(version.date));
-    const head = element('span', 'version-head', button);
-    element('span', 'version-when', head).textContent = latest ? `Last save · ${when}` : when;
+    element('span', 'version-number', button).textContent = `v${version.number}`;
+    const subject = element('span', 'version-subject', button);
+    subject.textContent = version.subject;
     for (const tag of version.tags) {
-      element('span', 'version-tag', head).textContent = tag;
+      element('span', 'version-tag', button).textContent = tag;
     }
-    const count = element('span', 'version-count', button);
-    element('span', 'version-subject', button).textContent = version.mine ? version.subject
-      : `${version.subject} — ${version.author}`;
-    button.title = `${version.subject}\n${version.author} · ${version.commit.slice(0, 7)}`;
-    counts.push({ commit: version.commit, count });
+    element('span', 'version-when', button).textContent = version.mine ? versionTime(date)
+      : `${version.author} · ${versionTime(date)}`;
+    // Only a subject cut short says more in a tooltip than the row already does.
+    if (subject.scrollWidth > subject.clientWidth) {
+      button.title = version.subject;
+    }
   });
   (versionItems().find((item) => item.getAttribute('aria-checked') === 'true') || versionItems()[0]).focus();
-  for (const { commit, count } of counts) {
-    if (!menu.matches(':popover-open')) {
-      return;
-    }
-    try {
-      const response = await fetch(`api/versions/changes?commit=${commit}`, { cache: 'no-store' });
-      if (response.ok) {
-        const { slides, first } = await response.json();
-        count.textContent = first ? 'First version'
-          : slides === 0 ? 'No visible change'
-          : `${slides} ${slides === 1 ? 'slide' : 'slides'}`;
-      }
-    } catch {
-      // A count that fails leaves its version uncounted.
-    }
-  }
 }
 
 document.getElementById('versions-menu').addEventListener('toggle', (event) => {
@@ -1268,9 +1258,7 @@ document.getElementById('versions-menu').addEventListener('toggle', (event) => {
     return;
   }
   const menu = event.target;
-  const anchor = document.getElementById('versions-button').getBoundingClientRect();
-  menu.style.top = `${anchor.bottom + 4}px`;
-  menu.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - menu.offsetWidth - 8))}px`;
+  placeBelow(menu, document.getElementById('saving'));
   renderVersions(menu);
 });
 
@@ -1292,7 +1280,7 @@ document.getElementById('versions-menu').addEventListener('click', async (event)
   }
   event.currentTarget.hidePopover();
   chooseBase(item.dataset.commit);
-  document.getElementById('versions-label').textContent = 'Comparing…';
+  document.getElementById('versions-label').textContent = '…';
   await load().catch((error) => showError(String(error)));
   renderToolbar();
   if (state.compare?.error) {
@@ -1304,6 +1292,135 @@ document.getElementById('versions-menu').addEventListener('click', async (event)
     }
   }
 });
+
+function fitTitle() {
+  const toolbar = document.querySelector('.toolbar');
+  const [start, end] = toolbar.querySelectorAll(':scope > .group');
+  const box = toolbar.getBoundingClientRect();
+  const middle = box.left + box.width / 2;
+  const room = 2 * Math.min(middle - start.getBoundingClientRect().right, end.getBoundingClientRect().left - middle) -
+    24;
+  const heading = toolbar.querySelector('.heading');
+  heading.style.maxWidth = `${Math.max(0, room)}px`;
+  heading.hidden = room < 80;
+}
+
+const titleRoom = new ResizeObserver(fitTitle);
+for (const node of document.querySelectorAll('.toolbar, .toolbar > .group')) {
+  titleRoom.observe(node);
+}
+
+function placeBelow(popover, anchor) {
+  const box = anchor.getBoundingClientRect();
+  popover.style.top = `${box.bottom + 4}px`;
+  popover.style.left = `${Math.max(8, Math.min(box.left, innerWidth - popover.offsetWidth - 8))}px`;
+}
+
+// #endregion
+
+// #region Saving
+
+async function fetchSaving() {
+  try {
+    const response = await fetch('api/save', { cache: 'no-store' });
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+// Saving is the page's word for committing: Save shows while the presentation differs from its last version, and the
+// picker beside it names the version the changes are counted from.
+function renderSaving() {
+  const saving = state.saving;
+  const button = document.getElementById('save-button');
+  button.hidden = !saving?.unsaved;
+  if (saving) {
+    button.title = `Save the changes as v${saving.next} (Ctrl+S)`;
+  }
+  const versions = document.getElementById('versions-button');
+  // A version that failed to compare still shows its picker, to choose another.
+  versions.hidden = !comparing() && compareBase() === 'HEAD';
+  const name = comparing() ? `v${state.compare.version.number}` : compareBase().slice(0, 7);
+  document.getElementById('versions-label').textContent = `Since ${name}`;
+  versions.title = comparing() ? `Showing the changes since ${name}: ${state.compare.version.subject}`
+    : 'Choose a version to show the changes since';
+}
+
+function openSave() {
+  const menu = document.getElementById('save-menu');
+  if (menu.matches(':popover-open')) {
+    menu.requestSubmit();
+  } else if (state.saving?.unsaved) {
+    menu.showPopover();
+  }
+}
+
+// Opens on a description of the changes, selected so typing replaces it.
+document.getElementById('save-menu').addEventListener('toggle', async (event) => {
+  const open = event.newState === 'open';
+  document.getElementById('save-button').setAttribute('aria-expanded', String(open));
+  if (!open) {
+    return;
+  }
+  const menu = event.target;
+  placeBelow(menu, document.getElementById('saving'));
+  document.getElementById('save-heading').textContent = `Save as v${state.saving.next}`;
+  document.getElementById('save-error').hidden = true;
+  document.getElementById('save-submit').disabled = false;
+  const input = document.getElementById('save-message');
+  input.value = '';
+  input.focus();
+  try {
+    const response = await fetch('api/save/draft', { cache: 'no-store' });
+    const { message } = response.ok ? await response.json() : {};
+    if (message && menu.matches(':popover-open') && input.value === '') {
+      input.value = message;
+      input.select();
+    }
+  } catch {
+    // Without a draft the version takes one when it's saved.
+  }
+});
+
+document.getElementById('save-menu').addEventListener('keydown', (event) => {
+  event.stopPropagation();
+});
+
+document.getElementById('save-menu').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const menu = event.currentTarget;
+  const submit = document.getElementById('save-submit');
+  submit.disabled = true;
+  const response = await fetch('api/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: document.getElementById('save-message').value })
+  }).catch((error) => ({ ok: false, json: async () => ({ error: String(error) }) }));
+  const body = await response.json();
+  if (!response.ok) {
+    const error = document.getElementById('save-error');
+    error.textContent = `Couldn't save: ${body.error}`;
+    error.hidden = false;
+    submit.disabled = false;
+    return;
+  }
+  menu.hidePopover();
+  notice(`Saved as v${body.number}`);
+  // Git's HEAD moving reloads the page too, but the button shouldn't wait for the watcher to settle.
+  state.saving = await fetchSaving();
+  renderSaving();
+});
+
+// Ahead of the page's own keys, which leave a focused field alone, and the browser's, which would save the page.
+document.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') {
+    event.preventDefault();
+    if (state.deck && !bookShown()) {
+      openSave();
+    }
+  }
+}, true);
 
 // #endregion
 

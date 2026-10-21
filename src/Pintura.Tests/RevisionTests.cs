@@ -175,27 +175,6 @@ public class RevisionTests
     versions.ShouldBeEmpty();
   }
 
-  [Fact]
-  public void A_version_counts_the_slides_it_changed_and_the_first_says_so()
-  {
-    // Arrange
-    using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
-    string first = Revisions.Commit(deck.Folder.Root, "HEAD");
-    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
-    Git(deck.Folder.Root, "commit", "-q", "-am", "retitled");
-
-    // Act
-    VersionChanges retitled = Revisions.Changes(deck.Folder.PathTo("deck"), "HEAD");
-    VersionChanges initial = Revisions.Changes(deck.Folder.PathTo("deck"), first);
-
-    // Assert
-    retitled.ShouldBe(new VersionChanges(1, false));
-    initial.ShouldBe(new VersionChanges(2, true));
-  }
-
   public static void Git(string folder, params string[] arguments)
   {
     var start = new ProcessStartInfo("git") { WorkingDirectory = folder, RedirectStandardError = true };

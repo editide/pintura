@@ -336,19 +336,21 @@ function comparing() {
 
 const VERSION_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// A version by when it was saved, its day spoken of as a reader would: today, yesterday, a weekday within the week,
-// or the date, with the year only when it isn't this one.
-function versionName(date, now = new Date()) {
+// The day a version was saved, spoken of as a reader would: today, yesterday, a weekday within the week, or the date,
+// with the year only when it isn't this one.
+function versionDay(date, now = new Date()) {
   const day = (moment) => new Date(moment.getFullYear(), moment.getMonth(), moment.getDate());
   const days = Math.round((day(now) - day(date)) / 86400000);
-  const time = `${date.getHours() % 12 || 12}:${String(date.getMinutes()).padStart(2, '0')} ` +
-    (date.getHours() < 12 ? 'AM' : 'PM');
-  const when = days === 0 ? 'today'
-    : days === 1 ? 'yesterday'
+  return days === 0 ? 'Today'
+    : days === 1 ? 'Yesterday'
     : days > 1 && days < 7 ? date.toLocaleDateString('en-GB', { weekday: 'long' })
     : `${VERSION_MONTHS[date.getMonth()]} ${date.getDate()}` +
       (date.getFullYear() === now.getFullYear() ? '' : `, ${date.getFullYear()}`);
-  return `${when} ${time}`;
+}
+
+function versionTime(date) {
+  return `${date.getHours() % 12 || 12}:${String(date.getMinutes()).padStart(2, '0')} ` +
+    (date.getHours() < 12 ? 'AM' : 'PM');
 }
 
 function baseName() {
@@ -360,7 +362,7 @@ function namedBase() {
   if (compareBase() === 'HEAD') {
     return null;
   }
-  return comparing() ? versionName(new Date(state.compare.version.date)) : compareBase();
+  return comparing() ? `v${state.compare.version.number}` : compareBase();
 }
 
 function sinceBase() {
@@ -762,5 +764,5 @@ function renderSlideChanges(slide, panel) {
 // #endregion
 
 if (typeof module !== 'undefined') {
-  module.exports = { changeMarks, changedStep, chartParts, textChanges, textDiff, textMarks, versionName };
+  module.exports = { changeMarks, changedStep, chartParts, textChanges, textDiff, textMarks, versionDay, versionTime };
 }

@@ -65,17 +65,46 @@ public class ServerTests
     System.Text.Json.JsonElement versions =
       await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/versions");
     string first = versions[1].GetProperty("commit").GetString()!;
-    System.Text.Json.JsonElement changes =
-      await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/versions/changes?commit={first}");
     System.Text.Json.JsonElement compare =
       await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/compare?base={first}");
 
     // Assert
     versions.GetArrayLength().ShouldBe(2);
     versions[0].GetProperty("subject").GetString().ShouldBe("retitled");
-    changes.GetProperty("first").GetBoolean().ShouldBeTrue();
+    versions[0].GetProperty("number").GetInt32().ShouldBe(2);
     compare.GetProperty("version").GetProperty("subject").GetString().ShouldBe("first");
+    compare.GetProperty("version").GetProperty("number").GetInt32().ShouldBe(1);
     compare.GetProperty("diff").GetProperty("slides").GetArrayLength().ShouldBe(1);
+  }
+
+  [Fact]
+  public async Task Saving_commits_a_nudge_under_its_draft_and_leaves_nothing_unsaved()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    await using Served served = await Served.Start(deck);
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    System.Text.Json.JsonElement unsaved =
+      await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/save");
+    System.Text.Json.JsonElement draft =
+      await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/save/draft");
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/save", new { });
+    System.Text.Json.JsonElement saved = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+    System.Text.Json.JsonElement after =
+      await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/save");
+
+    // Assert
+    unsaved.GetProperty("unsaved").GetBoolean().ShouldBeTrue();
+    unsaved.GetProperty("next").GetInt32().ShouldBe(2);
+    draft.GetProperty("message").GetString().ShouldBe("Reworded slide 2");
+    saved.GetProperty("number").GetInt32().ShouldBe(2);
+    saved.GetProperty("subject").GetString().ShouldBe("Reworded slide 2");
+    after.GetProperty("unsaved").GetBoolean().ShouldBeFalse();
   }
 
   [Fact]
