@@ -81,6 +81,25 @@ public class SaveTests
   }
 
   [Fact]
+  public void Saving_commits_the_comments_with_the_presentation()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    deck.Write("deck/comments.yaml", "- { id: a1, slide: two, at: [0, 0], text: Hi, done: Said hi }");
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Hi");
+
+    // Act
+    Saves.Save(root, "Said hi");
+
+    // Assert
+    Status(deck.Folder.Root).ShouldBeEmpty();
+  }
+
+  [Fact]
   public void Saving_leaves_new_files_out_unless_they_are_yaml_or_named_by_it()
   {
     // Arrange
