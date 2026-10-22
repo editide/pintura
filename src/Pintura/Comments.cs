@@ -22,22 +22,43 @@ public record Comment
   public string? Done { get; init; }
   /// <summary>Why an agent didn't act on it.</summary>
   public string? Skipped { get; init; }
+  /// <summary>What the reviewer asked for after an agent marked the comment, each marked in turn.</summary>
+  public List<Reply>? Replies { get; init; }
   [JsonIgnore] public Origin Origin { get; init; } = new Origin("", 0, 0);
+
+  /// <summary>The note on the last thing asked, the last reply or else the comment; with neither note, the comment
+  /// waits on an agent.</summary>
+  [JsonIgnore] public string? LastDone => Replies is [.., Reply last] ? last.Done : Done;
+  [JsonIgnore] public string? LastSkipped => Replies is [.., Reply last] ? last.Skipped : Skipped;
+}
+
+/// <summary>A reviewer's answer to a comment an agent marked: more to do, or with <see cref="Revert"/>, undoing what
+/// the agent did, where the words, if any, say why.</summary>
+public record Reply
+{
+  public string? By { get; init; }
+  public string? Date { get; init; }
+  public string? Text { get; init; }
+  [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool Revert { get; init; }
+  public string? Done { get; init; }
+  public string? Skipped { get; init; }
 }
 
 /// <summary>One change to <c>comments.yaml</c>: a comment added, before the one <paramref name="Before"/> names when
-/// it is put back where it was; one removed; one reworded to <paramref name="Text"/>, which reopens it; one reopened;
-/// one restored as it was; or <paramref name="Many"/> of these, made together or not at all.</summary>
+/// it is put back where it was; one removed; its last ask reworded to <paramref name="Text"/>, which reopens it; one
+/// replied to with <paramref name="Text"/>, or reverted; one restored as it was; or <paramref name="Many"/> of these,
+/// made together or not at all.</summary>
 public record CommentChange(Comment? Add = null, string? Before = null, string? Remove = null, string? Id = null,
-  string? Text = null, string? Reopen = null, Comment? Restore = null, List<CommentChange>? Many = null)
+  string? Text = null, string? Reply = null, bool Revert = false, Comment? Restore = null,
+  List<CommentChange>? Many = null)
 {
   public int Kinds => (Add is null ? 0 : 1) + (Remove is null ? 0 : 1) + (Id is null ? 0 : 1) +
-    (Reopen is null ? 0 : 1) + (Restore is null ? 0 : 1) + (Many is null ? 0 : 1);
+    (Reply is null ? 0 : 1) + (Restore is null ? 0 : 1) + (Many is null ? 0 : 1);
 }
 
 /// <summary>A comment as <c>--comments</c> lists it, with the file and line that write what it points at.</summary>
 public record CommentEntry(string Id, string Slide, string? Element, double[] At, string? By, string? Date,
-  string Text, string? Done, string? Skipped, string? File, int? Line);
+  string Text, string? Done, string? Skipped, List<Reply>? Replies, string? File, int? Line);
 
 /// <summary>Reads and writes <c>comments.yaml</c>, the comments beside the slides rather than in them, so a reviewer
 /// pinning one never touches a file an agent is editing. Each change rewrites only its own entry.</summary>
@@ -72,6 +93,7 @@ public static class CommentFile
     foreach (Node node in document.AsList())
     {
       MapNode map = node.AsMap();
+      List<Node> replies = map.Take("replies")?.AsList() ?? [];
       var comment = new Comment
       {
         Id = map.Require("id").AsString(),
@@ -83,12 +105,31 @@ public static class CommentFile
         Text = map.Require("text").AsString(),
         Done = map.Take("done")?.AsString(),
         Skipped = map.Take("skipped")?.AsString(),
+        Replies = replies.Count > 0 ? replies.Select(ReadReply).ToList() : null,
         Origin = new Origin(document.File.Display, node.Origin.Line, node.Origin.Column)
       };
       map.Done();
       if (comment.Done is not null && comment.Skipped is not null)
       {
         throw node.Error($"comment {comment.Id} is either done or skipped, not both");
+      }
+      (string? done, string? skipped) = (comment.Done, comment.Skipped);
+      for (int index = 0; index < replies.Count; index++)
+      {
+        Reply reply = comment.Replies![index];
+        if (done is null && skipped is null)
+        {
+          throw replies[index].Error($"comment {comment.Id} has a reply before an agent marked what it answers");
+        }
+        if (reply.Revert && done is null)
+        {
+          throw replies[index].Error($"comment {comment.Id} reverts what an agent skipped rather than did");
+        }
+        if (reply.Done is not null && reply.Skipped is not null)
+        {
+          throw replies[index].Error($"comment {comment.Id} has a reply either done or skipped, not both");
+        }
+        (done, skipped) = (reply.Done, reply.Skipped);
       }
       if (!ids.Add(comment.Id))
       {
@@ -98,6 +139,23 @@ public static class CommentFile
       entries.Add(new Entry(comment, text.LastIndexOf('\n', Math.Max(start - 1, 0)) + 1, end));
     }
     return entries;
+  }
+
+  private static Reply ReadReply(Node node)
+  {
+    MapNode map = node.AsMap();
+    bool revert = map.Take("revert")?.AsBoolean() ?? false;
+    var reply = new Reply
+    {
+      By = map.Take("by")?.AsString(),
+      Date = map.Take("date")?.AsString(),
+      Text = revert ? map.Take("text")?.AsString() : map.Require("text").AsString(),
+      Revert = revert,
+      Done = map.Take("done")?.AsString(),
+      Skipped = map.Take("skipped")?.AsString()
+    };
+    map.Done();
+    return reply;
   }
 
   /// <summary>Applies a change and answers with the change that undoes it. A comment someone already removed is a
@@ -135,7 +193,7 @@ public static class CommentFile
           : InDeckOrder(presentation, entries, comment.Slide);
         return (Insert(text, entries, index, comment), new CommentChange(Remove: comment.Id));
       }
-      string id = change.Remove ?? change.Id ?? change.Reopen ?? change.Restore!.Id;
+      string id = change.Remove ?? change.Id ?? change.Reply ?? change.Restore!.Id;
       int at = entries.FindIndex(entry => entry.Comment.Id == id);
       if (at < 0)
       {
@@ -147,9 +205,19 @@ public static class CommentFile
         string? next = at + 1 < entries.Count ? entries[at + 1].Comment.Id : null;
         return (Without(text, entries, at), new CommentChange(Add: existing, Before: next));
       }
-      Comment changed = change.Restore is Comment restore
-        ? existing with { Text = Words(restore.Text), Done = restore.Done, Skipped = restore.Skipped }
-        : existing with { Text = change.Text is null ? existing.Text : Words(change.Text), Done = null, Skipped = null };
+      Comment changed = change switch
+      {
+        { Restore: Comment restore } => existing with
+        {
+          Text = Words(restore.Text), Done = restore.Done, Skipped = restore.Skipped,
+          Replies = restore.Replies is { Count: > 0 } replies ? replies : null
+        },
+        { Reply: not null } => existing with
+        {
+          Replies = [.. existing.Replies ?? [], Answer(existing, change, author, now)]
+        },
+        _ => Reworded(existing, Words(change.Text))
+      };
       return (Replace(text, entries, at, changed), new CommentChange(Restore: existing));
     });
   }
@@ -242,6 +310,42 @@ public static class CommentFile
     }
   }
 
+  private static Reply Answer(Comment comment, CommentChange change, string author, DateTime now)
+  {
+    if (comment.LastDone is null && comment.LastSkipped is null)
+    {
+      throw new PatchException($"comment {comment.Id} still waits on an agent; reword it instead", true);
+    }
+    if (change.Revert && comment.LastDone is null)
+    {
+      throw new PatchException($"comment {comment.Id} was skipped, so there's nothing to revert", true);
+    }
+    return new Reply
+    {
+      By = author,
+      Date = Stamp(now),
+      Text = change.Revert && string.IsNullOrWhiteSpace(change.Text) ? null : Words(change.Text),
+      Revert = change.Revert
+    };
+  }
+
+  /// <summary>The comment with its last ask, the last reply or else its own text, reworded and waiting again.
+  /// </summary>
+  private static Comment Reworded(Comment comment, string text)
+  {
+    if (comment.Replies is [.., Reply last])
+    {
+      Reply reworded = last with { Text = text, Done = null, Skipped = null };
+      return comment with { Replies = [.. comment.Replies[..^1], reworded] };
+    }
+    return comment with { Text = text, Done = null, Skipped = null };
+  }
+
+  private static string Stamp(DateTime now)
+  {
+    return now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+  }
+
   private static Comment Draft(Presentation presentation, Comment draft, List<Entry> entries, string author,
     DateTime now)
   {
@@ -267,7 +371,7 @@ public static class CommentFile
       Id = draft.Id.Length > 0 ? draft.Id : NewId(taken),
       At = [Math.Round(x, 1), Math.Round(y, 1)],
       By = draft.By ?? author,
-      Date = draft.Date ?? now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+      Date = draft.Date ?? Stamp(now),
       Text = Words(draft.Text)
     };
   }
@@ -326,7 +430,44 @@ public static class CommentFile
     {
       map["skipped"] = comment.Skipped;
     }
-    return YamlWriter.Item(map);
+    string rendered = YamlWriter.Item(map);
+    if (comment.Replies is not { Count: > 0 } replies)
+    {
+      return rendered;
+    }
+    // Written in block style whatever their length, so a thread reads down the page.
+    IEnumerable<string> lines = replies.SelectMany(reply => YamlWriter.Item(Render(reply)).Split('\n'));
+    return rendered + "\n  replies:\n" + string.Join("\n", lines.Select(line => line.Length == 0 ? "" : "    " + line));
+  }
+
+  private static OrderedDictionary<string, object?> Render(Reply reply)
+  {
+    var map = new OrderedDictionary<string, object?>();
+    if (reply.By is not null)
+    {
+      map["by"] = reply.By;
+    }
+    if (reply.Date is not null)
+    {
+      map["date"] = reply.Date;
+    }
+    if (reply.Text is not null)
+    {
+      map["text"] = reply.Text;
+    }
+    if (reply.Revert)
+    {
+      map["revert"] = true;
+    }
+    if (reply.Done is not null)
+    {
+      map["done"] = reply.Done;
+    }
+    if (reply.Skipped is not null)
+    {
+      map["skipped"] = reply.Skipped;
+    }
+    return map;
   }
 
   private static string Insert(string text, List<Entry> entries, int index, Comment comment)
@@ -384,7 +525,7 @@ public static class CommentList
   {
     Origin? target = Target(presentation, comment);
     return new CommentEntry(comment.Id, comment.Slide, comment.Element, comment.At, comment.By, comment.Date,
-      comment.Text, comment.Done, comment.Skipped, target?.File, target?.Line);
+      comment.Text, comment.Done, comment.Skipped, comment.Replies, target?.File, target?.Line);
   }
 
   /// <summary>The line that writes the element a comment points at, or the slide's file when it points at none.
@@ -422,28 +563,41 @@ public static class CommentList
         ? $"{entry.Slide} at [{YamlWriter.Number(entry.At[0])}, {YamlWriter.Number(entry.At[1])}]"
         : $"{entry.Slide}/{entry.Element}";
       string target = entry.File is null ? "no longer in the presentation" : $"{entry.File}:{entry.Line}";
-      string mark = entry.Done is not null ? "  done" : entry.Skipped is not null ? "  skipped" : "";
+      Reply last = Last(entry);
+      string mark = last.Done is not null ? "  done" : last.Skipped is not null ? "  skipped" : "";
       output.WriteLine($"{entry.Id}  {where}  {target}{mark}");
-      string by = entry.By is null ? "" : entry.Date is null ? $"{entry.By}: " : $"{entry.By}, {entry.Date}: ";
-      output.WriteLine($"    {by}{Indented(entry.Text)}");
-      if (entry.Done is not null)
+      var asks = new List<Reply> { new Reply { By = entry.By, Date = entry.Date, Text = entry.Text, Done = entry.Done,
+        Skipped = entry.Skipped } };
+      asks.AddRange(entry.Replies ?? []);
+      foreach (Reply ask in asks)
       {
-        output.WriteLine($"    done: {Indented(entry.Done)}");
-      }
-      if (entry.Skipped is not null)
-      {
-        output.WriteLine($"    skipped: {Indented(entry.Skipped)}");
+        string by = ask.By is null ? "" : ask.Date is null ? $"{ask.By}: " : $"{ask.By}, {ask.Date}: ";
+        string words = ask.Revert ? ask.Text is null ? "revert" : $"revert: {ask.Text}" : ask.Text ?? "";
+        output.WriteLine($"    {by}{Indented(words)}");
+        if (ask.Done is not null)
+        {
+          output.WriteLine($"    done: {Indented(ask.Done)}");
+        }
+        if (ask.Skipped is not null)
+        {
+          output.WriteLine($"    skipped: {Indented(ask.Skipped)}");
+        }
       }
       output.WriteLine();
     }
     string file = presentation.Comments[0].Origin.File;
-    int done = entries.Count(entry => entry.Done is not null);
-    int skipped = entries.Count(entry => entry.Skipped is not null);
+    int done = entries.Count(entry => Last(entry).Done is not null);
+    int skipped = entries.Count(entry => Last(entry).Skipped is not null);
     output.WriteLine($"{entries.Count} comment{(entries.Count == 1 ? "" : "s")} in {file}: " +
       $"{entries.Count - done - skipped} open, {done} done, {skipped} skipped.");
     output.WriteLine("Act on each open one, then mark it done: with what you changed, or skipped: with why, for the " +
-      "reviewer to resolve.");
+      "reviewer to resolve; in a thread, mark its last reply.");
     return 0;
+  }
+
+  private static Reply Last(CommentEntry entry)
+  {
+    return entry.Replies is [.., Reply last] ? last : new Reply { Done = entry.Done, Skipped = entry.Skipped };
   }
 
   private static string Indented(string text)
