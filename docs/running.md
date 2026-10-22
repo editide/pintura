@@ -142,14 +142,15 @@ Without `--port`, a server takes the first free port from 5180; with it, a taken
 
 Right-click the slide to comment on it, pinned to the element under the pointer or to the slide itself, then press Enter to save it, Shift+Enter for a new line, or Escape to drop it.
 Clicking away saves what was written.
-A comment shows as a numbered pin, which follows its element as it moves and opens again on a click to reword or resolve it; the sidebar and the grid count each slide's comments.
+A comment shows as a numbered pin, which follows its element as it moves and opens again on a click to reword, answer, or resolve it; the sidebar and the grid count each slide's comments.
 
 Comments are written to `comments.yaml` beside `presentation.yaml`, never into a slide, so commenting never touches a file an agent is editing.
 Each one names who wrote it, from git's `user.name`, and when.
 Ask an agent to go through them: it runs `--comments`, makes each change, and marks each comment done, with what it changed, or skipped, with why.
 A done pin turns green and a skipped one grey, and opening one shows the agent's note beside your words, so each can be checked against Changes.
-Resolve one from its pin, or every done one with Resolve done above the slides, where the open, done, and skipped are counted; Reopen, or rewording it, hands one back to the agent.
-Ctrl+Z undoes adding, rewording, reopening, or resolving one, or resolving every done one, and deleting a slide deletes its comments, which undoing it puts back.
+Resolve one from its pin, or every done one with Resolve done above the slides, where the open, done, and skipped are counted.
+To hand one back to the agent, type a reply into its pin, or press Revert to have the agent undo what it did, with the reason typed beside it if any; the agent marks the reply as it did the comment, and the pin shows the whole thread.
+Ctrl+Z undoes adding, rewording, replying to, or resolving one, or resolving every done one, and deleting a slide deletes its comments, which undoing it puts back.
 A comment whose element is gone shows as a grey pin, and one on a slide that is gone is listed at the foot of the sidebar to delete; `--check` warns of both.
 
 ## Numbers from a Libreta book

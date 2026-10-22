@@ -461,7 +461,7 @@ public static class PreviewServer
     }
   }
 
-  /// <summary>Adds, removes, rewords, reopens, or restores comments and reloads, answering with the change that undoes it.</summary>
+  /// <summary>Adds, removes, rewords, replies to, or restores comments and reloads, answering with the change that undoes it.</summary>
   private static IResult Comment(PresentationStore store, CommentChange change)
   {
     if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
@@ -470,7 +470,7 @@ public static class PreviewServer
     }
     if (change.Kinds != 1 || change.Many?.Any(each => each.Kinds != 1 || each.Many is not null) == true)
     {
-      return Refused("a change adds, removes, rewords, reopens, or restores one comment, or several at once",
+      return Refused("a change adds, removes, rewords, replies to, or restores one comment, or several at once",
         StatusCodes.Status400BadRequest);
     }
     CommentChange undo;

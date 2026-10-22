@@ -1,7 +1,7 @@
 # comments
 
 Reviewers comment on slides in the preview, and the comments live in `comments.yaml` beside `presentation.yaml`, never in the slides.
-Right-click a slide to write one, pinned to the element under the pointer or to the slide; click a pin to reword, reopen, or resolve it.
+Right-click a slide to write one, pinned to the element under the pointer or to the slide; click a pin to reword, reply to, revert, or resolve it.
 
 ## Working through them
 
@@ -12,7 +12,9 @@ pintura presentations/q3 --comments --json
 
 `--comments` lists them in slide order, each beside the file and line that writes what it points at, which is the line to change.
 Act on each open comment, then mark it in `comments.yaml`: `done:` with what you changed, or `skipped:` with why you didn't.
-Leave the entry: the reviewer checks each marked comment against its pin, then resolves it, which deletes it.
+Leave the entry: the reviewer checks each marked comment against its pin, then resolves it, which deletes it, or answers it with a reply.
+A comment with replies waits on its last one: act on that reply, and mark it `done:` or `skipped:` rather than the comment.
+A reply with `revert: true` asks to undo what the agent did for the comment, for the reason in its `text` if any; put back what that change replaced, then mark the reply `done:`.
 Delete entries only when the reviewer asks: whichever they name, or, asked to clear the comments, those marked `done:`, saying which open or skipped ones are left.
 An empty file means no comments.
 
@@ -29,6 +31,7 @@ An empty file means no comments.
 | `text` | What the reviewer asks for. |
 | `done` | What an agent changed for it, for the reviewer to check. |
 | `skipped` | Why an agent didn't act on it; a comment is done or skipped, never both. |
+| `replies` | The reviewer's answers once an agent marked the comment, in order, each with `by`, `date`, `text`, and its own `done` or `skipped`; `revert: true` asks to undo what was done, and its `text` is optional. |
 
 ## Example
 
@@ -50,9 +53,28 @@ An empty file means no comments.
   text: |-
     Too empty.
     Add the margin chart from the book.
+
+- id: m7wd
+  slide: revenue
+  element: total
+  at: [20, 10]
+  by: Ana
+  date: 2026-10-07 14:08
+  text: Say the growth too
+  done: Added "up 33% on 2024"
+  replies:
+    - by: Ana
+      date: 2026-10-07 16:20
+      text: Put it on its own line
+      done: Moved the growth to a second line
+    - by: Ana
+      date: 2026-10-07 16:45
+      revert: true
+      text: One line read better
 ```
 
-Rewording a marked comment in the preview reopens it, dropping its `done` or `skipped`.
+A reply goes only after a `done` or `skipped`, and a revert only after a `done`.
+Rewording what waits on an agent changes its words in place; once it is marked, the reviewer replies instead.
 The preview writes new comments in slide order, and deleting a slide in the preview deletes its comments, which undo puts back.
 Comments are left out of the export, `--diff`, and the versions the preview compares against.
 
@@ -60,5 +82,6 @@ Comments are left out of the export, `--diff`, and the versions the preview comp
 
 - Deleting a comment because it's done: mark it `done:`, and leave resolving it to the reviewer.
 - Rewording a comment to say it's done: its `text` stays the reviewer's; write `done:` beside it.
+- Marking a comment `done:` again when its last reply waits: mark the reply.
 - Renaming a slide's file and leaving its comments on the old stem: `--check` warns of a comment on a slide or element that no longer exists; update `slide` or `element`.
 - Writing a comment into a slide's file: slides hold only the presentation.

@@ -5,7 +5,7 @@ const test = require('node:test');
 const wwwroot = path.join(__dirname, '..', 'Pintura', 'wwwroot');
 // The page's scripts share one scope, where shapes.js defines the clamp comments.js uses.
 globalThis.clamp = require(path.join(wwwroot, 'shapes.js')).clamp;
-const { commentPoint, commentDraft, commentCounts, commentDate } = require(path.join(wwwroot, 'comments.js'));
+const { commentPoint, commentDraft, commentCounts, commentDate, commentTitle } = require(path.join(wwwroot, 'comments.js'));
 
 const slide = {
   id: 'revenue',
@@ -69,6 +69,32 @@ test('a slide counts its comments as open, done, or skipped', () => {
 
   // Assert
   assert.deepEqual(counts, { open: 2, done: 1, skipped: 1 });
+});
+
+test('a thread counts by its last reply, which waits on an agent until marked', () => {
+  // Arrange
+  const comments = [
+    { text: 'a', done: 'Did it', replies: [{ text: 'More' }] },
+    { text: 'b', done: 'Did it', replies: [{ text: 'More', done: 'Did more' }] },
+    { text: 'c', skipped: 'No data', replies: [{ text: 'Use last year', skipped: 'None either' }] }
+  ];
+
+  // Act
+  const counts = commentCounts(comments);
+
+  // Assert
+  assert.deepEqual(counts, { open: 1, done: 1, skipped: 1 });
+});
+
+test('a pin\'s tooltip reads a thread in order, a revert without words as Revert', () => {
+  // Act
+  const title = commentTitle({
+    by: 'Daniel', date: '2026-10-07 13:00', text: 'Bottom legend', done: 'Moved it',
+    replies: [{ by: 'Daniel', date: '2026-10-07 15:00', revert: true }]
+  });
+
+  // Assert
+  assert.equal(title, 'Daniel, 2026-10-07 1:00 PM\nBottom legend\nDone: Moved it\n\nDaniel, 2026-10-07 3:00 PM\nRevert');
 });
 
 test('a comment shows its time on the 12-hour clock', () => {

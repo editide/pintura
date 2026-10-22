@@ -3569,6 +3569,26 @@ kbd {
   font-weight: 600;
 }
 
+/* Earlier asks and their notes, above the box, scrolling once the thread runs long. */
+.comment-thread {
+  max-height: 240px;
+  margin-bottom: 8px;
+  overflow-y: auto;
+}
+
+.comment-thread .comment-note {
+  margin-bottom: 8px;
+}
+
+.comment-ask {
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.comment-ask.reverting {
+  font-weight: 600;
+}
+
 .comment-count.done {
   background: var(--ok);
 }

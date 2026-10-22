@@ -42,7 +42,7 @@ Start a server only when the user asks to review something, since starting one o
 Before killing processes, check for an instance the user is already running with `pgrep -af Pintura`, and match `pkill` patterns tightly enough to spare it.
 Headless servers show up there as `--headless-server`; they are safe to kill, and a rebuild replaces them on the next command anyway.
 `--list`, `--slide`, and `--element` answer most questions without a server.
-When asked to go through the comments, run `--comments`, make each change, and mark each entry in `comments.yaml` `done:` with what changed or `skipped:` with why, leaving the reviewer to resolve it.
+When asked to go through the comments, run `--comments`, make each change, and mark each entry in `comments.yaml`, or its last reply when it has replies, `done:` with what changed or `skipped:` with why, leaving the reviewer to resolve or answer it.
 Delete entries only when asked: whichever the reviewer names, or, asked to clear the comments, those marked `done:`, saying which open or skipped ones are left.
 
 ## Code

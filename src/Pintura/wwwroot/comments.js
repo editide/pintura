@@ -1,8 +1,9 @@
 'use strict';
 
 // Reviewers' comments: a right-click on the slide pins one there, on the element under the pointer if any, and a pin
-// opens it again to reword, reopen, or resolve. They live in comments.yaml beside the slides, where an agent reads them
-// with --comments and marks each done or skipped with a note, leaving the pin here for the reviewer to check and resolve.
+// opens it again to reword, reply to, revert, or resolve. They live in comments.yaml beside the slides, where an agent
+// reads them with --comments and marks each done or skipped with a note, leaving the pin here for the reviewer to check
+// and resolve, or answer with a reply that the agent marks in turn.
 
 const COMMENT_HINT = 'Enter saves, Esc cancels';
 
@@ -60,8 +61,15 @@ function strayComments() {
   return (state.deck.comments || []).filter((comment) => !ids.has(comment.slide));
 }
 
+// What was asked, in order: the comment, then each reply.
+function commentAsks(comment) {
+  return [comment, ...(comment.replies || [])];
+}
+
+// A thread waits on whatever its last ask does.
 function commentState(comment) {
-  return comment.done ? 'done' : comment.skipped ? 'skipped' : 'open';
+  const last = commentAsks(comment).at(-1);
+  return last.done ? 'done' : last.skipped ? 'skipped' : 'open';
 }
 
 function commentCounts(comments) {
@@ -82,10 +90,16 @@ function commentDate(date) {
   return `${match[1]} ${hour % 12 || 12}:${match[3]} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
+function askWords(ask) {
+  return ask.revert ? (ask.text ? `Revert: ${ask.text}` : 'Revert') : ask.text;
+}
+
 function commentTitle(comment) {
-  const by = [comment.by, commentDate(comment.date)].filter(Boolean).join(', ');
-  const note = comment.done ? `\nDone: ${comment.done}` : comment.skipped ? `\nSkipped: ${comment.skipped}` : '';
-  return (by ? `${by}\n${comment.text}` : comment.text) + note;
+  return commentAsks(comment).map((ask) => {
+    const by = [ask.by, commentDate(ask.date)].filter(Boolean).join(', ');
+    const note = ask.done ? `\nDone: ${ask.done}` : ask.skipped ? `\nSkipped: ${ask.skipped}` : '';
+    return (by ? `${by}\n${askWords(ask)}` : askWords(ask)) + note;
+  }).join('\n\n');
 }
 
 // Numbered pins over the slide, outside its stage so the slide's edges don't clip them and they keep their size at
@@ -151,7 +165,7 @@ function renderCommentSummary() {
     resolve.textContent = 'Resolve done';
     resolve.title = 'Delete every comment marked done';
     resolve.addEventListener('click', () => sendComment({
-      many: comments.filter((comment) => comment.done).map((comment) => ({ remove: comment.id }))
+      many: comments.filter((comment) => commentState(comment) === 'done').map((comment) => ({ remove: comment.id }))
     }, state.current));
   }
 }
@@ -198,37 +212,56 @@ function startComment(event) {
   openComment(draft, { left: event.clientX, top: event.clientY, right: event.clientX, bottom: event.clientY });
 }
 
-// The editor beside a point on screen: empty for a new comment, or holding an existing one's words, and the note an
-// agent marked it with, with ways to reopen and resolve it.
+function askBy(ask, parent) {
+  if (ask.by || ask.date) {
+    element('div', 'comment-by', parent).textContent = [ask.by, commentDate(ask.date)].filter(Boolean).join(', ');
+  }
+}
+
+// The editor beside a point on screen: empty for a new comment. An existing one shows its thread, each ask with the
+// note an agent marked it with; the last ask, while it waits on an agent, stays in the box to reword, and once marked,
+// the box takes a reply, beside ways to revert what was done and to resolve.
 function openComment(comment, anchor) {
   closeComment();
   const existing = Boolean(comment.id);
   const node = element('div', 'comment-editor', document.body);
   node.setAttribute('role', 'dialog');
   node.setAttribute('aria-label', existing ? 'Comment' : 'New comment');
-  if (existing && (comment.by || comment.date)) {
-    element('div', 'comment-by', node).textContent = [comment.by, commentDate(comment.date)].filter(Boolean).join(', ');
+  const marked = existing ? commentState(comment) : 'open';
+  const asks = existing ? commentAsks(comment) : [];
+  const shown = marked === 'open' ? asks.slice(0, -1) : asks;
+  if (shown.length > 0) {
+    const thread = element('div', 'comment-thread', node);
+    for (const ask of shown) {
+      askBy(ask, thread);
+      element('div', `comment-ask${ask.revert ? ' reverting' : ''}`, thread).textContent = askWords(ask);
+      const state = ask.done ? 'done' : 'skipped';
+      const note = element('div', `comment-note ${state}`, thread);
+      element('strong', null, note).textContent = ask.done ? 'Done' : 'Skipped';
+      element('span', null, note).textContent = ask[state];
+    }
+  }
+  if (marked === 'open' && existing) {
+    askBy(asks.at(-1), node);
+    if (asks.at(-1).revert) {
+      element('div', 'comment-ask reverting', node).textContent = 'Revert';
+    }
   }
   const words = element('textarea', null, node);
   words.rows = 3;
-  words.value = existing ? comment.text : '';
-  words.placeholder = existing ? '' : `Comment on ${comment.element || 'the slide'}`;
-  const marked = commentState(comment);
-  if (existing && marked !== 'open') {
-    const note = element('div', `comment-note ${marked}`, node);
-    element('strong', null, note).textContent = marked === 'done' ? 'Done' : 'Skipped';
-    element('span', null, note).textContent = comment[marked];
-  }
+  words.value = marked === 'open' && existing ? asks.at(-1).text || '' : '';
+  words.placeholder = !existing ? `Comment on ${comment.element || 'the slide'}` : marked === 'open' ? '' : 'Reply';
   const foot = element('div', 'comment-foot', node);
   element('span', 'comment-hint', foot).textContent = COMMENT_HINT;
-  if (existing && marked !== 'open') {
-    const reopen = element('button', 'tool', foot);
-    reopen.type = 'button';
-    reopen.textContent = 'Reopen';
-    reopen.title = 'Drop the note and leave the comment for an agent again; rewording it does too';
-    reopen.addEventListener('click', () => {
+  if (marked === 'done') {
+    const revert = element('button', 'tool', foot);
+    revert.type = 'button';
+    revert.textContent = 'Revert';
+    revert.title = 'Ask an agent to undo what it did, for the reason in the box if any';
+    revert.addEventListener('click', () => {
+      const text = words.value.trim();
       closeComment();
-      sendComment({ reopen: comment.id }, comment.slide);
+      sendComment({ reply: comment.id, revert: true, ...(text ? { text } : {}) }, comment.slide);
     });
   }
   if (existing) {
@@ -257,8 +290,8 @@ function openComment(comment, anchor) {
   words.focus();
 }
 
-// Saves what the editor holds: a new comment, new words for an existing one, which reopen it, or, emptied, resolving
-// it.
+// Saves what the editor holds: a new comment; a reply to one an agent marked; or new words for the ask still waiting,
+// where emptying a reply drops it and emptying the comment resolves it.
 function saveComment() {
   const open = commenting.open;
   if (!open) {
@@ -271,9 +304,20 @@ function saveComment() {
     if (text) {
       sendComment({ add: { ...comment, text } }, comment.slide);
     }
+    return;
+  }
+  if (commentState(comment) !== 'open') {
+    if (text) {
+      sendComment({ reply: comment.id, text }, comment.slide);
+    }
+    return;
+  }
+  const replies = comment.replies || [];
+  if (!text && replies.length > 0) {
+    sendComment({ restore: { ...comment, replies: replies.slice(0, -1) } }, comment.slide);
   } else if (!text) {
     sendComment({ remove: comment.id }, comment.slide);
-  } else if (text !== comment.text) {
+  } else if (text !== commentAsks(comment).at(-1).text) {
     sendComment({ id: comment.id, text }, comment.slide);
   }
 }
@@ -308,5 +352,5 @@ function installComments(slideView) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { commentPoint, commentDraft, commentCounts, commentDate };
+  module.exports = { commentPoint, commentDraft, commentCounts, commentDate, commentTitle };
 }
