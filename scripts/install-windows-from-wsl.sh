@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# From WSL, publishes a self-contained Debug build for Windows and copies the themes and presentations beside it, for
-# Windows apps that can't reach WSL. Debug skips the plan check; its recorded source root is a Linux path Windows can't
-# open, so it serves the wwwroot it ships with, and page edits need a rerun.
+# From WSL, publishes a self-contained Debug build for Windows, for Windows apps that can't reach WSL. Debug skips the
+# plan check; its recorded source root is a Linux path Windows can't open, so it serves the wwwroot it ships with, and
+# page edits need a rerun.
 # Usage: scripts/install-windows-from-wsl.sh [windows-folder], defaulting to %USERPROFILE%\dev.
 set -euo pipefail
 
@@ -29,11 +29,8 @@ powershell.exe -NoProfile -Command "Get-Process Pintura -ErrorAction SilentlyCon
 
 "${dotnet_command}" publish "${repository}/src/Pintura" --configuration Debug --runtime win-x64 --self-contained \
   --output "${target}/pintura"
-mkdir -p "${target}/pintura-decks"
-rm -rf "${target}/pintura-decks/themes" "${target}/pintura-decks/presentations"
-cp -r "${repository}/themes" "${repository}/presentations" "${target}/pintura-decks/"
 "${target}/pintura/Pintura.exe" --help >/dev/null
 
 echo
-echo "Installed $(wslpath -w "${target}/pintura")\\Pintura.exe, with the decks in $(wslpath -w "${target}/pintura-decks")"
+echo "Installed $(wslpath -w "${target}/pintura")\\Pintura.exe"
 echo "Add $(wslpath -w "${target}/pintura") to the Windows PATH to run pintura from any directory."
