@@ -288,6 +288,29 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_deck_takes_the_layouts_its_slides_use_and_a_theme_alone_takes_them_all()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = Reads();
+    JsonObject unused = reads["layouts"]![1]!.DeepClone().AsObject();
+    (unused["id"], unused["name"], unused["slides"]) = (99, "Unused", new JsonArray());
+    reads["layouts"]!.AsArray().Add(unused);
+    static List<string> Layouts(PowerPointDeck mapped) =>
+      mapped.Deck["layouts"]!.AsArray().Select(layout => (string)layout!["id"]!).ToList();
+
+    // Act
+    PowerPointDeck deck = PowerPointMapping.Map(reads.DeepClone().AsObject(), Fixture("example.pptx"),
+      output.PathTo("deck"));
+    PowerPointDeck theme = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("theme"),
+      wholeTheme: true);
+
+    // Assert
+    Layouts(deck).ShouldBe(["comparison", "content", "cover", "section"]);
+    Layouts(theme).ShouldBe(["comparison", "content", "cover", "section", "unused"]);
+  }
+
+  [Fact]
   public void The_masters_shapes_go_on_every_layout_behind_its_own()
   {
     // Arrange

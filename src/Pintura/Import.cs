@@ -2333,7 +2333,7 @@ public static class ImportCommand
           List<JsonNode?> picked = only.Pick(reads["slides"]!.AsArray().ToList(), _ => null);
           reads["slides"] = new JsonArray(picked.Select(slide => slide!.DeepClone()).ToArray());
         }
-        PowerPointDeck mapped = PowerPointMapping.Map(reads, source, media);
+        PowerPointDeck mapped = PowerPointMapping.Map(reads, source, media, wholeTheme: themeOnly);
         json = mapped.Deck.ToJsonString();
         pictures = mapped.Media;
         findings.AddRange(mapped.Findings);
