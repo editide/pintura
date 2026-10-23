@@ -43,7 +43,7 @@ Before killing processes, check for an instance the user is already running with
 Headless servers show up there as `--headless-server`; they are safe to kill, and a rebuild replaces them on the next command anyway.
 `--list`, `--slide`, and `--element` answer most questions without a server.
 When asked to go through the comments, run `--comments`, make each change, and mark each entry in `comments.yaml`, or its last reply when it has replies, `done:` with what changed or `skipped:` with why, leaving the reviewer to resolve or answer it.
-Resolve entries only when asked, with `--resolve`, never by deleting them: whichever the reviewer names, or, asked to clear the comments, those marked `done:`, saying which open or skipped ones are left.
+Resolve only the comments the reviewer names, with `--resolve`, never by deleting them; asked to clear the comments, list those marked `done:` and leave them to the reviewer to resolve from their pins, since how each one is resolved is the record of whether it was accepted.
 
 ## Code
 
