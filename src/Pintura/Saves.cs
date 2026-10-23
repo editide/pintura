@@ -1,4 +1,5 @@
 using System.Globalization;
+using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 
 namespace Pintura;
@@ -44,10 +45,70 @@ public static class Saves
     }
   }
 
-  /// <summary>Comments alone wait for the next save.</summary>
+  /// <summary>Comments alone wait for the next save, as does YAML only reformatted, which the next save takes along.
+  /// </summary>
   private static bool Unsaved(VersionScope scope)
   {
-    return Changes(scope).Any(path => path != scope.CommentFile && path != scope.ResolvedFile);
+    return Changes(scope).Any(path => path != scope.CommentFile && path != scope.ResolvedFile
+      && !Reformatted(scope, path));
+  }
+
+  /// <summary>Whether a YAML file reads as it did in the last version, differing only in comments, blank lines,
+  /// indentation or the order of a mapping's keys.</summary>
+  private static bool Reformatted(VersionScope scope, string path)
+  {
+    string file = Path.Combine(scope.Top, path);
+    if (!path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) || !File.Exists(file))
+    {
+      return false;
+    }
+    (int exit, string before, _) = Revisions.Run(scope.Top, "show", $"HEAD:{path}");
+    if (exit != 0)
+    {
+      return false;
+    }
+    try
+    {
+      var was = new YamlStream();
+      was.Load(new StringReader(before));
+      var now = new YamlStream();
+      now.Load(new StringReader(File.ReadAllText(file)));
+      return was.Documents.Count == now.Documents.Count
+        && was.Documents.Zip(now.Documents).All(pair => Same(pair.First.RootNode, pair.Second.RootNode));
+    }
+    catch (YamlException)
+    {
+      return false;
+    }
+  }
+
+  /// <summary>Quoting a plain scalar counts as a change, since it can turn a number or a boolean into a string.
+  /// </summary>
+  private static bool Same(YamlNode was, YamlNode now)
+  {
+    switch (was, now)
+    {
+      case (YamlScalarNode a, YamlScalarNode b):
+        return a.Value == b.Value && (a.Style == ScalarStyle.Plain) == (b.Style == ScalarStyle.Plain);
+      case (YamlSequenceNode a, YamlSequenceNode b):
+        return a.Children.Count == b.Children.Count
+          && a.Children.Zip(b.Children).All(pair => Same(pair.First, pair.Second));
+      case (YamlMappingNode a, YamlMappingNode b):
+        Dictionary<string, YamlNode> keyed = [];
+        foreach ((YamlNode key, YamlNode value) in b.Children)
+        {
+          if (key is not YamlScalarNode { Value: string name })
+          {
+            return false;
+          }
+          keyed[name] = value;
+        }
+        return a.Children.Count == keyed.Count && a.Children.All(entry =>
+          entry.Key is YamlScalarNode { Value: string name } && keyed.TryGetValue(name, out YamlNode? value)
+          && Same(entry.Value, value));
+      default:
+        return false;
+    }
   }
 
   /// <summary>Commits the presentation and its theme, starting a repository in the presentation when there's none,
@@ -133,7 +194,7 @@ public static class Saves
         {
           stream.Load(new StringReader(File.ReadAllText(file)));
         }
-        catch (YamlDotNet.Core.YamlException)
+        catch (YamlException)
         {
           continue;
         }
