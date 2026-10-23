@@ -62,7 +62,7 @@ public static class PreviewServer
     app.MapPost("/api/comments", (CommentChange change) => Comment(store, change));
     app.MapPost("/api/trace", (TracePayload trace) => Trace(store, trace));
     var comparison = new Comparison(store);
-    app.MapGet("/api/compare", (string? @base) => comparison.Answer(@base ?? "HEAD"));
+    app.MapGet("/api/compare", (string? @base) => comparison.Answer(@base));
     app.MapPost("/api/revert", (RevertRequest request) => comparison.Revert(request));
     app.MapGet("/api/versions", () => Results.Json(Revisions.Versions(store.Root), PayloadJson.Options));
     app.MapGet("/api/save", () => Saving(() => Saves.Status(store.Root)));
@@ -708,28 +708,33 @@ public record EditRequest(string? Slide, List<ValueEdit> Edits);
 /// revision <paramref name="Base"/> has it.</summary>
 public record RevertRequest(string Base, string Slide, string? Id = null, string? Owner = null);
 
-public record ComparePayload(string Base, string Commit, DeckVersion Version, DeckPayload Before, DeckDiff Diff);
+/// <summary>The working tree against a revision; with <see cref="LastSave"/>, against the version before that save,
+/// since nothing drawn differs from the save itself.</summary>
+public record ComparePayload(string Base, string Commit, DeckVersion Version, DeckPayload Before, DeckDiff Diff,
+  DeckVersion? LastSave = null);
 
-/// <summary>Compares the working tree against a revision for the page. A revision is loaded once per commit, and the
-/// diff again only when the commit or the working tree's model moves, which a line moving without the drawing
-/// changing still does.</summary>
+/// <summary>Compares the working tree against a revision for the page. The last two revisions are loaded once per
+/// commit, and the diff again only when the commit or the working tree's model moves, which a line moving without the
+/// drawing changing still does.</summary>
 public class Comparison
 {
   private readonly PresentationStore store;
   private readonly object gate = new object();
-  private Side? before;
-  private (string Base, string Commit, Presentation After, string Json)? answer;
+  private Side[] sides = [];
+  private (string? Base, string Commit, Presentation After, string Json)? answer;
 
   public Comparison(PresentationStore store)
   {
     this.store = store;
   }
 
-  public IResult Answer(string revision)
+  /// <summary>Without a revision, the changes since the last save, or the changes that save made when there are none,
+  /// so a page left open shows each round as it's saved.</summary>
+  public IResult Answer(string? revision)
   {
     try
     {
-      string commit = Revisions.Commit(store.Root, revision);
+      string commit = Revisions.Commit(store.Root, revision ?? "HEAD");
       lock (gate)
       {
         if (store.Presentation is not Presentation current || store.Deck.Error is not null)
@@ -740,9 +745,12 @@ public class Comparison
         {
           return Results.Text(last.Json, "application/json");
         }
-        Side side = Before(revision, commit);
-        var payload = new ComparePayload(revision, commit, side.Version, side.Deck,
-          Differ.Compare(side.Presentation, current));
+        ComparePayload payload = Compare(revision ?? "HEAD", commit, current);
+        if (revision is null && payload.Diff.Slides.Count == 0 &&
+          Revisions.Versions(store.Root, 2) is [DeckVersion saved, DeckVersion previous])
+        {
+          payload = Compare(previous.Commit, previous.Commit, current) with { LastSave = saved };
+        }
         string json = JsonSerializer.Serialize(payload, PayloadJson.Options);
         answer = (revision, commit, current, json);
         return Results.Text(json, "application/json");
@@ -837,23 +845,32 @@ public class Comparison
 
   /// <summary>The revision as loaded and drawn, loaded again only once the commit changes. Called under the gate.
   /// </summary>
+  private ComparePayload Compare(string revision, string commit, Presentation current)
+  {
+    Side side = Before(revision, commit);
+    return new ComparePayload(revision, commit, side.Version, side.Deck, Differ.Compare(side.Presentation, current));
+  }
+
+  // Two, since with nothing unsaved the page compares against the last save and then the version before it.
   private Side Before(string revision, string commit)
   {
-    if (before?.Commit != commit)
+    if (sides.FirstOrDefault(side => side.Commit == commit) is Side kept)
     {
-      Revision checkout = Revisions.Checkout(store.Root, revision, Directory.GetCurrentDirectory());
-      Presentation presentation = Revisions.Load(checkout);
-      before = new Side(commit, Revisions.Describe(store.Root, commit), presentation,
-        PayloadBuilder.Build(presentation, 0, PresentationStore.MediaUrl), PresentationStore.Media(presentation));
+      return kept;
     }
-    return before;
+    Revision checkout = Revisions.Checkout(store.Root, revision, Directory.GetCurrentDirectory());
+    Presentation presentation = Revisions.Load(checkout);
+    var loaded = new Side(commit, Revisions.Describe(store.Root, commit), presentation,
+      PayloadBuilder.Build(presentation, 0, PresentationStore.MediaUrl), PresentationStore.Media(presentation));
+    Volatile.Write(ref sides, [.. sides.TakeLast(1), loaded]);
+    return loaded;
   }
 
   public bool TryGetMedia(string path, out string? contentType)
   {
     contentType = PresentationStore.ServedType(path);
-    Side? side = Volatile.Read(ref before);
-    return contentType is not null && side is not null && side.Media.Contains(path) && File.Exists(path);
+    Side[] loaded = Volatile.Read(ref sides);
+    return contentType is not null && loaded.Any(side => side.Media.Contains(path)) && File.Exists(path);
   }
 
   private static IResult Refused(string message, int status = StatusCodes.Status409Conflict)

@@ -838,10 +838,10 @@ main {
   font-size: 13px;
 }
 
-.versions-heading {
-  padding: 6px 10px 2px;
-  color: var(--muted);
-  font-size: 12px;
+.versions-rule {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--rule);
 }
 
 .versions-day {

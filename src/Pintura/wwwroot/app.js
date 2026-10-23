@@ -1209,7 +1209,8 @@ function versionItems() {
   return [...document.getElementById('versions-menu').querySelectorAll('[role="menuitemradio"]')];
 }
 
-// The deck's versions, newest first and under the day each was saved, the newest standing for the last save.
+// The latest changes, which follow each save, above the deck's versions to show the changes since instead, newest
+// first and under the day each was saved.
 async function renderVersions(menu) {
   menu.replaceChildren();
   element('div', 'versions-note', menu).textContent = 'Loading versions…';
@@ -1227,8 +1228,16 @@ async function renderVersions(menu) {
     element('div', 'versions-note', menu).textContent = 'No saved versions of this presentation yet';
     return;
   }
-  element('div', 'versions-heading', menu).textContent = 'Show the changes since';
   const chosen = compareBase();
+  const following = element('button', 'version', menu);
+  following.type = 'button';
+  following.setAttribute('role', 'menuitemradio');
+  following.setAttribute('aria-checked', String(!chosen));
+  following.dataset.commit = '';
+  element('span', 'version-subject', following).textContent = state.saving?.unsaved ? 'Unsaved changes'
+    : `Changes in v${versions[0].number}`;
+  element('span', 'version-when', following).textContent = 'Latest';
+  element('div', 'versions-rule', menu);
   let day = null;
   versions.forEach((version, index) => {
     const date = new Date(version.date);
@@ -1236,13 +1245,12 @@ async function renderVersions(menu) {
       day = versionDay(date);
       element('div', 'versions-day', menu).textContent = day;
     }
-    const latest = index === 0;
-    const selected = latest ? chosen === 'HEAD' : chosen !== 'HEAD' && version.commit.startsWith(chosen);
+    const selected = Boolean(chosen) && (chosen === 'HEAD' ? index === 0 : version.commit.startsWith(chosen));
     const button = element('button', 'version', menu);
     button.type = 'button';
     button.setAttribute('role', 'menuitemradio');
     button.setAttribute('aria-checked', String(selected));
-    button.dataset.commit = latest ? '' : version.commit;
+    button.dataset.commit = version.commit;
     element('span', 'version-number', button).textContent = `v${version.number}`;
     const subject = element('span', 'version-subject', button);
     subject.textContent = version.subject;
@@ -1256,7 +1264,18 @@ async function renderVersions(menu) {
       button.title = version.subject;
     }
   });
-  (versionItems().find((item) => item.getAttribute('aria-checked') === 'true') || versionItems()[0]).focus();
+  versionItems().find((item) => item.getAttribute('aria-checked') === 'true').focus();
+  cutVersions(menu);
+}
+
+// Ends the menu halfway through a row while more lie below, since an overlay scrollbar hides until scrolled.
+function cutVersions(menu) {
+  menu.style.maxHeight = '';
+  const room = menu.clientHeight;
+  const cut = menu.scrollHeight > room && versionItems().find((item) => item.offsetTop + item.offsetHeight > room);
+  if (cut) {
+    menu.style.maxHeight = `${menu.clientTop + cut.offsetTop + cut.offsetHeight / 2}px`;
+  }
 }
 
 document.getElementById('versions-menu').addEventListener('toggle', (event) => {
@@ -1351,10 +1370,12 @@ function renderSaving() {
   }
   const versions = document.getElementById('versions-button');
   // A version that failed to compare still shows its picker, to choose another.
-  versions.hidden = !comparing() && compareBase() === 'HEAD';
-  const name = comparing() ? `v${state.compare.version.number}` : compareBase().slice(0, 7);
-  document.getElementById('versions-label').textContent = `Since ${name}`;
-  versions.title = comparing() ? `Showing the changes since ${name}: ${state.compare.version.subject}`
+  versions.hidden = !comparing() && !compareBase();
+  const lastSave = comparing() ? state.compare.lastSave : null;
+  const name = comparing() ? `v${state.compare.version.number}` : compareBase()?.slice(0, 7);
+  document.getElementById('versions-label').textContent = lastSave ? `Changes in v${lastSave.number}` : `Since ${name}`;
+  versions.title = lastSave ? `Showing the changes saved in v${lastSave.number}: ${lastSave.subject}`
+    : comparing() ? `Showing the changes since ${name}: ${state.compare.version.subject}`
     : 'Choose a version to show the changes since';
 }
 
@@ -1517,7 +1538,8 @@ function renderStatus() {
   const text = !state.live ? 'Reconnecting'
     : !comparing() ? 'Live'
     : changed === 0 ? 'No changes'
-    : `${changed} ${changed === 1 ? 'slide' : 'slides'} changed`;
+    : `${changed} ${changed === 1 ? 'slide' : 'slides'} changed` +
+      (state.compare.lastSave ? ` in v${state.compare.lastSave.number}` : '');
   document.getElementById('status-text').textContent = text;
   const button = document.getElementById('status');
   button.disabled = changed === 0;

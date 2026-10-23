@@ -171,10 +171,11 @@ Libreta answers are kept until a file in the book changes, so an edit to a slide
 
 ## Compare against a revision
 
-In a git repository, the page compares the working tree against `HEAD`, or against the revision its address names, as in `http://localhost:5180/?base=main#revenue`.
-The picker beside Save lists the versions of the presentation: the last 50 commits on the current branch that changed it, its theme, or its books, newest first, each numbered from the first as `v1`, `v2`, and on, with its subject and when it was made, under the day it was made.
-Choosing one writes it into the address as `?base=`, and choosing the newest, shown as the last save, compares against `HEAD` again.
-The picker names the version compared against, as `Since v12`.
+In a git repository, the page shows the latest changes: those since `HEAD`, or when nothing drawn differs from it, the ones the last save made, so a page left open shows each round as an agent commits it.
+The revision its address names pins it instead, as in `http://localhost:5180/?base=main#revenue`.
+The picker beside Save offers the latest changes above the versions of the presentation: the last 50 commits on the current branch that changed it, its theme, or its books, newest first, each numbered from the first as `v1`, `v2`, and on, with its subject and when it was made, under the day it was made.
+Choosing a version writes its commit into the address as `?base=`, and choosing the latest changes clears it.
+The picker names what the page shows, as `Since v12`, or `Changes in v12` for the last save's.
 
 ## Save a version
 
