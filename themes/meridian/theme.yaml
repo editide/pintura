@@ -29,18 +29,3 @@ areas:
   content: [40, 116, 880, 356]
   left: [40, 116, 500, 356]
   right: [572, 116, 348, 356]
-
-elements:
-  - id: rule_top
-    line: { from: [40, 30], to: [920, 30] }
-  - id: rule_bottom
-    line: { from: [40, 508], to: [920, 508] }
-  - id: footer
-    text: ${footer}
-    style: caption
-    frame: [40, 512, 600, 14]
-  - id: page
-    text: ${slide}
-    style: caption
-    align: right
-    frame: [860, 512, 60, 14]

@@ -66,7 +66,6 @@ public partial class PowerPointMapping
   private readonly HashSet<string> tableStems = new HashSet<string>();
   private JsonObject text = new JsonObject();
   private readonly Dictionary<int, JsonObject> levels = new Dictionary<int, JsonObject>();
-  private List<JsonObject> themeElements = new List<JsonObject>();
 
   private PowerPointMapping(JsonObject reads, string name, Package package)
   {
@@ -104,7 +103,6 @@ public partial class PowerPointMapping
     Base();
     JsonObject theme = Theme();
     List<LayoutDraft> layouts = Layouts();
-    Hoist(theme, layouts);
     JsonArray slides = Slides(layouts);
     theme["formats"] = new JsonObject(formats.Select(pair => KeyValuePair.Create(pair.Key, (JsonNode?)pair.Value)));
     return new JsonObject
@@ -683,8 +681,7 @@ public partial class PowerPointMapping
       ["text"] = text.DeepClone(),
       ["levels"] = new JsonObject(levels.OrderBy(pair => pair.Key).Select(pair =>
         KeyValuePair.Create(pair.Key.ToString(CultureInfo.InvariantCulture), (JsonNode?)pair.Value.DeepClone()))),
-      ["placeholders"] = new JsonArray(),
-      ["elements"] = new JsonArray()
+      ["placeholders"] = new JsonArray()
     };
     if (MasterPlaceholder("title") is JsonObject title)
     {
@@ -787,7 +784,7 @@ public partial class PowerPointMapping
         ReadId = summary["id"]!.ToJsonString(),
         Json = new JsonObject
         {
-          ["name"] = layoutName, ["themeElements"] = true, ["titleRemoved"] = false,
+          ["name"] = layoutName, ["titleRemoved"] = false,
           ["placeholders"] = new JsonArray(), ["elements"] = new JsonArray()
         }
       };
@@ -932,46 +929,6 @@ public partial class PowerPointMapping
       name = role == "body" ? "content" : $"{role}_{placeholder["index"]}";
     }
     return Unique(name, taken, "_");
-  }
-
-  /// <summary>An element on half the layouts or more moves to the theme, and a layout missing any of them leaves
-  /// out the theme's.</summary>
-  private void Hoist(JsonObject theme, List<LayoutDraft> layouts)
-  {
-    string Signature(JsonNode element) => element.ToJsonString();
-    var counts = new Dictionary<string, int>();
-    foreach (LayoutDraft layout in layouts)
-    {
-      foreach (JsonNode? element in layout.Elements)
-      {
-        counts[Signature(element!)] = counts.GetValueOrDefault(Signature(element!)) + 1;
-      }
-    }
-    var hoisted = new List<JsonObject>();
-    foreach (JsonObject element in layouts.SelectMany(layout => layout.Elements).Select(node => node!.AsObject()))
-    {
-      if (counts[Signature(element)] >= 2 && counts[Signature(element)] * 2 >= layouts.Count &&
-        hoisted.All(item => Signature(item) != Signature(element)))
-      {
-        hoisted.Add(element);
-      }
-    }
-    themeElements = hoisted.Select(element => element.DeepClone().AsObject()).ToList();
-    theme["elements"] = new JsonArray(themeElements.Select(element => (JsonNode)element.DeepClone()).ToArray());
-    var signatures = hoisted.Select(Signature).ToHashSet();
-    foreach (LayoutDraft layout in layouts)
-    {
-      var own = layout.Elements.Select(node => node!.AsObject()).ToList();
-      if (signatures.Count > 0 && signatures.All(signature => own.Any(element => Signature(element) == signature)))
-      {
-        layout.Json["elements"] = new JsonArray(own.Where(element => !signatures.Contains(Signature(element)))
-          .Select(element => (JsonNode)element.DeepClone()).ToArray());
-      }
-      else if (signatures.Count > 0)
-      {
-        layout.Json["themeElements"] = false;
-      }
-    }
   }
 
   #endregion
@@ -1508,8 +1465,7 @@ public partial class PowerPointMapping
           (string?)element["placeholder"]?["role"] is "title" or "centered_title");
       string stem = Unique(Kebab(titleElement is null ? "" : Plain(titleElement["text_component"]), $"slide-{index}"),
         stems);
-      var taken = new HashSet<string>(((bool)layout.Json["themeElements"]! ? themeElements : [])
-        .Concat(layout.Elements.Select(node => node!.AsObject())).Select(element => (string)element["id"]!));
+      var taken = new HashSet<string>(layout.Elements.Select(node => (string)node!["id"]!));
       var ids = new Ids(taken);
       Layers layers = SlideLayers(read);
       var items = new JsonArray();

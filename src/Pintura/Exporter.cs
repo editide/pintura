@@ -2160,8 +2160,7 @@ public partial class Exporter
 
   /// <summary>What the slides need from the theme and layouts, worked out from the model without calls, so a slide
   /// can be written into a deck whose design an earlier export wrote.</summary>
-  private record Design(List<JsonNode?> Layouts, Dictionary<string, Defined> Defined, List<JsonNode> Shared,
-    List<JsonNode> PerSlide);
+  private record Design(List<JsonNode?> Layouts, Dictionary<string, Defined> Defined);
 
   private Design Prepare(JsonObject deck)
   {
@@ -2169,14 +2168,6 @@ public partial class Exporter
     JsonNode theme = deck["theme"]!;
     Formats = Get(theme, "formats") as JsonObject ?? new JsonObject();
     List<JsonNode?> layouts = Items(deck["layouts"]);
-    // Theme elements go on each layout that shows them: the tools can't hide the master's graphics on a layout
-    // (showMasterSp), which theme_elements: false needs.
-    Workaround("theme_elements: false: no field for a layout's \"hide background graphics\" (showMasterSp), so theme " +
-      "elements are copied onto each layout that shows them instead of living once on the master");
-    List<JsonNode> themeElements = Items(Get(theme, "elements")).OfType<JsonNode>().ToList();
-    List<JsonNode> perSlide = themeElements.Where(item => Items(Get(item, "paragraphs"))
-      .Any(paragraph => Items(Get(paragraph, "runs")).Any(model => Text(Get(model, "field")) == "section"))).ToList();
-    List<JsonNode> shared = themeElements.Where(item => !perSlide.Contains(item)).ToList();
     JsonNode? themeTitle = Get(theme, "title");
     var defined = new Dictionary<string, Defined>(StringComparer.Ordinal);
     foreach (JsonNode? layout in layouts)
@@ -2185,9 +2176,9 @@ public partial class Exporter
         ? null
         : Truthy(Get(layout, "title")) ? Get(layout, "title") : themeTitle;
       defined[Text(Get(layout, "id"))!] = new Defined(title, Items(Get(layout, "placeholders")),
-        DrawnByLayout(layout, shared).Any(IsPageNumber));
+        DrawnByLayout(layout).Any(IsPageNumber));
     }
-    return new Design(layouts, defined, shared, perSlide);
+    return new Design(layouts, defined);
   }
 
   /// <summary>Writes the whole deck into the blank one.</summary>
@@ -2275,7 +2266,7 @@ public partial class Exporter
       {
         adds.Add(Placeholder(item!, "body", masterBody, Text(Get(item, "id")) ?? ""));
       }
-      List<JsonNode> drawn = DrawnByLayout(layout, design.Shared);
+      List<JsonNode> drawn = DrawnByLayout(layout);
       List<JsonNode> pages = drawn.Where(IsPageNumber).ToList();
       foreach (JsonNode item in pages)
       {
@@ -2484,7 +2475,7 @@ public partial class Exporter
           Text(Get(Get(element, "placeholder"), "role")) != "slide_number")
         .Select(element => Get(element, "id")!.DeepClone()));
       HashSet<string> hide = Items(Get(slide, "hide")).Select(Text).OfType<string>().ToHashSet(StringComparer.Ordinal);
-      List<JsonNode> drawnByLayout = DrawnByLayout(layout, design.Shared);
+      List<JsonNode> drawnByLayout = DrawnByLayout(layout);
       if (definition.Pages)
       {
         bool pageHidden = drawnByLayout.Any(item => IsPageNumber(item) && hide.Contains(Text(Get(item, "id")) ?? ""));
@@ -2500,10 +2491,9 @@ public partial class Exporter
       {
         edit["elements_to_delete"] = unused;
       }
-      IEnumerable<JsonNode> sections = Truthy(Get(layout, "themeElements"))
-        ? design.PerSlide.Where(item => !hide.Contains(Text(Get(item, "id")) ?? ""))
-          .Select(item => WithSection(item, slide))
-        : [];
+      IEnumerable<JsonNode> sections = Items(Get(layout, "elements")).OfType<JsonNode>()
+        .Where(item => ShowsSection(item) && !hide.Contains(Text(Get(item, "id")) ?? ""))
+        .Select(item => WithSection(item, slide));
       foreach ((string key, JsonNode? value) in Elements(sections.Concat(own), used.Count).ToList())
       {
         edit[key] = value?.DeepClone();
@@ -2521,11 +2511,17 @@ public partial class Exporter
     }
   }
 
-  private static List<JsonNode> DrawnByLayout(JsonNode? layout, List<JsonNode> shared)
+  /// <summary>A layout's elements but those showing the section, which differs from slide to slide, so each slide
+  /// draws its own.</summary>
+  private static List<JsonNode> DrawnByLayout(JsonNode? layout)
   {
-    return (Truthy(Get(layout, "themeElements")) ? shared : [])
-      .Concat(Items(Get(layout, "elements")).OfType<JsonNode>())
-      .ToList();
+    return Items(Get(layout, "elements")).OfType<JsonNode>().Where(item => !ShowsSection(item)).ToList();
+  }
+
+  private static bool ShowsSection(JsonNode item)
+  {
+    return Items(Get(item, "paragraphs"))
+      .Any(paragraph => Items(Get(paragraph, "runs")).Any(model => Text(Get(model, "field")) == "section"));
   }
 
   #endregion

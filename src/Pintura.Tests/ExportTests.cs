@@ -15,8 +15,8 @@ public class ExportTests
     ExportDeck export = ExportBuilder.Build(deck.Load());
 
     // Assert
-    export.Theme.Elements.Select(item => item.Id).ShouldBe(["page"]);
     export.Layouts.Select(layout => layout.Id).ShouldBe(["content", "cover"], ignoreOrder: true);
+    export.Layouts.Single(layout => layout.Id == "content").Elements.Select(item => item.Id).ShouldBe(["page"]);
     export.Slides.Single(slide => slide.Id == "one").Items!.Select(item => item.Id).ShouldBe(["title", "subtitle"]);
   }
 
@@ -38,13 +38,14 @@ public class ExportTests
   }
 
   [Fact]
-  public void A_slide_number_in_the_theme_keeps_its_field_with_no_text_of_its_own()
+  public void A_slide_number_on_a_layout_keeps_its_field_with_no_text_of_its_own()
   {
     // Arrange
     using var deck = new DeckFixture();
 
     // Act
-    ExportRun run = ExportBuilder.Build(deck.Load()).Theme.Elements.Single().Paragraphs![0].Runs.Single();
+    ExportRun run = ExportBuilder.Build(deck.Load()).Layouts.Single(layout => layout.Id == "content").Elements.Single()
+      .Paragraphs![0].Runs.Single();
 
     // Assert
     run.Field.ShouldBe("slide");

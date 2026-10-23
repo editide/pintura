@@ -65,6 +65,24 @@ public class LoaderTests
   }
 
   [Fact]
+  public void Elements_are_drawn_by_layouts_never_by_the_theme()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+
+    // Act
+    deck.Write("theme/theme.yaml", DeckFixture.Theme + "\nelements:\n  - id: rule\n    line: { from: [40, 90], to: [920, 90] }");
+    LoadException themed = Should.Throw<LoadException>(() => deck.Load());
+    deck.Write("theme/theme.yaml", DeckFixture.Theme);
+    deck.Write("theme/layouts/cover.yaml", "name: Cover\ntheme_elements: false");
+    LoadException switched = Should.Throw<LoadException>(() => deck.Load());
+
+    // Assert
+    themed.Message.ShouldStartWith("unknown key elements in theme/theme.yaml:");
+    switched.Message.ShouldStartWith("unknown key theme_elements in theme/layouts/cover.yaml:2");
+  }
+
+  [Fact]
   public void A_styles_levels_take_only_bullets_and_indents_and_only_the_themes_levels()
   {
     // Arrange
@@ -258,7 +276,7 @@ public class LoaderTests
   }
 
   [Fact]
-  public void A_slide_element_reusing_a_theme_elements_id_is_an_error()
+  public void A_slide_element_reusing_a_layout_elements_id_is_an_error()
   {
     // Arrange
     using var deck = new DeckFixture();
@@ -274,7 +292,7 @@ public class LoaderTests
     LoadException error = deck.Error();
 
     // Assert
-    error.Problem.ShouldBe("duplicate id page, already used by the theme");
+    error.Problem.ShouldBe("duplicate id page, already used by layout content");
   }
 
   [Fact]

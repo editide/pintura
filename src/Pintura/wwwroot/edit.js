@@ -744,8 +744,8 @@ function flushNudge() {
   sendMoves(nudge.slide, nudge);
 }
 
-// Delete or Backspace removes the selected elements from the slide's file, leaving those the layout or theme gives.
-// Returns whether the key was one of them.
+// Delete or Backspace removes the selected elements from the slide's file, leaving those the layout or theme gives,
+// or on a layout's stage from the layout's file. Returns whether the key was one of them.
 function deleteKey(event) {
   const indexes = selectedIndexes();
   if (!(event.key === 'Delete' || event.key === 'Backspace') || indexes.length === 0 || state.presenting) {
@@ -757,7 +757,10 @@ function deleteKey(event) {
   const slide = currentSlide();
   const items = indexes.map((index) => slide.items[index]);
   const kept = items.filter((item) => !item.edit.delete);
-  if (kept.length > 0) {
+  if (kept.length > 0 && state.layout) {
+    notice(`${kept.map(elementName).join(', ')} ${kept.length > 1 ? 'stay' : 'stays'}: only elements are deleted ` +
+      'here; remove the rest in the file');
+  } else if (kept.length > 0) {
     notice(kept.length > 1
       ? `${kept.map(elementName).join(', ')} stay: the layout or theme gives them`
       : kept[0].edit.locked || `${kept[0].id} is a placeholder the layout gives; empty it in the file`);
@@ -767,7 +770,8 @@ function deleteKey(event) {
     return true;
   }
   selectItem(null);
-  send(slide.id, deleted.map(({ edit }) => ({ path: edit.delete.path, source: edit.delete.source, delete: true })));
+  send(slide.id, deleted.flatMap((item) =>
+    ownEdits(item, [{ path: item.edit.delete.path, source: item.edit.delete.source, delete: true }])));
   return true;
 }
 

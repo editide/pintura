@@ -532,13 +532,13 @@ public class CheckTests
   }
 
   [Fact]
-  public void A_theme_element_off_the_slide_is_reported_once()
+  public void A_layout_element_off_the_slide_is_reported_once()
   {
     // Arrange
     using var deck = new DeckFixture();
     deck.Write("deck/slides/one.yaml", "layout: content\ntitle: Hello");
-    string theme = DeckFixture.Theme.Replace("frame: [860, 510, 60, 16]", "frame: [900, 510, 80, 16]");
-    deck.Write("theme/theme.yaml", theme);
+    string layout = File.ReadAllText(deck.Folder.PathTo("theme/layouts/content.yaml"));
+    deck.Write("theme/layouts/content.yaml", layout.Replace("frame: [860, 510, 60, 16]", "frame: [900, 510, 80, 16]"));
 
     // Act
     List<Finding> findings = Checks.Geometry(deck.Load());
@@ -546,7 +546,7 @@ public class CheckTests
     // Assert
     Finding finding = findings.ShouldHaveSingleItem();
     finding.Where.ShouldBe("one/page");
-    finding.Message.ShouldBe("runs 20pt past the slide's right edge, on 2 slides from the theme");
+    finding.Message.ShouldBe("runs 20pt past the slide's right edge, on 2 slides from the layout");
   }
 
   [Fact]

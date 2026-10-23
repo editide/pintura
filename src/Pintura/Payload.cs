@@ -328,8 +328,8 @@ public static class PayloadBuilder
   }
 
   /// <summary>What the mouse writes for an item on a layout's specimen: the frame where it's set, whichever of the
-  /// theme's or layout's files that is, and an element's fill and outline in its own file. The specimen's words are
-  /// the slides' to write.</summary>
+  /// theme's or layout's files that is, and an element's fill and outline, or its deletion, in its own file. The
+  /// specimen's words are the slides' to write.</summary>
   private static EditPayload StageEdit(SceneItem item)
   {
     string? words = item.Paragraphs is null ? null : "the layout's text is each slide's to write";
@@ -341,7 +341,8 @@ public static class PayloadBuilder
         Frame = element.Origins.TryGetValue("frame", out Origin? frame) ? Source(frame) : null,
         From = element.Origins.TryGetValue("from", out Origin? from) ? Source(from) : null,
         To = element.Origins.TryGetValue("to", out Origin? to) ? Source(to) : null,
-        TextLocked = words
+        TextLocked = words,
+        Delete = Source(element.Origin)
       }, element);
     }
     return item.Properties.TryGetValue("frame", out Resolved? placed) && placed.Origin is Origin origin

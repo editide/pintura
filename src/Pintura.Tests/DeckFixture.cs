@@ -33,12 +33,6 @@ public class DeckFixture : IDisposable
     areas:
       content: [40, 100, 880, 380]
       left: [40, 100, 430, 380]
-
-    elements:
-      - id: page
-        text: ${slide}
-        style: caption
-        frame: [860, 510, 60, 16]
     """;
 
   public const string Styles = """
@@ -96,10 +90,16 @@ public class DeckFixture : IDisposable
   {
     Folder.Write("theme/theme.yaml", Theme);
     Folder.Write("theme/styles.yaml", Styles);
-    Folder.Write("theme/layouts/content.yaml", "name: Content");
+    Folder.Write("theme/layouts/content.yaml", """
+      name: Content
+      elements:
+        - id: page
+          text: ${slide}
+          style: caption
+          frame: [860, 510, 60, 16]
+      """);
     Folder.Write("theme/layouts/cover.yaml", """
       name: Cover
-      theme_elements: false
       title: { frame: [60, 190, 840, 90], color: light1 }
       placeholders:
         subtitle: { frame: [60, 290, 840, 40], style: caption }

@@ -464,7 +464,7 @@ public class CommentTests
     using var deck = new DeckFixture();
     deck.Write("deck/comments.yaml", TwoComments + "\n\n- { id: c3, slide: one, element: subtitle, at: [0, 0], " +
       "text: Date it, done: Dated it March 2026 }\n" +
-      "- { id: d4, slide: two, element: page, at: [0, 0], text: Drop the number, skipped: The theme sets it }");
+      "- { id: d4, slide: two, element: page, at: [0, 0], text: Drop the number, skipped: The layout sets it }");
     var output = new StringWriter();
 
     // Act
@@ -486,9 +486,9 @@ public class CommentTests
           Daniel, 2026-10-07 13:05: Too empty.
           Add the chart from the book.
 
-      d4  two/page  {theme}/theme.yaml:31  skipped
+      d4  two/page  {theme}/layouts/content.yaml:3  skipped
           Drop the number
-          skipped: The theme sets it
+          skipped: The layout sets it
 
       4 comments in {root}/comments.yaml: 2 open, 1 done, 1 skipped.
       Act on each open one, then mark it done: with what you changed, or skipped: with why, for the reviewer to resolve; in a thread, mark its last reply.

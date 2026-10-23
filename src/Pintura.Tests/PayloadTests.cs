@@ -81,14 +81,14 @@ public class PayloadTests
 
     // Assert
     page!.Id.ShouldBe("page");
-    page.Owner.ShouldBe("theme");
+    page.Owner.ShouldBe("layout");
     page.Properties.Single(property => property.Key == "size").Origin
       .ShouldBe("theme/styles.yaml:22 styles.caption.size");
     missing.ShouldBeNull();
   }
 
   [Fact]
-  public void A_theme_element_refuses_the_mouse_and_names_the_file_that_owns_it()
+  public void A_layout_element_refuses_the_mouse_on_a_slide_and_names_the_file_that_owns_it()
   {
     // Arrange
     using var deck = new DeckFixture();
@@ -97,7 +97,7 @@ public class PayloadTests
     EditPayload edit = Slide(deck, "two").Items!.Single(item => item.Id == "page").Edit;
 
     // Assert
-    edit.Locked.ShouldBe("page is on the theme; change it in theme/theme.yaml");
+    edit.Locked.ShouldBe("page is on the layout; change it in theme/layouts/content.yaml");
     edit.Frame.ShouldBeNull();
   }
 
@@ -152,11 +152,26 @@ public class PayloadTests
       "area left theme/layouts/cover.yaml areas.left [60, 340, 400, 100]"
     ]);
     content.ShouldBe([
-      "text page theme/theme.yaml elements.page.frame [860, 510, 60, 16]",
+      "text page theme/layouts/content.yaml elements.page.frame [860, 510, 60, 16]",
       "text title theme/theme.yaml title.frame [40, 24, 880, 56]",
       "area content theme/theme.yaml areas.content [40, 100, 880, 380]",
       "area left theme/theme.yaml areas.left [40, 100, 430, 380]"
     ]);
+  }
+
+  [Fact]
+  public void A_layout_s_stage_deletes_its_elements_but_not_its_title_or_placeholders()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    ThemeViewPayload theme = ThemeView.Build(deck.Load(), (path, _) => path);
+
+    // Act
+    List<ItemPayload> items = theme.Layouts.Single(layout => layout.Id == "content").Stage.Items!;
+
+    // Assert
+    items.Single(item => item.Id == "page").Edit.Delete!.Path.ShouldBe("elements.page");
+    items.Single(item => item.Id == "title").Edit.Delete.ShouldBeNull();
   }
 
   [Fact]

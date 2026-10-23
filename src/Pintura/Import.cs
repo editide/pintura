@@ -1720,10 +1720,6 @@ public partial class Importer
     {
       map["background"] = Yaml("background", background);
     }
-    if (!(bool)layout["themeElements"]!)
-    {
-      map["theme_elements"] = false;
-    }
     if ((bool)layout["titleRemoved"]!)
     {
       map["title"] = "none";

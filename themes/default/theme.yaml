@@ -32,15 +32,4 @@ areas:
   left: [40, 100, 430, 380]
   right: [490, 100, 430, 380]
 
-elements:
-  - id: footer
-    text: ${footer}
-    style: caption
-    frame: [40, 508, 600, 22]
-  - id: page
-    text: ${slide}
-    style: caption
-    align: right
-    frame: [860, 508, 60, 22]
-
 checks: { shrink: 70 }

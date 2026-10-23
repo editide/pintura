@@ -16,7 +16,7 @@ public class SceneTests
 
     // Assert
     ((Frame)title.Properties["frame"].Value).Rect.ShouldBe([60, 190, 840, 90]);
-    title.Properties["frame"].Origin!.ToString().ShouldBe("theme/layouts/cover.yaml:3 title.frame");
+    title.Properties["frame"].Origin!.ToString().ShouldBe("theme/layouts/cover.yaml:2 title.frame");
     title.Properties["size"].Origin!.ToString().ShouldBe("theme/styles.yaml:21 styles.title.size");
     title.Properties["color"].Value.ShouldBe(new Color { Theme = "light1" });
   }
@@ -327,7 +327,7 @@ public class SceneTests
   }
 
   [Fact]
-  public void A_slide_hides_a_theme_element_by_its_id()
+  public void A_slide_hides_a_layout_element_by_its_id()
   {
     // Arrange
     using var deck = new DeckFixture();
@@ -342,7 +342,7 @@ public class SceneTests
 
     // Assert
     ids.ShouldNotContain("page");
-    error.Problem.ShouldBe("unknown element footer; the theme and layout elements here are page");
+    error.Problem.ShouldBe("unknown element footer; layout content draws page");
   }
 
 

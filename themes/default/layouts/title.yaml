@@ -1,5 +1,4 @@
 name: Title
-theme_elements: false
 
 title: { frame: [60, 180, 840, 90], style: display, align: center }
 
