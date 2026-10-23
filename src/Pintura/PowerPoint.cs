@@ -849,6 +849,16 @@ public partial class PowerPointMapping
         }
       }
 
+      // The reads can't tell which layouts hide the master's shapes, and few do, so every layout shows them, behind
+      // its own.
+      int behind = 0;
+      foreach (JsonObject element in Ordered(Master))
+      {
+        if (Element(element, Master, SlideLayers(Master), ids, "the master", 1) is JsonObject item)
+        {
+          draft.Elements.Insert(behind++, item);
+        }
+      }
       Layers layers = SlideLayers(read);
       foreach (JsonObject element in Ordered(read))
       {
@@ -2729,10 +2739,19 @@ public partial class PowerPointMapping
         .ToList();
     }
 
-    /// <summary>The part a read's <paramref name="where"/> names: a slide by its number, or a layout by its name.
-    /// </summary>
+    /// <summary>The part a read's <paramref name="where"/> names: a slide by its number, a layout by its name, or the
+    /// master the first slide's layout belongs to, which is the one the reads come from.</summary>
     private string? Part(string where)
     {
+      if (where == "the master")
+      {
+        string? used = SlideParts().Take(1).SelectMany(slide => Relationships(slide).Values)
+          .FirstOrDefault(target => target.StartsWith("ppt/slideLayouts/", StringComparison.Ordinal));
+        return used is null
+          ? null
+          : Relationships(used).Values.FirstOrDefault(target =>
+            target.StartsWith("ppt/slideMasters/", StringComparison.Ordinal));
+      }
       if (where.StartsWith("slide ", StringComparison.Ordinal))
       {
         int number = int.Parse(where["slide ".Length..], CultureInfo.InvariantCulture);

@@ -24,20 +24,27 @@ public class PowerPointImportTests
   /// <summary>A copy of the example deck with one part's XML changed.</summary>
   private static string Changed(TempFolder output, string part, Func<string, string> change)
   {
+    return Changed(output, (part, change));
+  }
+
+  /// <summary>A copy of the example deck with each part's XML changed.</summary>
+  private static string Changed(TempFolder output, params (string Part, Func<string, string> Change)[] changes)
+  {
     string deck = output.PathTo("example.pptx");
     File.Copy(Fixture("example.pptx"), deck);
     using ZipArchive zip = ZipFile.Open(deck, ZipArchiveMode.Update);
-    ZipArchiveEntry entry = zip.GetEntry(part)!;
-    string xml;
-    using (var reader = new StreamReader(entry.Open()))
+    foreach ((string part, Func<string, string> change) in changes)
     {
-      xml = reader.ReadToEnd();
-    }
-    string changed = change(xml);
-    changed.ShouldNotBe(xml);
-    entry.Delete();
-    using (var writer = new StreamWriter(zip.CreateEntry(part).Open()))
-    {
+      ZipArchiveEntry entry = zip.GetEntry(part)!;
+      string xml;
+      using (var reader = new StreamReader(entry.Open()))
+      {
+        xml = reader.ReadToEnd();
+      }
+      string changed = change(xml);
+      changed.ShouldNotBe(xml);
+      entry.Delete();
+      using var writer = new StreamWriter(zip.CreateEntry(part).Open());
       writer.Write(changed);
     }
     return deck;
@@ -278,6 +285,54 @@ public class PowerPointImportTests
       "picture-1", "line-1", "text-1"]);
     // The layouts show one logo, and the cover a white one.
     Directory.GetFiles(output.PathTo("imported/theme/media")).Length.ShouldBe(2);
+  }
+
+  [Fact]
+  public void The_masters_shapes_go_on_every_layout_behind_its_own()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    string deck = Changed(output,
+      ("ppt/slideMasters/slideMaster1.xml", xml => xml.Replace("</p:spTree>", """
+        <p:pic><p:nvPicPr><p:cNvPr id="901" name="Master logo" /><p:cNvPicPr /><p:nvPr /></p:nvPicPr><p:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="RMasterLogo" /><a:stretch><a:fillRect /></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="0" y="0" /><a:ext cx="812800" cy="304800" /></a:xfrm><a:prstGeom prst="rect" /></p:spPr></p:pic></p:spTree>
+        """)),
+      ("ppt/slideMasters/_rels/slideMaster1.xml.rels", xml => xml.Replace("</Relationships>",
+        "<Relationship Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" " +
+        "Target=\"/ppt/media/image2.png\" Id=\"RMasterLogo\" /></Relationships>")));
+    JsonObject reads = Reads();
+    JsonObject master = reads["master"]!.AsObject();
+    master["shape_elements"] = JsonNode.Parse("""
+      [{ "id": 900, "name": "Master band", "is_placeholder": false, "position": { "left": 0, "top": 0, "z_index": 5 },
+         "size": { "height": 20, "width": 960 },
+         "shape_style": { "border_color": "transparent", "border_weight": 0, "fill": { "scheme": "accent2" } } }]
+      """);
+    master["picture_elements"] = JsonNode.Parse("""
+      [{ "id": 901, "position": { "left": 0, "top": 0, "z_index": 6 }, "size": { "height": 24, "width": 64 } }]
+      """);
+    foreach (JsonNode? layout in reads["layouts"]!.AsArray())
+    {
+      JsonObject read = layout!["read"]!.AsObject();
+      JsonArray shapes = read["shape_elements"] as JsonArray ?? (JsonArray)(read["shape_elements"] = new JsonArray());
+      shapes.Insert(0, JsonNode.Parse("""
+        { "name": "Master band", "lock_source": "master", "is_placeholder": false,
+          "position": { "left": 0, "top": 0, "z_index": -1 }, "size": { "height": 20, "width": 960 } }
+        """));
+    }
+
+    // Act
+    PowerPointDeck mapped = PowerPointMapping.Map(reads, deck, output.PathTo("media"));
+    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Presentation presentation = PresentationLoader.Load(output.PathTo("imported"));
+
+    // Assert
+    foreach (Layout layout in presentation.Theme.Layouts.Values)
+    {
+      List<Element> drawn = layout.Elements.Take(2).ToList();
+      drawn.Select(element => element.Kind).ShouldBe(["shape", "picture"], layout.Id);
+      drawn[0].Frame!.Rect.ShouldBe([0, 0, 960, 20]);
+      layout.Elements.Count(element => element.Kind == "shape" && element.Frame!.Rect[3] == 20).ShouldBe(1);
+    }
+    mapped.Findings.ShouldNotContain(finding => finding.Contains("picture is left out"));
   }
 
   [Fact]
