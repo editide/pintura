@@ -1334,6 +1334,9 @@ function renderSaving() {
   const saving = state.saving;
   const button = document.getElementById('save-button');
   button.hidden = !saving?.unsaved;
+  for (const warning of document.querySelectorAll('.comment-unsaved')) {
+    warning.hidden = !saving?.unsaved;
+  }
   if (saving) {
     button.title = `Save the changes as v${saving.next} (Ctrl+S)`;
   }

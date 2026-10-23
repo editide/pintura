@@ -5,7 +5,8 @@ const test = require('node:test');
 const wwwroot = path.join(__dirname, '..', 'Pintura', 'wwwroot');
 // The page's scripts share one scope, where shapes.js defines the clamp comments.js uses.
 globalThis.clamp = require(path.join(wwwroot, 'shapes.js')).clamp;
-const { commentPoint, commentDraft, commentCounts, commentDate, commentTitle } = require(path.join(wwwroot, 'comments.js'));
+const { commentPoint, commentDraft, commentCounts, commentDate, commentTitle, unsavedWarning } =
+  require(path.join(wwwroot, 'comments.js'));
 
 const slide = {
   id: 'revenue',
@@ -103,4 +104,23 @@ test('a comment shows its time on the 12-hour clock', () => {
 
   // Assert
   assert.deepEqual(dates, ['2026-10-07 12:05 AM', '2026-10-07 9:30 AM', '2026-10-07 12:00 PM', '2026-10-07 3:45 PM', 'yesterday']);
+});
+
+test('writing a comment or a reply over unsaved changes warns, since it records the last saved version', () => {
+  // Arrange
+  const unsaved = { unsaved: true, next: 7 };
+
+  // Act
+  const warnings = [
+    unsavedWarning(unsaved, false, 'open'),
+    unsavedWarning(unsaved, true, 'done'),
+    unsavedWarning(unsaved, true, 'skipped'),
+    unsavedWarning(unsaved, true, 'open'),
+    unsavedWarning({ unsaved: false, next: 7 }, false, 'open'),
+    unsavedWarning(null, false, 'open')
+  ];
+
+  // Assert
+  const warning = 'Unsaved changes: save first, so this points at what you see';
+  assert.deepEqual(warnings, [warning, warning, warning, null, null, null]);
 });
