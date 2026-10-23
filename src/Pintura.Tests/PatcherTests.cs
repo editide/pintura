@@ -226,18 +226,23 @@ public class PatcherTests
   }
 
   [Fact]
-  public void A_field_is_read_only_inside_the_text()
+  public void Typing_over_a_field_writes_the_text_in_its_place()
   {
     // Arrange
     string source = Patcher.SourceAt(Slide, "elements.takeaway.text")!;
+    string kicker = Patcher.SourceAt(Slide, "placeholders.kicker")!;
 
     // Act
-    PatchException exception = Should.Throw<PatchException>(() => Apply(Slide,
-      new ValueEdit("elements.takeaway.text", source, Paragraphs: ["Revenue of $11.4B in 2026", "Up 33% on 2024"])));
+    string reworded = Apply(Slide,
+      new ValueEdit("elements.takeaway.text", source, Paragraphs: ["Revenue of $11.4B in 2026", "Up 33% on 2024"]));
+    string joined = Apply(Slide,
+      new ValueEdit("elements.takeaway.text", source, Paragraphs: ["Revenue of $11.4B in 2026, up 33% on 2024"]));
+    string plain = Apply(Slide, new ValueEdit("placeholders.kicker", kicker, Paragraphs: ["Board update, October"]));
 
     // Assert
-    exception.Conflict.ShouldBeFalse();
-    exception.Message.ShouldContain("${date}");
+    Changed(Slide, reworded).ShouldBe(["      Revenue of [$11.4B]{.positive} in 2026"]);
+    joined.ShouldEndWith("\n      Revenue of [$11.4B]{.positive} in 2026, up **33%** on 2024");
+    Changed(Slide, plain).ShouldBe(["  kicker: \"Board update, October\""]);
   }
 
   [Fact]

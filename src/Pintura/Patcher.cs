@@ -55,7 +55,8 @@ public record SlideMove(string Slide, ListEntry? From, ListEntry? To, bool Delet
 /// replaced alone, so comments, formatting, and an agent's edits elsewhere in the file survive.</summary>
 public static partial class Patcher
 {
-  /// <summary>Stands for a field in a paragraph's text, which an edit keeps as written.</summary>
+  /// <summary>Stands for a field in a paragraph's text, which an edit keeps as written unless it types over it.
+  /// </summary>
   public const char FieldMark = '￼';
 
   private static readonly byte[] ByteOrderMark = [0xEF, 0xBB, 0xBF];
@@ -808,10 +809,6 @@ public static partial class Patcher
       foreach ((int start, int end, string typed) in Hunks(before, after).AsEnumerable().Reverse())
       {
         List<(char Character, int Start, int End, string? Field)> removed = old[start..end];
-        if (removed.FirstOrDefault(character => character.Field is not null).Field is string field)
-        {
-          throw new PatchException($"${{{field}}} is a field and stays as written; change it in the file");
-        }
         if (typed.Contains(FieldMark))
         {
           throw new PatchException("a field can't be typed on the slide; write it in the file");
@@ -878,10 +875,6 @@ public static partial class Patcher
       .Reverse())
     {
       List<(char Character, int Start, int End, string? Field)> removed = old[start..end];
-      if (removed.FirstOrDefault(character => character.Field is not null).Field is string field)
-      {
-        throw new PatchException($"${{{field}}} is a field and stays as written; change it in the file");
-      }
       if (typed.Contains(FieldMark))
       {
         throw new PatchException("a field can't be typed on the slide; write it in the file");
