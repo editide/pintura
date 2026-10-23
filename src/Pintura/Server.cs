@@ -296,8 +296,14 @@ public static class PreviewServer
       if (!group.All(edit => Writable(edit, group.Key is not null)))
       {
         return Refused(group.Key is null
-          ? "the mouse writes frames, line ends, text, fills, and outlines, and deletes elements"
+          ? "the mouse writes frames, line ends, text, fills, outlines, styles, and alignments, adds text boxes, and " +
+            "deletes elements"
           : "the mouse writes a layout's frames, areas, fills, and outlines", StatusCodes.Status400BadRequest);
+      }
+      if (group.Select(edit => Unnamed(edit, presentation.Theme)).FirstOrDefault(problem => problem is not null) is
+        string unnamed)
+      {
+        return Refused(unnamed, StatusCodes.Status400BadRequest);
       }
       files.Add((path, group.Key, group.Select(edit => edit with { File = null }).ToList()));
     }
@@ -513,17 +519,24 @@ public static class PreviewServer
   /// <summary>Only what a mouse edit changes: a frame, a line's ends, and the text of an element, the title, or a
   /// placeholder, the source an undo restores in one of them, a whole element deleted or put back, and a whole file
   /// as a revert or its undo restores it.</summary>
-  /// <summary>Whether the mouse may write the edit: on a slide, frames, line ends, text, fills, and outlines, and
-  /// deleting elements; on the theme or a layout, the frames of its title, placeholders, areas, and elements, and
-  /// its elements' fills and outlines.</summary>
+  /// <summary>Whether the mouse may write the edit: on a slide, frames, line ends, text, fills, outlines, an
+  /// element's style, the alignments of its text, the title's, or a placeholder's, adding a text box, and deleting
+  /// elements; on the theme or a layout, the frames of its title, placeholders, areas, and elements, and its
+  /// elements' fills and outlines.</summary>
   private static bool Writable(ValueEdit edit, bool theme)
   {
     if (edit.Path.Length == 0)
     {
       return !theme && edit.Source is not null && edit.Restore is not null && edit.Numbers is null &&
-        edit.Paragraphs is null && !edit.Delete && edit.Value is null;
+        edit.Paragraphs is null && !edit.Delete && edit.Value is null && !edit.Add;
     }
     string[] parts = edit.Path.Split('.');
+    if (edit.Add)
+    {
+      return !theme && parts[0] == "elements" && parts.Length == 2 && edit.Source is null &&
+        edit.Numbers is { Length: 4 } && edit.Paragraphs is null && edit.Restore is null && !edit.Delete &&
+        edit.Value is null;
+    }
     if (edit.Delete)
     {
       return !theme && parts[0] == "elements" && parts.Length > 1 && edit.Numbers is null &&
@@ -534,12 +547,30 @@ public static class PreviewServer
     string last = parts[^1];
     bool painted = parts[0] == "elements" && (last is "fill" or "stroke" || edit.Path.EndsWith(".stroke.color") ||
       edit.Path.EndsWith(".stroke.width"));
+    bool worded = !theme && parts.Length == (parts[0] == "title" ? 2 : 3) &&
+      (last is "align" or "valign" || (last == "style" && parts[0] == "elements"));
     return owned && (edit.Restore is not null ? edit.Path != "elements" : edit.Numbers is not null
       ? last is "frame" or "from" or "to" || parts[0] == "areas"
       : edit.Value is not null
-        ? painted
+        ? painted || worded
         : !theme && edit.Paragraphs is not null && (last == "text" || edit.Path == "title" ||
           (parts[0] == "placeholders" && parts.Length == 2)));
+  }
+
+  /// <summary>Why the mouse can't write the edit's style or alignment, which must be one the theme or the format
+  /// names, or null.</summary>
+  private static string? Unnamed(ValueEdit edit, Theme theme)
+  {
+    string[] alignments = ["left", "center", "right", "justify"];
+    string[] vertical = ["top", "middle", "bottom"];
+    return edit.Value is not string value ? null
+      : edit.Path.EndsWith(".style") && !theme.Styles.Styles.ContainsKey(value)
+        ? $"the theme names no style {value}"
+        : edit.Path.EndsWith(".align") && !alignments.Contains(value)
+          ? $"text aligns {string.Join(", ", alignments)}, not {value}"
+          : edit.Path.EndsWith(".valign") && !vertical.Contains(value)
+            ? $"text sits at the {string.Join(", ", vertical)}, not {value}"
+            : null;
   }
 
   private static IResult Refused(string message, int status)

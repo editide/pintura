@@ -100,6 +100,10 @@ public record EditPayload
   public SourcePayload? Stroke { get; init; }
   public SourcePayload? StrokeColor { get; init; }
   public SourcePayload? StrokeWidth { get; init; }
+  /// <summary>The text's own alignments, which the title and placeholders take too, and a box's style.</summary>
+  public SourcePayload? Align { get; init; }
+  public SourcePayload? Valign { get; init; }
+  public SourcePayload? Style { get; init; }
 }
 
 public record SourcePayload(string Path, string? Source);
@@ -205,6 +209,8 @@ public record TextPayload
 public record ParagraphPayload
 {
   public string Align { get; init; } = "left";
+  /// <summary>The style that aligns the paragraph, when it is the paragraph's own and so beats the box's.</summary>
+  public StyleOriginPayload? AlignStyle { get; init; }
   public double SpaceBefore { get; init; }
   public double SpaceAfter { get; init; }
   public double? LineSpacing { get; init; }
@@ -219,6 +225,8 @@ public record ParagraphPayload
   public RunPayload Mark { get; init; } = new RunPayload();
   public List<RunPayload> Runs { get; init; } = new List<RunPayload>();
 }
+
+public record StyleOriginPayload(string Style, string File, int Line);
 
 public record RunPayload
 {
@@ -441,7 +449,9 @@ public static class PayloadBuilder
         Frame = words.Origins.TryGetValue("frame", out Origin? frame)
           ? Source(frame)
           : new SourcePayload($"{words.Origin.Path}.frame", null),
-        Text = text is null ? null : Source(text)
+        Text = text is null ? null : Source(text),
+        Align = Own(words, "align"),
+        Valign = Own(words, "valign")
       };
     }
     return Painted(new EditPayload
@@ -453,7 +463,27 @@ public static class PayloadBuilder
         ? Source(paragraphs)
         : null,
       Delete = Source(element.Origin)
-    }, element);
+    }, element) with
+    {
+      Align = Worded(element, element.Properties.Origins, "align"),
+      Valign = Worded(element, element.Properties.Origins, "valign"),
+      Style = Worded(element, element.Origins, "style")
+    };
+
+    static SourcePayload Own(Placeholder words, string key)
+    {
+      return words.Properties.Origins.TryGetValue(key, out Origin? origin)
+        ? Source(origin)
+        : new SourcePayload($"{words.Origin.Path}.{key}", null);
+    }
+  }
+
+  /// <summary>Where a text box's or shape's own value is written, or would be.</summary>
+  private static SourcePayload? Worded(Element element, Dictionary<string, Origin> origins, string key)
+  {
+    return element.Kind is not ("text" or "shape") ? null
+      : origins.TryGetValue(key, out Origin? origin) ? Source(origin)
+      : new SourcePayload($"{element.Origin.Path}.{key}", null);
   }
 
   /// <summary>Where the element's own fill and stroke are written, or would be: a text box or shape takes both, a
@@ -676,6 +706,9 @@ public static class PayloadBuilder
     return new ParagraphPayload
     {
       Align = properties.TryGetValue("align", out Resolved? align) ? (string)align.Value : "left",
+      AlignStyle = paragraph.StyleAligns && align!.Origin is Origin origin
+        ? new StyleOriginPayload(paragraph.Style!, origin.File, origin.Line)
+        : null,
       SpaceBefore = Number("space_before"),
       SpaceAfter = Number("space_after"),
       LineSpacing = properties.ContainsKey("line_spacing") ? Number("line_spacing") : null,

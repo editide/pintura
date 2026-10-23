@@ -1338,6 +1338,16 @@ body.moving * {
   cursor: crosshair;
 }
 
+.drawn {
+  position: absolute;
+  border: calc(1px / var(--scale, 1)) dashed var(--accent);
+}
+
+body.drawing #slide-view,
+body.drawing #slide-view * {
+  cursor: crosshair !important;
+}
+
 .snap {
   position: absolute;
   background: #ff4fa3;
@@ -3816,6 +3826,76 @@ kbd {
 .paint-weight-line {
   width: 100%;
   border-top: 1px solid var(--ink);
+}
+
+.align-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  gap: 3px;
+}
+
+.align-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 34px;
+  height: 34px;
+  padding: 5px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.align-choice[data-align="left"] { align-items: flex-start; }
+.align-choice[data-align="center"] { align-items: center; }
+.align-choice[data-align="right"] { align-items: flex-end; }
+.align-choice[data-valign="top"] { justify-content: flex-start; }
+.align-choice[data-valign="middle"] { justify-content: center; }
+.align-choice[data-valign="bottom"] { justify-content: flex-end; }
+
+.align-choice:hover {
+  background: var(--hover);
+}
+
+.align-choice.current {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.align-line {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--muted);
+}
+
+.style-choices {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.style-choice {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.style-choice:hover {
+  background: #f1f1f1;
+}
+
+.style-choice.current {
+  box-shadow: inset 3px 0 var(--accent);
 }
 
 .tooltip {

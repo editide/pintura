@@ -2,8 +2,10 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { snapTargets, moveBox, resizeBox, movePoint, moveLine, moveGroup, boxPicks, valueEdits } = require(
+const { snapTargets, moveBox, resizeBox, movePoint, moveLine, moveGroup, boxPicks, valueEdits, drawBox, freshId } = require(
   path.join(__dirname, '..', 'Pintura', 'wwwroot', 'edit.js'));
+
+const { alignmentPick } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'paint.js'));
 
 const slide = {
   guides: [{ kind: 'area', name: 'left', rect: [40, 100, 430, 380] }],
@@ -222,4 +224,97 @@ test('items moved together snap by the box around them all and shift by the same
   // Assert
   assert.deepEqual(changes, [{ frame: [40, 110, 50, 50] }, { from: [240, 130], to: [340, 230] }]);
   assert.deepEqual(lines, [{ axis: 'x', at: 40 }]);
+});
+test('a text box drawn up and to the left spans from the pointer to where the press began', () => {
+  // Act
+  const { box } = drawBox([300.4, 200.6], -100.2, -50, null, 6);
+
+  // Assert
+  assert.deepEqual(box, [200, 151, 100, 50]);
+});
+
+test('a text box drawn near an area snaps its corners onto the area\'s edges', () => {
+  // Arrange
+  const targets = snapTargets(slide, [960, 540], []);
+
+  // Act
+  const { box, lines } = drawBox([43, 104], 425, 150, targets, 6);
+
+  // Assert
+  assert.deepEqual(box, [40, 100, 430, 154]);
+  assert.deepEqual(lines, [{ axis: 'x', at: 40 }, { axis: 'y', at: 100 }, { axis: 'x', at: 470 }]);
+});
+
+test('a new text box takes the first id no item on the slide has', () => {
+  // Act
+  const ids = [freshId([]), freshId([{ id: 'text' }, { id: 'text2' }, { id: 'text4' }])];
+
+  // Assert
+  assert.deepEqual(ids, ['text', 'text3']);
+});
+
+test('picking a place for the text writes only the alignment that changes', () => {
+  // Arrange
+  const item = {
+    text: { valign: 'middle', paragraphs: [{ align: 'left' }, { align: 'left' }] },
+    edit: { align: { path: 'elements.note.align' }, valign: { path: 'elements.note.valign', source: 'middle' } }
+  };
+
+  // Act
+  const edits = [alignmentPick(item, 'center', 'middle').edits, alignmentPick(item, 'left', 'bottom').edits];
+
+  // Assert
+  assert.deepEqual(edits, [
+    [{ path: 'elements.note.align', source: undefined, value: 'center' }],
+    [{ path: 'elements.note.valign', source: 'middle', value: 'bottom' }]
+  ]);
+});
+
+const held = { style: 'lead', file: '/deck/theme/styles.yaml', line: 27 };
+
+test('a pick a paragraph style overrides writes the box and says where the style aligns', () => {
+  // Arrange
+  const item = {
+    text: { valign: 'top', paragraphs: [{ align: 'right', alignStyle: held }, { align: 'left' }] },
+    edit: { align: { path: 'elements.note.align' }, valign: { path: 'elements.note.valign' } }
+  };
+
+  // Act
+  const pick = alignmentPick(item, 'center', 'top');
+
+  // Assert
+  assert.deepEqual(pick, {
+    edits: [{ path: 'elements.note.align', source: undefined, value: 'center' }],
+    paragraphs: [{ align: 'right', alignStyle: held }, { align: 'center' }],
+    notice: 'lead aligns paragraph 1 right, in styles.yaml:27; change it there'
+  });
+});
+
+test('a pick only paragraph styles would answer writes nothing', () => {
+  // Arrange
+  const item = {
+    text: { valign: 'top', paragraphs: [{ align: 'right', alignStyle: held }, { align: 'right', alignStyle: held }] },
+    edit: { align: { path: 'elements.note.align' }, valign: { path: 'elements.note.valign' } }
+  };
+
+  // Act
+  const pick = alignmentPick(item, 'left', 'top');
+
+  // Assert
+  assert.deepEqual(pick.edits, []);
+  assert.equal(pick.notice, 'lead aligns paragraphs 1 and 2 right, in styles.yaml:27; change it there');
+});
+
+test('a box whose paragraphs align differently takes the picked alignment on the box', () => {
+  // Arrange
+  const item = {
+    text: { valign: 'top', paragraphs: [{ align: 'center' }, { align: 'left' }] },
+    edit: { align: { path: 'title.align' }, valign: { path: 'title.valign' } }
+  };
+
+  // Act
+  const edits = alignmentPick(item, 'center', 'top').edits;
+
+  // Assert
+  assert.deepEqual(edits, [{ path: 'title.align', source: undefined, value: 'center' }]);
 });

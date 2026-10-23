@@ -1,12 +1,14 @@
 'use strict';
 
 // Fill and outline for the selected item, picked from the theme's colors and their shades, and outline weights as
-// PowerPoint lists them. Hovering a choice previews it on the slide; picking one writes the element's own value, as
-// an agent would, so a fill its style sets stays the style's until picked over.
+// PowerPoint lists them, and its text's alignments and style. Hovering a choice previews it on the slide; picking one
+// writes the element's own value, as an agent would, so a fill its style sets stays the style's until picked over.
 
 const PAINT_SLOTS = ['dark1', 'light1', 'dark2', 'light2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5',
   'accent6'];
 const OUTLINE_WEIGHTS = [0.5, 0.75, 1, 1.5, 2.25, 3, 4.5, 6];
+const ALIGNS = ['left', 'center', 'right'];
+const VALIGNS = ['top', 'middle', 'bottom'];
 
 // A color as the files write it, by its hex, drawn from the theme's slots, shades, and named colors.
 function paintNames() {
@@ -33,12 +35,31 @@ function paintLabel(source, hex) {
   return hex ? paintNames().get(hex.toUpperCase()) || hex : 'None';
 }
 
-// The row of fill and outline buttons the inspector shows for an item whose file the mouse may write.
+// The rows of fill and outline, alignment and style buttons the inspector shows for an item whose file the mouse may
+// write.
 function renderPaint(item, panel) {
   const edit = item?.edit;
-  if (!edit || edit.locked || !(edit.fill || edit.stroke)) {
+  if (!edit || edit.locked) {
     return;
   }
+  if (edit.fill || edit.stroke) {
+    renderFillAndOutline(item, panel);
+  }
+  if ((edit.align && item.text) || edit.style) {
+    const row = element('div', 'paint-row', panel);
+    if (edit.align && item.text) {
+      const aligns = new Set(item.text.paragraphs.map((paragraph) => paragraph.align));
+      const align = aligns.size === 1 ? sentence([...aligns][0]) : 'Mixed';
+      pickButton(row, 'Align', `${align}, ${item.text.valign}`, (button) => openAlignment(button, item));
+    }
+    if (edit.style) {
+      pickButton(row, 'Style', paintLabel(edit.style.source, null), (button) => openStyles(button, item));
+    }
+  }
+}
+
+function renderFillAndOutline(item, panel) {
+  const edit = item.edit;
   const row = element('div', 'paint-row', panel);
   if (edit.fill) {
     paintButton(row, 'Fill', item.fill, paintLabel(edit.fill.source, item.fill),
@@ -64,6 +85,15 @@ function paintButton(row, label, hex, text, open) {
   button.addEventListener('click', () => open(button));
 }
 
+function pickButton(row, label, text, open) {
+  const button = element('button', 'paint-button', row);
+  button.type = 'button';
+  button.title = `${label}: ${text}`;
+  element('span', 'paint-label', button).textContent = label;
+  element('span', 'paint-value', button).textContent = text;
+  button.addEventListener('click', () => open(button));
+}
+
 function closePaint() {
   document.getElementById('paint-popover')?.remove();
   document.removeEventListener('pointerdown', paintOutside, true);
@@ -84,9 +114,9 @@ function paintEscape(event) {
   }
 }
 
-function openPaint(button, item, key) {
-  const open = document.getElementById('paint-popover');
-  const same = open?.dataset.key === key;
+// A popover under the button, or over it where the window has no room below; pressing the button again closes it.
+function openPick(button, key, build) {
+  const same = document.getElementById('paint-popover')?.dataset.key === key;
   closePaint();
   if (same) {
     return;
@@ -94,6 +124,21 @@ function openPaint(button, item, key) {
   const popover = element('div', 'paint-popover', document.body);
   popover.id = 'paint-popover';
   popover.dataset.key = key;
+  build(popover);
+  const box = button.getBoundingClientRect();
+  popover.style.left = `${Math.min(box.left, window.innerWidth - popover.offsetWidth - 8)}px`;
+  const below = box.bottom + 6;
+  const above = box.top - popover.offsetHeight - 6;
+  popover.style.top = `${below + popover.offsetHeight > window.innerHeight ? above : below}px`;
+  document.addEventListener('pointerdown', paintOutside, true);
+  document.addEventListener('keydown', paintEscape, true);
+}
+
+function openPaint(button, item, key) {
+  openPick(button, key, (popover) => paintChoices(popover, item, key));
+}
+
+function paintChoices(popover, item, key) {
   const fill = key === 'fill';
   const current = fill ? item.fill : item.stroke?.color;
   const none = element('button', `paint-none${current ? '' : ' current'}`, popover);
@@ -133,13 +178,108 @@ function openPaint(button, item, key) {
         () => outlineEdits(item, { width }));
     }
   }
-  const box = button.getBoundingClientRect();
-  popover.style.left = `${Math.min(box.left, window.innerWidth - popover.offsetWidth - 8)}px`;
-  const below = box.bottom + 6;
-  const above = box.top - popover.offsetHeight - 6;
-  popover.style.top = `${below + popover.offsetHeight > window.innerHeight ? above : below}px`;
-  document.addEventListener('pointerdown', paintOutside, true);
-  document.addEventListener('keydown', paintEscape, true);
+}
+
+// Nine places for the text, its alignment across and down, as one grid.
+function openAlignment(button, item) {
+  openPick(button, 'align', (popover) => {
+    const grid = element('div', 'align-grid', popover);
+    const { valign, paragraphs } = item.text;
+    for (const down of VALIGNS) {
+      for (const across of ALIGNS) {
+        const current = down === valign && paragraphs.every((paragraph) => paragraph.align === across);
+        const choice = element('button', `align-choice${current ? ' current' : ''}`, grid);
+        choice.type = 'button';
+        choice.title = `${sentence(across)}, ${down}`;
+        choice.setAttribute('aria-label', choice.title);
+        choice.dataset.align = across;
+        choice.dataset.valign = down;
+        for (const width of [70, 45]) {
+          element('span', 'align-line', choice).style.width = `${width}%`;
+        }
+        paintChoice(choice, item,
+          () => ({ text: { ...item.text, valign: down, paragraphs: alignmentPick(item, across, down).paragraphs } }),
+          () => {
+            const pick = alignmentPick(item, across, down);
+            if (pick.notice) {
+              notice(pick.notice);
+            }
+            return pick.edits;
+          });
+      }
+    }
+  });
+}
+
+// Only what the pick changes is written, so centering a box that already sits in the middle writes its align alone.
+// A paragraph whose own style aligns it keeps that alignment over the box's, and the notice says where to change it.
+function alignmentPick(item, align, valign) {
+  const paragraphs = item.text.paragraphs.map((paragraph) =>
+    (paragraph.alignStyle ? paragraph : { ...paragraph, align }));
+  const edits = [];
+  if (item.text.paragraphs.some((paragraph) => !paragraph.alignStyle && paragraph.align !== align)) {
+    edits.push(paintEdit(item.edit.align, align));
+  }
+  if (item.text.valign !== valign) {
+    edits.push(paintEdit(item.edit.valign, valign));
+  }
+  return { edits, paragraphs, notice: heldNotice(item.text.paragraphs, align) };
+}
+
+function heldNotice(paragraphs, align) {
+  const held = new Map();
+  paragraphs.forEach((paragraph, at) => {
+    const style = paragraph.alignStyle;
+    if (style && paragraph.align !== align) {
+      const key = `${style.style}\n${style.file}:${style.line}\n${paragraph.align}`;
+      held.set(key, [...(held.get(key) || []), at + 1]);
+    }
+  });
+  if (held.size === 0) {
+    return null;
+  }
+  const parts = [...held].map(([key, numbers]) => {
+    const [style, where, aligned] = key.split('\n');
+    const which = numbers.length === 1
+      ? `paragraph ${numbers[0]}`
+      : `paragraphs ${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`;
+    return `${style} aligns ${which} ${aligned}, in ${where.split('/').pop()}`;
+  });
+  return `${parts.join('; ')}; change it there`;
+}
+
+// The theme's styles, each named in its own font and color, the box's own one marked.
+function openStyles(button, item) {
+  openPick(button, 'style', (popover) => {
+    const list = element('div', 'style-choices', popover);
+    for (const style of state.themeView?.styles || []) {
+      const choice = element('button', `style-choice${style.name === item.edit.style.source ? ' current' : ''}`,
+        list);
+      choice.type = 'button';
+      choice.textContent = style.name;
+      Object.assign(choice.style, {
+        fontFamily: `"${style.family}"`,
+        fontSize: `${Math.min(Math.max(style.size, 11), 20)}px`,
+        fontWeight: style.bold ? '700' : '',
+        fontStyle: style.italic ? 'italic' : '',
+        textDecoration: style.underline ? 'underline' : '',
+        color: style.hex
+      });
+      // The list is white like a slide, so text meant for a dark band sits on the theme's dark color.
+      if (lightness(style.hex) > 0.8) {
+        choice.style.background = paintHex('dark1');
+      }
+      choice.addEventListener('click', () => {
+        closePaint();
+        sendEdits(item, [paintEdit(item.edit.style, style.name)]);
+      });
+    }
+  });
+}
+
+function lightness(hex) {
+  const [red, green, blue] = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255);
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 
 function paintHex(name) {
@@ -216,4 +356,8 @@ function unpreviewPaint() {
     paintPreview.fresh.replaceWith(paintPreview.node);
     paintPreview = null;
   }
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { alignmentPick };
 }

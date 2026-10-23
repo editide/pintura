@@ -190,6 +190,77 @@ public class PayloadTests
   }
 
   [Fact]
+  public void Text_carries_where_its_alignment_and_style_are_written_whether_or_not_it_sets_them()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Revenue
+      elements:
+        - id: note
+          text: Hello
+          frame: [10, 10, 100, 40]
+          style: lead
+          align: center
+          valign: bottom
+        - id: box
+          shape: rectangle
+          frame: [10, 60, 100, 40]
+        - id: arrow
+          line: { from: [10, 20], to: [30, 40] }
+      """);
+
+    // Act
+    List<ItemPayload> items = Slide(deck, "two").Items!;
+
+    // Assert
+    EditPayload note = items.Single(item => item.Id == "note").Edit;
+    note.Align.ShouldBe(new SourcePayload("elements.note.align", "center"));
+    note.Valign.ShouldBe(new SourcePayload("elements.note.valign", "bottom"));
+    note.Style.ShouldBe(new SourcePayload("elements.note.style", "lead"));
+    EditPayload box = items.Single(item => item.Id == "box").Edit;
+    box.Align.ShouldBe(new SourcePayload("elements.box.align", null));
+    box.Style.ShouldBe(new SourcePayload("elements.box.style", null));
+    items.Single(item => item.Id == "arrow").Edit.Align.ShouldBeNull();
+    EditPayload title = items.Single(item => item.Id == "title" && item.Owner == "slide").Edit;
+    title.Align.ShouldBe(new SourcePayload("title.align", null));
+    title.Valign.ShouldBe(new SourcePayload("title.valign", null));
+    title.Style.ShouldBeNull();
+  }
+
+  [Fact]
+  public void A_paragraph_names_the_style_that_aligns_it_over_its_box()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("theme/styles.yaml", DeckFixture.Styles.Replace("lead: { size: 18, bold: true }",
+      "lead: { size: 18, bold: true, align: right }"));
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      elements:
+        - id: note
+          frame: [10, 10, 100, 40]
+          style: lead
+          align: center
+          text: |
+            {.lead}
+            Held
+            Free
+      """);
+
+    // Act
+    List<ParagraphPayload> paragraphs = Slide(deck, "two").Items!.Single(item => item.Id == "note").Text!.Paragraphs;
+
+    // Assert
+    StyleOriginPayload held = paragraphs[0].AlignStyle!;
+    (held.Style, Path.GetFileName(held.File), held.Line).ShouldBe(("lead", "styles.yaml", 23));
+    paragraphs[0].Align.ShouldBe("right");
+    paragraphs[1].AlignStyle.ShouldBeNull();
+    paragraphs[1].Align.ShouldBe("center");
+  }
+
+  [Fact]
   public void A_title_the_layout_places_writes_its_frame_into_the_slide()
   {
     // Arrange
