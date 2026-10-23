@@ -22,7 +22,32 @@ public static class Saves
       return new SaveStatus(true, 1);
     }
     VersionScope scope = Revisions.Scope(root);
-    return new SaveStatus(Changes(scope).Any(path => path != scope.CommentFile), Revisions.Count(scope, "HEAD") + 1);
+    return new SaveStatus(Unsaved(scope), Revisions.Count(scope, "HEAD") + 1);
+  }
+
+  /// <summary>The commit the presentation is at and whether its slides or theme changed since, which a comment
+  /// records as what its reviewer saw; null outside a repository or before its first commit.</summary>
+  public static Snapshot? Snapshot(string root)
+  {
+    try
+    {
+      if (!Inside(root))
+      {
+        return null;
+      }
+      (int exit, string head, _) = Revisions.Run(root, "rev-parse", "--short", "HEAD");
+      return exit == 0 ? new Snapshot(head.Trim(), Unsaved(Revisions.Scope(root))) : null;
+    }
+    catch (InvalidDataException)
+    {
+      return null;
+    }
+  }
+
+  /// <summary>Comments alone wait for the next save.</summary>
+  private static bool Unsaved(VersionScope scope)
+  {
+    return Changes(scope).Any(path => path != scope.CommentFile && path != scope.ResolvedFile);
   }
 
   /// <summary>Commits the presentation and its theme, starting a repository in the presentation when there's none,

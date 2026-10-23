@@ -127,11 +127,11 @@ public static class Checks
 
   #region Comments
 
-  /// <summary>A comment on a slide or element that no longer exists, which renaming or deleting it by hand leaves.
-  /// </summary>
+  /// <summary>A comment on a slide or element that no longer exists, which renaming or deleting it by hand leaves,
+  /// and a comments file git doesn't track.</summary>
   public static List<Finding> Comments(Presentation presentation)
   {
-    var findings = new List<Finding>();
+    List<Finding> findings = Untracked(presentation);
     foreach (Comment comment in presentation.Comments)
     {
       Slide? slide = presentation.Slides.FirstOrDefault(candidate => candidate.Id == comment.Slide);
@@ -140,14 +140,14 @@ public static class Checks
       if (slide is null)
       {
         problem = $"comment {comment.Id} is on slide {comment.Slide}, which no longer exists; move it to a slide or " +
-          "delete it";
+          "resolve it";
       }
       else if (comment.Element is string element && slide.Error is null &&
         SceneBuilder.Build(presentation, slide).Items.All(item => item.Id != element))
       {
         where = $"{comment.Slide}/{element}";
         problem = $"comment {comment.Id} is on element {element}, which no longer exists; move it to an element or " +
-          "delete it";
+          "resolve it";
       }
       if (problem is not null)
       {
@@ -159,6 +159,38 @@ public static class Checks
           Topic = "comments"
         });
       }
+    }
+    return findings;
+  }
+
+  /// <summary>A comments file inside a repository that git doesn't track: a thread resolved out of it, or kept in the
+  /// resolved file, leaves no history for anyone to learn from.</summary>
+  private static List<Finding> Untracked(Presentation presentation)
+  {
+    var findings = new List<Finding>();
+    (string Name, string Problem)[] files =
+    [
+      (CommentFile.Name, "a thread resolved from it leaves no history"),
+      (CommentFile.ResolvedName, "the resolved threads in it have no history")
+    ];
+    try
+    {
+      if (Revisions.Run(presentation.Root, "rev-parse", "--is-inside-work-tree").Exit != 0)
+      {
+        return findings;
+      }
+      foreach ((string name, string problem) in files)
+      {
+        if (File.Exists(Path.Combine(presentation.Root, name)) &&
+          Revisions.Run(presentation.Root, "ls-files", "--error-unmatch", "--", name).Exit != 0)
+        {
+          findings.Add(new Finding("warning", "comments", "comments",
+            $"{name} isn't in git, so {problem}; commit it with the slides") { Topic = "comments" });
+        }
+      }
+    }
+    catch (InvalidDataException)
+    {
     }
     return findings;
   }

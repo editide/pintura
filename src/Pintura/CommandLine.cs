@@ -1,6 +1,9 @@
 namespace Pintura;
 
-public enum HeadlessCommand { List, Slide, Element, Screenshot, Check, Url, Export, ExportHtml, ExportPptx, Diff, Comments }
+public enum HeadlessCommand
+{
+  List, Slide, Element, Screenshot, Check, Url, Export, ExportHtml, ExportPptx, Diff, Comments, Resolve
+}
 
 public enum AccountCommand { Login, Logout, WhoAmI }
 
@@ -21,6 +24,10 @@ public class CommandLineOptions
   /// or <c>--export</c> writes.</summary>
   public string? Output { get; private init; }
   public bool Json { get; private init; }
+  /// <summary>Makes <c>--comments</c> list the resolved comments instead of the open ones.</summary>
+  public bool Resolved { get; private init; }
+  /// <summary>The comments <c>--resolve</c> resolves.</summary>
+  public List<string>? Ids { get; private init; }
   /// <summary>What <c>--diff</c> compares: a revision against the working tree, or <c>a..b</c> for two revisions.
   /// Alone it lists the changes; with <c>--check</c> or <c>--screenshot</c> it narrows or pairs what they show.
   /// </summary>
@@ -61,6 +68,8 @@ public class CommandLineOptions
     string? output = null;
     string? revision = null;
     bool json = false;
+    bool resolved = false;
+    List<string>? ids = null;
     bool export = false;
     string? documentation = null;
     string? import = null;
@@ -117,6 +126,16 @@ public class CommandLineOptions
         case "--comments":
           RequireNoCommand(command, argument);
           command = HeadlessCommand.Comments;
+          break;
+        case "--resolved":
+          resolved = true;
+          break;
+        case "--resolve":
+          RequireNoCommand(command, argument);
+          Require(arguments, index, 1);
+          command = HeadlessCommand.Resolve;
+          ids = [.. arguments[++index].Split(',',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
           break;
         case "--url":
           RequireNoCommand(command, argument);
@@ -246,8 +265,12 @@ public class CommandLineOptions
       throw new ArgumentException("--no-open leaves the server's page to the caller, so it cannot be combined with a " +
         "command that starts no server.");
     }
+    if (resolved && command is not HeadlessCommand.Comments)
+    {
+      throw new ArgumentException("--resolved requires --comments.");
+    }
     if ((command is null or HeadlessCommand.Screenshot or HeadlessCommand.Url or HeadlessCommand.Export or
-      HeadlessCommand.ExportHtml or HeadlessCommand.ExportPptx) && json)
+      HeadlessCommand.ExportHtml or HeadlessCommand.ExportPptx or HeadlessCommand.Resolve) && json)
     {
       throw new ArgumentException("--json requires --list, --slide, --element, --check, --comments or --diff.");
     }
@@ -293,6 +316,8 @@ public class CommandLineOptions
       Output = output,
       Revision = revision,
       Json = json,
+      Resolved = resolved,
+      Ids = ids,
       Export = export,
       Documentation = documentation,
       Import = import,
@@ -319,8 +344,11 @@ public class CommandLineOptions
     writer.WriteLine("  pintura [<presentation>] --check [--export] [--diff [<rev>|<a>..<b>]] [--json]   (structure, " +
       "text, geometry, and consistency findings; --export adds what the PowerPoint export can't reproduce, and " +
       "--diff keeps only those the change introduced)");
-    writer.WriteLine("  pintura [<presentation>] --comments [--json]   (reviewers' comments in slide order, each " +
-      "beside the file and line of what it points at)");
+    writer.WriteLine("  pintura [<presentation>] --comments [--resolved] [--json]   (reviewers' comments in slide " +
+      "order, each beside the file and line of what it points at; --resolved lists the resolved ones instead, in " +
+      "the order they were resolved, with how each thread ended)");
+    writer.WriteLine("  pintura [<presentation>] --resolve <id>[,<id>...]   (moves the comments the reviewer names " +
+      "to comments-resolved.yaml, with how each thread ended)");
     writer.WriteLine("  pintura [<presentation>] --url   (the address of the server already running it)");
     writer.WriteLine("  pintura [<presentation>] --export <deck.pptx> [--slides <list>]   (a PowerPoint deck written " +
       "on editide, with what it can't reproduce; --slides takes ids, numbers, and ranges such as cover,3-5)");
@@ -369,7 +397,7 @@ public class CommandLineOptions
     if (command is not null)
     {
       throw new ArgumentException(
-        "Use only one of --list, --slide, --element, --screenshot, --check, --comments, --url, --export, " +
+        "Use only one of --list, --slide, --element, --screenshot, --check, --comments, --resolve, --url, --export, " +
         $"--export-json or --export-html; found '{argument}' after another.");
     }
   }

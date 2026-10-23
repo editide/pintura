@@ -150,8 +150,9 @@ Ask an agent to go through them: it runs `--comments`, makes each change, and ma
 A done pin turns green and a skipped one grey, and opening one shows the agent's note beside your words, so each can be checked against Changes.
 Resolve one from its pin, or every done one with Resolve done above the slides, where the open, done, and skipped are counted.
 To hand one back to the agent, type a reply into its pin, or press Revert to have the agent undo what it did, with the reason typed beside it if any; the agent marks the reply as it did the comment, and the pin shows the whole thread.
-Ctrl+Z undoes adding, rewording, replying to, or resolving one, or resolving every done one, and deleting a slide deletes its comments, which undoing it puts back.
-A comment whose element is gone shows as a grey pin, and one on a slide that is gone is listed at the foot of the sidebar to delete; `--check` warns of both.
+Resolving one moves it, with its thread and how it ended, to `comments-resolved.yaml`, which keeps the history of every request.
+Ctrl+Z undoes adding, rewording, replying to, or resolving one, and deleting a slide resolves its comments as removed, which undoing it reopens.
+A comment whose element is gone shows as a grey pin, and one on a slide that is gone is listed at the foot of the sidebar to resolve; `--check` warns of both.
 
 ## Numbers from a Libreta book
 
@@ -259,6 +260,7 @@ The title is `title`, and a placeholder is its name.
 Add `--json` to any of the three for the same content as JSON.
 
 `pintura presentations/example --comments` lists reviewers' comments in slide order, each beside the file and line that writes what it points at; `--json` works here too.
+`--comments --resolved` lists the resolved ones in the order they were resolved, each with how its thread ended, and `--resolve <id>,<id>` resolves the ones a reviewer names.
 
 ## Look at the rendered slides
 
@@ -278,7 +280,7 @@ Without `--output`, the PNG goes to `screenshots/<presentation>/<slide>.png` in 
 
 `--screenshot` also prints the slide's findings.
 
-`--check` reports six kinds of finding, which `pintura --docs checks` lists: structure, such as a slide that fails to load; text, measured in every box; geometry; consistency across slides; comments on a slide or element that no longer exists; and, with `--export`, what the PowerPoint export can't reproduce.
+`--check` reports six kinds of finding, which `pintura --docs checks` lists: structure, such as a slide that fails to load; text, measured in every box; geometry; consistency across slides; comments on a slide or element that no longer exists, or in a file git doesn't track; and, with `--export`, what the PowerPoint export can't reproduce.
 It exits 1 when there are errors and 0 when there are only warnings, as Libreta's does, and `--json` prints the findings as JSON, a structure error with its `file`, `line`, and `topic`.
 A theme or layout element with a finding on several slides is one finding, named by its first slide.
 
