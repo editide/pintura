@@ -203,6 +203,14 @@ function startComment(event) {
   openComment(draft, { left: event.clientX, top: event.clientY, right: event.clientX, bottom: event.clientY });
 }
 
+// A new comment or reply records the last saved version as what its reviewer saw, so over unsaved changes the
+// editor asks to save first; rewording what still waits on an agent keeps the version the comment already has.
+function unsavedWarning(saving, existing, marked) {
+  return saving?.unsaved && (!existing || marked !== 'open')
+    ? 'Unsaved changes: save first, so this points at what you see'
+    : null;
+}
+
 function askBy(ask, parent) {
   if (ask.by || ask.date) {
     element('div', 'comment-by', parent).textContent = [ask.by, commentDate(ask.date)].filter(Boolean).join(', ');
@@ -237,6 +245,16 @@ function openComment(comment, anchor) {
     if (asks.at(-1).revert) {
       element('div', 'comment-ask reverting', node).textContent = 'Revert';
     }
+  }
+  const warning = unsavedWarning(state.saving, existing, marked);
+  if (warning) {
+    const row = element('div', 'comment-unsaved', node);
+    element('span', null, row).textContent = warning;
+    const save = element('button', 'tool', row);
+    save.type = 'button';
+    save.textContent = 'Save';
+    save.title = 'Save the changes as a version (Ctrl+S)';
+    save.addEventListener('click', () => openSave());
   }
   const words = element('textarea', null, node);
   words.rows = 3;
@@ -343,5 +361,5 @@ function installComments(slideView) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { commentPoint, commentDraft, commentCounts, commentDate, commentTitle };
+  module.exports = { commentPoint, commentDraft, commentCounts, commentDate, commentTitle, unsavedWarning };
 }

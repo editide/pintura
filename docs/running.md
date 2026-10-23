@@ -151,6 +151,7 @@ A done pin turns green and a skipped one grey, and opening one shows the agent's
 Resolve one from its pin, or every done one with Resolve done above the slides, where the open, done, and skipped are counted.
 To hand one back to the agent, type a reply into its pin, or press Revert to have the agent undo what it did, with the reason typed beside it if any; the agent marks the reply as it did the comment, and the pin shows the whole thread.
 Resolving one moves it, with its thread and how it ended, to `comments-resolved.yaml`, which keeps the history of every request.
+A new comment or reply records the last saved version as what you saw, so over unsaved changes its box asks you to save first, with a Save button beside the ask.
 Ctrl+Z undoes adding, rewording, replying to, or resolving one, and deleting a slide resolves its comments as removed, which undoing it reopens.
 A comment whose element is gone shows as a grey pin, and one on a slide that is gone is listed at the foot of the sidebar to resolve; `--check` warns of both.
 

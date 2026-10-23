@@ -51,7 +51,7 @@ New comments take ids no resolved comment had, so an id names one thread for goo
 | `at` | `[x, y]` in points from the element's top-left corner, or the slide's without an element. |
 | `by` | Who wrote it. |
 | `date` | When, as `2026-10-07 14:03`. |
-| `rev` | The commit the deck was at when the reviewer wrote it, absent outside a repository. |
+| `rev` | The commit the deck was at when the reviewer wrote it, absent outside a repository; commit at the end of every round, before the reviewer looks, so it names what they saw. |
 | `uncommitted` | `true` when the slides or theme had changed since `rev`, so the reviewer saw more than that commit. |
 | `text` | What the reviewer asks for. |
 | `done` | What an agent changed for it, for the reviewer to check. |
