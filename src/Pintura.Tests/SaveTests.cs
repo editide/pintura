@@ -54,6 +54,28 @@ public class SaveTests
   }
 
   [Fact]
+  public void Reformatting_yaml_leaves_the_presentation_saved()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    string slide = File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml"));
+    deck.Write("deck/slides/two.yaml", "# A note\n" + slide.TrimEnd() + "\n\n");
+    SaveStatus reformatted = Saves.Status(root);
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
+
+    // Act
+    SaveStatus edited = Saves.Status(root);
+
+    // Assert
+    reformatted.Unsaved.ShouldBeFalse();
+    edited.Unsaved.ShouldBeTrue();
+  }
+
+  [Fact]
   public void Saving_commits_the_presentation_and_its_theme_and_nothing_else_staged_or_not()
   {
     // Arrange
