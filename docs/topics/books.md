@@ -28,7 +28,7 @@ title: Connectivity revenue reached ${acme::historical.segments.connectivity_rev
 
 Qualified names and columns are as `libreta <book> --lines` lists them; `--lines` with names prints just those.
 A reference never takes arithmetic: a figure the book doesn't have becomes a formula in the book.
-Like a field, a reference is read-only when rewording text in the page.
+Typing over a reference in the page, as over a field, writes the typed text in its place.
 References work wherever text does, a table's CSV cells included, where the field is quoted and its quotes doubled, as in any CSV: `"Revenue ${acme::historical.revenue[""2025""]}"`.
 
 ## Charts
