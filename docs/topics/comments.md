@@ -15,7 +15,8 @@ Act on each open comment, then mark it in `comments.yaml`: `done:` with what you
 Leave the entry: the reviewer checks each marked comment against its pin, then resolves it or answers it with a reply.
 A comment with replies waits on its last one: act on that reply, and mark it `done:` or `skipped:` rather than the comment.
 A reply with `revert: true` asks to undo what the agent did for the comment, for the reason in its `text` if any; put back what that change replaced, then mark the reply `done:`.
-Resolve entries only when the reviewer asks, with `--resolve`: whichever they name, or, asked to clear the comments, those marked `done:`, saying which open or skipped ones are left.
+Resolve only the comments the reviewer names, with `--resolve`.
+Asked to clear the comments, list those marked `done:` and leave them to the reviewer to resolve from their pins: resolving records the outcome as the reviewer's, so `accepted` has to mean they looked at that comment.
 Never delete an entry by hand: its thread is the record of how the request went.
 An empty file means no comments.
 
@@ -108,6 +109,7 @@ Comments, resolved or not, are left out of the export, `--diff`, and the version
 
 - Deleting a comment because it's done: mark it `done:`, and leave resolving it to the reviewer.
 - Deleting a comment the reviewer asked to clear: `--resolve` it, so its thread and outcome stay in `comments-resolved.yaml`.
+- Resolving every done comment when asked to clear them: resolve only the ones the reviewer names, and list the rest for them to resolve from their pins.
 - Editing `comments-resolved.yaml`: it is the history; leave it to `--resolve` and the preview.
 - Rewording a comment to say it's done: its `text` stays the reviewer's; write `done:` beside it.
 - Marking a comment `done:` again when its last reply waits: mark the reply.
