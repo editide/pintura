@@ -1,7 +1,8 @@
 'use strict';
 
-// Comparing the working tree against a git revision, HEAD unless the page's address names another with ?base=. The
-// server sends the revision as drawn and what changed since; B flips the slide to the revision in place, and C
+// Comparing the working tree against a git revision: the last save, or the version before it when nothing is unsaved,
+// unless the page's address pins another with ?base=. The server sends the revision as drawn and what changed since;
+// B flips the slide to the revision in place, and C
 // overlays the changes: added elements outlined in green, removed ones in red where the revision shows, changed ones
 // in amber, reworded ones marked in the words that changed, charts in the parts that draw what changed, and tables in
 // the cells whose look changed. Slides the revision had and the working tree doesn't are listed under the sidebar. Nothing is editable while the revision shows,
@@ -316,13 +317,16 @@ function changeMarks(diff, earlier, later, showingBefore) {
 
 // #region State
 
+// The revision the address pins, or null to follow the latest changes: the unsaved ones, or the last save's.
 function compareBase() {
-  return new URLSearchParams(location.search).get('base') || 'HEAD';
+  return new URLSearchParams(location.search).get('base');
 }
 
 async function fetchCompare() {
   try {
-    const response = await fetch(`api/compare?base=${encodeURIComponent(compareBase())}`, { cache: 'no-store' });
+    const base = compareBase();
+    const response = await fetch(`api/compare${base ? `?base=${encodeURIComponent(base)}` : ''}`,
+      { cache: 'no-store' });
     const body = await response.json();
     return response.ok ? body : { error: body.error || `comparing failed (${response.status})` };
   } catch (error) {
@@ -357,19 +361,20 @@ function baseName() {
   return comparing() ? `${namedBase() || 'the last save'} (${state.compare.commit.slice(0, 7)})` : compareBase();
 }
 
-// The revision compared against, unnamed when it's the last commit, since the page's readers needn't know git.
+// The revision compared against, unnamed when it's the last save and the changes are unsaved, since the page's
+// readers needn't know git.
 function namedBase() {
-  if (compareBase() === 'HEAD') {
-    return null;
+  if (!comparing()) {
+    return compareBase();
   }
-  return comparing() ? `v${state.compare.version.number}` : compareBase();
+  return compareBase() || state.compare.lastSave ? `v${state.compare.version.number}` : null;
 }
 
 function sinceBase() {
   return namedBase() ? ` since ${namedBase()}` : '';
 }
 
-// Compares against another version, or the last commit without one, keeping the choice in the address.
+// Pins the comparison to a version, or without one follows the latest changes, keeping the choice in the address.
 function chooseBase(commit) {
   const url = new URL(location.href);
   if (commit) {

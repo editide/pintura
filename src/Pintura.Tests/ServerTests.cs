@@ -78,6 +78,74 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task Compare_without_a_revision_shows_the_last_save_s_changes_when_nothing_is_unsaved()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-am", "retitled");
+    deck.Write("deck/comments.yaml", "- { id: a1, slide: two, at: [0, 0], text: Shorter }\n");
+    await using Served served = await Served.Start(deck);
+
+    // Act
+    System.Text.Json.JsonElement compare =
+      await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/compare");
+
+    // Assert
+    compare.GetProperty("version").GetProperty("number").GetInt32().ShouldBe(1);
+    compare.GetProperty("lastSave").GetProperty("subject").GetString().ShouldBe("retitled");
+    compare.GetProperty("diff").GetProperty("slides").EnumerateArray().Single().GetProperty("id").GetString()
+      .ShouldBe("two");
+  }
+
+  [Fact]
+  public async Task Compare_without_a_revision_shows_the_unsaved_changes_when_there_are_some()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-am", "retitled");
+    deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: Unsaved");
+    await using Served served = await Served.Start(deck);
+
+    // Act
+    System.Text.Json.JsonElement compare =
+      await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/compare");
+
+    // Assert
+    compare.GetProperty("version").GetProperty("number").GetInt32().ShouldBe(2);
+    compare.TryGetProperty("lastSave", out _).ShouldBeFalse();
+    compare.GetProperty("diff").GetProperty("slides").EnumerateArray().Single().GetProperty("id").GetString()
+      .ShouldBe("one");
+  }
+
+  [Fact]
+  public async Task Compare_without_a_revision_shows_no_changes_on_the_first_version()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    await using Served served = await Served.Start(deck);
+
+    // Act
+    System.Text.Json.JsonElement compare =
+      await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/compare");
+
+    // Assert
+    compare.GetProperty("version").GetProperty("number").GetInt32().ShouldBe(1);
+    compare.TryGetProperty("lastSave", out _).ShouldBeFalse();
+    compare.GetProperty("diff").GetProperty("slides").GetArrayLength().ShouldBe(0);
+  }
+
+  [Fact]
   public async Task Saving_commits_a_nudge_under_its_draft_and_leaves_nothing_unsaved()
   {
     // Arrange
