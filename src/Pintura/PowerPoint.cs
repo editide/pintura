@@ -58,6 +58,7 @@ public partial class PowerPointMapping
   private readonly string name;
   private readonly Package package;
   private readonly List<string> findings = new List<string>();
+  private bool wholeTheme;
   private readonly Dictionary<string, string> hex = new Dictionary<string, string>();
   private readonly string headingFont;
   private readonly string bodyFont;
@@ -83,10 +84,16 @@ public partial class PowerPointMapping
 
   /// <summary>Maps <paramref name="reads"/>, as <see cref="DeckReads.Read"/> returns them, of the deck at
   /// <paramref name="deck"/>, whose package the pictures are copied out of into <paramref name="media"/>.</summary>
-  public static PowerPointDeck Map(JsonObject reads, string deck, string media)
+  /// <summary>Maps the reads to the model's JSON. A deck takes only the layouts its slides use, unless
+  /// <paramref name="wholeTheme"/>, as for a theme imported alone, the template it is; one whose slides use none, such
+  /// as a template, takes them all.</summary>
+  public static PowerPointDeck Map(JsonObject reads, string deck, string media, bool wholeTheme = false)
   {
     using var package = new Package(deck, media);
-    var mapping = new PowerPointMapping(reads, Path.GetFileNameWithoutExtension(deck), package);
+    var mapping = new PowerPointMapping(reads, Path.GetFileNameWithoutExtension(deck), package)
+    {
+      wholeTheme = wholeTheme || reads["layouts"]!.AsArray().All(layout => layout!["slides"]!.AsArray().Count == 0)
+    };
     mapping.findings.AddRange(reads["findings"]?.AsArray().Select(finding => (string)finding!) ?? []);
     JsonObject result = mapping.Build();
     return new PowerPointDeck(result, media, mapping.findings.Distinct().ToList());
@@ -94,7 +101,8 @@ public partial class PowerPointMapping
 
   private JsonObject Master => reads["master"]!.AsObject();
 
-  private IEnumerable<JsonObject> LayoutReads => reads["layouts"]!.AsArray().Select(node => node!.AsObject());
+  private IEnumerable<JsonObject> LayoutReads => reads["layouts"]!.AsArray().Select(node => node!.AsObject())
+    .Where(layout => wholeTheme || layout["slides"]!.AsArray().Count > 0);
 
   private IEnumerable<JsonObject> SlideReads => reads["slides"]!.AsArray().Select(node => node!.AsObject());
 
@@ -2740,7 +2748,8 @@ public partial class PowerPointMapping
     }
 
     /// <summary>The part a read's <paramref name="where"/> names: a slide by its number, a layout by its name, or the
-    /// master the first slide's layout belongs to, which is the one the reads come from.</summary>
+    /// master the first slide's layout belongs to, which is the one the reads come from, or without slides the first.
+    /// </summary>
     private string? Part(string where)
     {
       if (where == "the master")
@@ -2748,7 +2757,8 @@ public partial class PowerPointMapping
         string? used = SlideParts().Take(1).SelectMany(slide => Relationships(slide).Values)
           .FirstOrDefault(target => target.StartsWith("ppt/slideLayouts/", StringComparison.Ordinal));
         return used is null
-          ? null
+          ? Relationships("ppt/presentation.xml").Values.FirstOrDefault(target =>
+            target.StartsWith("ppt/slideMasters/", StringComparison.Ordinal))
           : Relationships(used).Values.FirstOrDefault(target =>
             target.StartsWith("ppt/slideMasters/", StringComparison.Ordinal));
       }
