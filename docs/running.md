@@ -109,8 +109,13 @@ In the one-slide view, the mouse moves, resizes, and rewords what the slide owns
   Fields such as `${date}` stay as written, and an edit that would cross formatting, such as the edge of a bold run, is refused.
 - While rewording, a bar above the text, or Ctrl+B, Ctrl+I, and Ctrl+U, makes the selected words bold, italic, or underlined, writing `**`, `*`, or `[…]{underline=true}` around them, or takes the mark off where all of them have it.
   Text a style makes bold or italic is changed in the style, and the title and placeholders take no formatting, since the layout decides their look.
+- The text box button in the toolbar, or X, turns the pointer into a crosshair; drag across the slide to draw a box, snapping as a move does, and type its words straight in.
+  The box is written last on the slide, in front of the rest, as `id: text`, `text: ""`, and its `frame`, in the theme's `text` style, and goes again if it's left empty; Escape or X again puts the tool away.
 - With a text box, shape, or line selected, Fill and Outline at the top of the inspector open the theme's colors and their shades, its named colors, and PowerPoint's outline weights; hovering one previews it, and clicking it writes the element's own `fill` or `stroke`, such as `fill: accent2 lighter 40`.
   An outline picked where there was none gets `dark1` or a 1-point weight to go with it, and a fill or outline the element's style sets is overridden on the element, not changed in the style.
+- With a text box, a shape with text, the title, or a placeholder selected, Align, below Fill and Outline, opens a grid of nine places, left, center, or right by top, middle, or bottom; hovering one previews it, and clicking it writes `align` and `valign`, only the one that changes, on the element or as `title: { text: …, align: center }`.
+  A paragraph whose own style sets `align` keeps it, and a notice says which style and where to change it.
+  On a text box or shape, Style lists the theme's named styles, each drawn in its own font and color, and picking one writes `style: caption`.
 
 Drag a slide in the sidebar or the grid to reorder the presentation: its line in `presentation.yaml` moves to where it is dropped, and dropping it first under a section's name puts it first in that section.
 The move is refused when an agent has moved that slide since, or removed the one it was dropped after.

@@ -247,6 +247,28 @@ function moveGroup(items, dx, dy, targets, threshold) {
   return { changes, lines: moved.lines };
 }
 
+// A text box drawn from where the press began to the pointer, each corner snapping as a line's end does.
+function drawBox(start, dx, dy, targets, threshold) {
+  const from = movePoint(start, 0, 0, targets, threshold);
+  const to = movePoint(start, dx, dy, targets, threshold);
+  const [[x1, y1], [x2, y2]] = [from.point, to.point];
+  return {
+    box: [Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)],
+    lines: [...from.lines, ...to.lines]
+  };
+}
+
+// The first of text, text2, text3, and so on that no item on the slide is called.
+function freshId(items) {
+  const taken = new Set(items.map((item) => item.id));
+  const name = (number) => (number === 1 ? 'text' : `text${number}`);
+  let number = 1;
+  while (taken.has(name(number))) {
+    number++;
+  }
+  return name(number);
+}
+
 // #endregion
 
 // #region Editing on the page
@@ -261,6 +283,10 @@ const editing = {
   reorder: null,
   reorderClick: false,
   noticeTimer: null,
+  // The text box tool is on, so a drag on the slide draws a box.
+  drawing: false,
+  // The box last drawn, gone again if its words are left empty, with the undo that adding it pushed.
+  added: null,
   undo: [],
   redo: [],
   // Undos and redos pressed while an edit is in flight, replayed in order once it lands.
@@ -310,6 +336,10 @@ function drawSelection() {
   stage?.querySelector(':scope > .selection')?.remove();
   if (stage && editing.gesture?.marquee?.box) {
     place(element('div', 'marquee', element('div', 'selection', stage)), editing.gesture.marquee.box);
+    return;
+  }
+  if (stage && editing.gesture?.draw?.box) {
+    place(element('div', 'drawn', element('div', 'selection', stage)), editing.gesture.draw.box);
     return;
   }
   const indexes = selectedIndexes();
@@ -459,7 +489,7 @@ async function post(url, request, entry, kind) {
     if (!response.ok) {
       const failed = body.error || `the edit failed (${response.status})`;
       notice(kind === 'edit' ? failed : `couldn't ${kind}: ${failed}`);
-    } else if (undo) {
+    } else if (undo && kind !== 'discard') {
       (kind === 'undo' ? editing.redo : editing.undo).push(undo);
       if (kind === 'edit') {
         editing.redo.length = 0;
@@ -488,6 +518,19 @@ function startGesture(event) {
   const node = handle ? selectedNode() : event.target.closest('#slide-frame .item');
   const slide = currentSlide();
   const stage = slideStage();
+  if (editing.drawing) {
+    if (stage && !event.target.closest('button, a, input, textarea, .format-bar')) {
+      editing.gesture = {
+        slide: slide.id,
+        pointer: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        started: false,
+        draw: { box: null, targets: snapTargets(slide, state.deck.size, []) }
+      };
+    }
+    return;
+  }
   if (!node) {
     const view = event.currentTarget;
     const scrollbar = event.target === view &&
@@ -528,6 +571,10 @@ function startGesture(event) {
 function moveGesture(event) {
   const gesture = editing.gesture;
   if (!gesture || event.pointerId !== gesture.pointer) {
+    return;
+  }
+  if (gesture.draw) {
+    moveDraw(gesture, event);
     return;
   }
   const screenX = event.clientX - gesture.startX;
@@ -621,6 +668,10 @@ function endGesture(event) {
     return;
   }
   editing.gesture = null;
+  if (gesture.draw) {
+    endDraw(gesture);
+    return;
+  }
   if (!gesture.started) {
     return;
   }
@@ -792,6 +843,74 @@ function stepHistory(kind) {
   } else {
     editing.queued.length = 0;
   }
+}
+
+// #endregion
+
+// #region Drawing text boxes
+
+function toggleDrawing(on = !editing.drawing) {
+  editing.drawing = on && state.view === 'slide' && !state.layout && !reviewing();
+  document.body.classList.toggle('drawing', editing.drawing);
+  renderToolbar();
+}
+
+function moveDraw(gesture, event) {
+  const stage = slideStage();
+  if (!gesture.started) {
+    if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) < DRAG_PIXELS) {
+      return;
+    }
+    gesture.started = true;
+    document.getElementById('slide-frame').setPointerCapture(event.pointerId);
+  }
+  const scale = stageScale(stage);
+  const origin = stage.getBoundingClientRect();
+  const start = [(gesture.startX - origin.left) / scale, (gesture.startY - origin.top) / scale];
+  const drawn = drawBox(start, (event.clientX - gesture.startX) / scale, (event.clientY - gesture.startY) / scale,
+    event.altKey ? null : gesture.draw.targets, SNAP_PIXELS / scale);
+  gesture.draw.box = drawn.box;
+  drawSnaps(stage, drawn.lines);
+  drawSelection();
+}
+
+function endDraw(gesture) {
+  const box = gesture.draw.box;
+  drawSnaps(slideStage(), []);
+  drawSelection();
+  if (!gesture.started || box[2] < 1 || box[3] < 1) {
+    notice('Drag across the slide to draw the text box');
+    afterEditing();
+    return;
+  }
+  editing.suppressClick = true;
+  toggleDrawing(false);
+  addTextBox(gesture.slide, box);
+}
+
+// The box is written empty, in the theme's text style, and its words are then typed on the slide.
+async function addTextBox(slide, frame) {
+  const id = freshId(currentSlide().items || []);
+  await send(slide, [{ path: `elements.${id}`, numbers: hundredths(frame), add: true }]);
+  const index = currentSlide().id === slide
+    ? currentSlide().items.findIndex((item) => item.id === id && item.owner === 'slide')
+    : -1;
+  if (index < 0) {
+    return;
+  }
+  selectItem({ slide, index, id, owner: 'slide' });
+  editing.added = { slide, id, entry: editing.undo[editing.undo.length - 1] };
+  beginText(itemNode(index), (flow) => getSelection().collapse(flow.querySelector('.paragraph') || flow, 0));
+}
+
+// A box left without words goes again, taking the edits made to it off the undo list, as if never drawn.
+function discardAdded(added, item) {
+  const at = editing.undo.indexOf(added.entry);
+  if (at >= 0) {
+    editing.undo.splice(at);
+  }
+  selectItem(null);
+  send(added.slide, [{ path: item.edit.delete.path, source: item.edit.delete.source, delete: true }], 'discard');
 }
 
 // #endregion
@@ -1012,6 +1131,13 @@ function finishText(commit) {
   hideFormatBar();
   const after = paragraphTexts(editor.flow);
   editor.flow.contentEditable = 'false';
+  const { added } = editing;
+  editing.added = null;
+  if (added?.slide === editor.slide && added.id === editor.item.id && editor.item.owner === 'slide' &&
+    after.every((text) => text.trim() === '')) {
+    discardAdded(added, editor.item);
+    return;
+  }
   const changed = after.length !== editor.before.length || after.some((text, index) => text !== editor.before[index]);
   if (commit && changed) {
     send(editor.slide, [{ path: editor.item.edit.text.path, source: editor.item.edit.text.source, paragraphs: after }]);
@@ -1433,5 +1559,6 @@ function installEditing(frame, view) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { snapTargets, moveBox, resizeBox, movePoint, moveLine, moveGroup, boxPicks, valueEdits };
+  module.exports = { snapTargets, moveBox, resizeBox, movePoint, moveLine, moveGroup, boxPicks, valueEdits, drawBox,
+    freshId };
 }

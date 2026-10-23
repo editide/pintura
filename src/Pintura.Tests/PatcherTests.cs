@@ -777,13 +777,13 @@ public class PatcherTests
   }
 
   [Fact]
-  public void Unbolding_text_the_markup_does_not_make_bold_is_refused()
+  public void Unbolding_text_its_style_makes_bold_is_refused_with_a_style_that_would_turn_it_off()
   {
     // Act
     PatchException exception = Should.Throw<PatchException>(() => Apply(Slide, Format("bold", false, 0, 0, 7)));
 
     // Assert
-    exception.Message.ShouldContain("style");
+    exception.Message.ShouldContain("regular: { bold: false }");
   }
 
   [Fact]
@@ -1282,6 +1282,153 @@ public class PatcherTests
     // Act
     PatchException exception = Should.Throw<PatchException>(() =>
       Apply(Shapes, new ValueEdit("elements.step.fill", "accent4", Value: "accent2")));
+
+    // Assert
+    exception.Conflict.ShouldBeTrue();
+  }
+
+  #endregion
+
+  #region Alignment and style
+
+  [Fact]
+  public void An_alignment_the_box_lacks_goes_on_the_line_after_its_frame()
+  {
+    // Act
+    string patched = Apply(Slide, new ValueEdit("elements.takeaway.align", null, Value: "center"));
+
+    // Assert
+    patched.ShouldBe(Slide.Replace("[490, 100, 430, 170]\n", "[490, 100, 430, 170]\n    align: center\n"));
+  }
+
+  [Fact]
+  public void A_style_the_box_lacks_goes_on_the_line_after_its_frame()
+  {
+    // Act
+    string patched = Apply(Slide, new ValueEdit("elements.takeaway.style", null, Value: "lead"));
+
+    // Assert
+    patched.ShouldBe(Slide.Replace("[490, 100, 430, 170]\n", "[490, 100, 430, 170]\n    style: lead\n"));
+  }
+
+  [Fact]
+  public void An_alignment_on_a_one_line_title_makes_it_the_map_it_stands_for()
+  {
+    // Act
+    string patched = Apply(Slide, new ValueEdit("title.align", null, Value: "center"));
+
+    // Assert
+    Changed(Slide, patched).ShouldBe(["title: { text: Connectivity revenue nearly tripled, align: center }"]);
+  }
+
+  [Fact]
+  public void An_alignment_on_a_quoted_placeholder_keeps_its_quotes()
+  {
+    // Act
+    string patched = Apply(Slide, new ValueEdit("placeholders.kicker.align", null, Value: "right"));
+
+    // Assert
+    Changed(Slide, patched).ShouldBe(["  kicker: { text: \"Board update, ${date}\", align: right }"]);
+  }
+
+  [Fact]
+  public void Undoing_an_alignment_on_a_title_puts_the_shorthand_back()
+  {
+    // Act
+    string undone = Undo(Slide, new ValueEdit("title.align", null, Value: "center"));
+
+    // Assert
+    undone.ShouldBe(Slide);
+  }
+
+  #endregion
+
+  #region Adding text boxes
+
+  [Fact]
+  public void A_new_text_box_goes_last_on_the_slide()
+  {
+    // Act
+    string patched = Apply(Slide, new ValueEdit("elements.text", null, [100, 120.5, 200, 40], Add: true));
+
+    // Assert
+    patched.ShouldBe(Slide + """
+
+        - id: text
+          text: ""
+          frame: [100, 120.5, 200, 40]
+
+      """);
+  }
+
+  [Fact]
+  public void A_new_text_box_on_a_slide_without_elements_starts_the_list()
+  {
+    // Arrange
+    string bare = "layout: content\ntitle: Revenue\n";
+
+    // Act
+    string patched = Apply(bare, new ValueEdit("elements.text", null, [100, 120, 200, 40], Add: true));
+
+    // Assert
+    patched.ShouldBe(bare + "\nelements:\n  - id: text\n    text: \"\"\n    frame: [100, 120, 200, 40]\n");
+  }
+
+  [Fact]
+  public void A_new_text_box_fills_an_empty_list()
+  {
+    // Arrange
+    string empty = "layout: content\nelements: []\n";
+
+    // Act
+    string patched = Apply(empty, new ValueEdit("elements.text", null, [100, 120, 200, 40], Add: true));
+
+    // Assert
+    patched.ShouldBe("layout: content\nelements:\n  - id: text\n    text: \"\"\n    frame: [100, 120, 200, 40]\n");
+  }
+
+  [Fact]
+  public void A_new_text_box_is_indented_as_the_list_is()
+  {
+    // Arrange
+    string flush = "elements:\n- id: note\n  text: Hello\n  frame: [0, 0, 10, 10]\n";
+
+    // Act
+    string patched = Apply(flush, new ValueEdit("elements.text", null, [1, 2, 3, 4], Add: true));
+
+    // Assert
+    patched.ShouldBe(flush + "- id: text\n  text: \"\"\n  frame: [1, 2, 3, 4]\n");
+  }
+
+  [Fact]
+  public void Undoing_a_new_text_box_takes_it_out_again()
+  {
+    // Act
+    string undone = Undo(Slide, new ValueEdit("elements.text", null, [100, 120, 200, 40], Add: true));
+
+    // Assert
+    undone.ShouldBe(Slide);
+  }
+
+  [Fact]
+  public void Typing_in_a_new_text_box_replaces_its_empty_text()
+  {
+    // Arrange
+    string added = Apply(Slide, new ValueEdit("elements.text", null, [100, 120, 200, 40], Add: true));
+
+    // Act
+    string patched = Apply(added, new ValueEdit("elements.text.text", "\"\"", Paragraphs: ["Hello"]));
+
+    // Assert
+    patched[Slide.Length..].ShouldBe("\n  - id: text\n    text: Hello\n    frame: [100, 120, 200, 40]\n");
+  }
+
+  [Fact]
+  public void A_new_text_box_with_an_id_the_slide_has_is_a_conflict()
+  {
+    // Act
+    PatchException exception = Should.Throw<PatchException>(() =>
+      Apply(Slide, new ValueEdit("elements.takeaway", null, [100, 120, 200, 40], Add: true)));
 
     // Assert
     exception.Conflict.ShouldBeTrue();

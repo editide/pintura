@@ -512,6 +512,94 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task A_text_box_added_on_a_slide_goes_last_and_its_undo_takes_it_out()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Folder.Write("deck/slides/one.yaml", """
+      layout: cover
+      elements:
+        - id: box
+          shape: rectangle
+          frame: [400, 400, 100, 40]
+
+      """);
+    string before = File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml"));
+    await using Served served = await Served.Start(deck);
+    var edit = new { slide = "one", edits = new[] { new { path = "elements.text", add = true,
+      numbers = new[] { 100.0, 120, 200, 40 } } } };
+
+    // Act
+    HttpResponseMessage added = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+    string written = File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml"));
+    System.Text.Json.JsonElement undo = (await added.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
+      .GetProperty("undo");
+    HttpResponseMessage undone = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", new { slide = "one", edits = undo });
+
+    // Assert
+    added.StatusCode.ShouldBe(HttpStatusCode.OK);
+    written.ShouldBe(before + "  - id: text\n    text: \"\"\n    frame: [100, 120, 200, 40]\n");
+    undone.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml")).ShouldBe(before);
+  }
+
+  [Fact]
+  public async Task A_style_and_alignments_picked_for_a_text_box_are_written_on_it()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Folder.Write("deck/slides/one.yaml", """
+      layout: cover
+      elements:
+        - id: note
+          text: Hello
+          frame: [400, 400, 100, 40]
+      """);
+    await using Served served = await Served.Start(deck);
+    var edit = new { slide = "one", edits = new[] {
+      new { path = "elements.note.style", source = (string?)null, value = "callout" },
+      new { path = "elements.note.align", source = (string?)null, value = "center" },
+      new { path = "elements.note.valign", source = (string?)null, value = "middle" } } };
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+
+    // Assert
+    response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml"))
+      .ShouldContain("    frame: [400, 400, 100, 40]\n    style: callout\n    align: center\n    valign: middle\n");
+  }
+
+  [Theory]
+  [InlineData("elements.note.style", "headline")]
+  [InlineData("elements.note.align", "middle")]
+  [InlineData("elements.note.valign", "center")]
+  [InlineData("title.style", "lead")]
+  public async Task A_style_or_alignment_the_theme_and_format_don_t_name_is_refused(string path, string value)
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Folder.Write("deck/slides/one.yaml", """
+      layout: cover
+      title: Hello
+      elements:
+        - id: note
+          text: Hello
+          frame: [400, 400, 100, 40]
+      """);
+    string before = File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml"));
+    await using Served served = await Served.Start(deck);
+    var edit = new { slide = "one", edits = new[] { new { path, source = (string?)null, value } } };
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+
+    // Assert
+    response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml")).ShouldBe(before);
+  }
+
+  [Fact]
   public async Task An_edit_to_a_file_outside_the_theme_s_layouts_is_refused()
   {
     // Arrange

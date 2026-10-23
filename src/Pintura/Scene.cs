@@ -66,6 +66,8 @@ public class SceneParagraph
   /// indent to this one's.</summary>
   public Resolved? Hanging { get; init; }
   public string? Style { get; init; }
+  /// <summary>Whether the paragraph's style sets its alignment, which then beats the box's own.</summary>
+  public bool StyleAligns { get; init; }
   public Origin Origin { get; init; } = new Origin("", 0, 0);
   public Dictionary<string, Resolved> Properties { get; init; } = new Dictionary<string, Resolved>();
   public List<SceneRun> Runs { get; init; } = new List<SceneRun>();
@@ -849,6 +851,7 @@ public class SceneBuilder
       Indent = indent,
       Hanging = hanging,
       Style = paragraph.Style,
+      StyleAligns = paragraph.Style is not null && styles.Styles[paragraph.Style].Align is not null,
       Origin = paragraph.Origin,
       Properties = properties,
       Runs = paragraph.Runs.Select(run => Run(run, properties)).ToList()
