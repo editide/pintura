@@ -381,11 +381,13 @@ public static class PreviewServer
     SlideMove? undo;
     string list = Path.Combine(presentation.Root, "presentation.yaml");
     string commentsPath = Path.Combine(presentation.Root, CommentFile.Name);
+    string resolvedPath = Path.Combine(presentation.Root, CommentFile.ResolvedName);
     string file = SlideFile(presentation, move.Slide);
     // A delete or restore touches the slide, the list, and the comments; one step failing puts back the others, so
     // the page never loses a slide without the undo that brings it back.
     string? listBefore = File.Exists(list) ? File.ReadAllText(list) : null;
     string? commentsBefore = File.Exists(commentsPath) ? File.ReadAllText(commentsPath) : null;
+    string? resolvedBefore = File.Exists(resolvedPath) ? File.ReadAllText(resolvedPath) : null;
     string? slideBefore = null;
     bool written = false;
     try
@@ -393,7 +395,8 @@ public static class PreviewServer
       if (move.Delete)
       {
         slideBefore = File.ReadAllText(file);
-        List<Comment> comments = CommentFile.RemoveSlide(presentation, move.Slide);
+        List<Comment> comments = CommentFile.RemoveSlide(presentation, move.Slide,
+          CommentFile.Author(presentation.Root), DateTime.Now, Saves.Snapshot(presentation.Root));
         undo = Patcher.MoveInFile(list, move)! with
         {
           Restore = slideBefore,
@@ -415,7 +418,7 @@ public static class PreviewServer
           store.Refresh();
           foreach (Comment comment in comments)
           {
-            CommentFile.Apply(store.Presentation!, new CommentChange(Add: comment), "", DateTime.Now);
+            CommentFile.Apply(store.Presentation!, new CommentChange(Reopen: comment.Id), "", DateTime.Now);
           }
         }
       }
@@ -428,6 +431,7 @@ public static class PreviewServer
     {
       Put(list, listBefore);
       Put(commentsPath, commentsBefore);
+      Put(resolvedPath, resolvedBefore);
       if (written)
       {
         Put(file, null);
@@ -461,7 +465,8 @@ public static class PreviewServer
     }
   }
 
-  /// <summary>Adds, removes, rewords, replies to, or restores comments and reloads, answering with the change that undoes it.</summary>
+  /// <summary>Adds, removes, rewords, replies to, restores, resolves, or reopens comments and reloads, answering with
+  /// the change that undoes it.</summary>
   private static IResult Comment(PresentationStore store, CommentChange change)
   {
     if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
@@ -470,13 +475,15 @@ public static class PreviewServer
     }
     if (change.Kinds != 1 || change.Many?.Any(each => each.Kinds != 1 || each.Many is not null) == true)
     {
-      return Refused("a change adds, removes, rewords, replies to, or restores one comment, or several at once",
+      return Refused("a change adds, removes, rewords, replies to, restores, resolves, or reopens one comment, or " +
+        "several at once",
         StatusCodes.Status400BadRequest);
     }
     CommentChange undo;
     try
     {
-      undo = CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now);
+      undo = CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
+        Saves.Snapshot(presentation.Root));
     }
     catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
     {

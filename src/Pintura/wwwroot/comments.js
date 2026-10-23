@@ -146,8 +146,8 @@ function markComments(frame, id) {
   }
 }
 
-// Above the slides, once an agent has marked comments: how many are open, done, and skipped, and a way to resolve
-// every done one at once.
+// Above the slides, once an agent has marked comments: how many are open, done, and skipped. Each is resolved from
+// its own pin, since how the reviewer ends a thread is what comments-resolved.yaml records.
 function renderCommentSummary() {
   const container = document.getElementById('comment-summary');
   container.replaceChildren();
@@ -159,15 +159,6 @@ function renderCommentSummary() {
   }
   element('span', null, container).textContent = Object.keys(counts).filter((kind) => counts[kind] > 0)
     .map((kind) => `${counts[kind]} ${kind}`).join(' · ');
-  if (counts.done > 0) {
-    const resolve = element('button', 'tool', container);
-    resolve.type = 'button';
-    resolve.textContent = 'Resolve done';
-    resolve.title = 'Delete every comment marked done';
-    resolve.addEventListener('click', () => sendComment({
-      many: comments.filter((comment) => commentState(comment) === 'done').map((comment) => ({ remove: comment.id }))
-    }, state.current));
-  }
 }
 
 function renderStrayComments() {
@@ -186,9 +177,9 @@ function renderStrayComments() {
     const remove = element('button', 'icon-button', row);
     remove.type = 'button';
     remove.textContent = '×';
-    remove.title = 'Delete this comment';
-    remove.setAttribute('aria-label', 'Delete this comment');
-    remove.addEventListener('click', () => sendComment({ remove: comment.id }, comment.slide));
+    remove.title = 'Resolve this comment';
+    remove.setAttribute('aria-label', 'Resolve this comment');
+    remove.addEventListener('click', () => sendComment({ resolve: comment.id }, comment.slide));
   }
 }
 
@@ -268,10 +259,10 @@ function openComment(comment, anchor) {
     const resolve = element('button', 'tool', foot);
     resolve.type = 'button';
     resolve.textContent = 'Resolve';
-    resolve.title = 'Delete this comment';
+    resolve.title = 'Resolve this comment, keeping its thread in comments-resolved.yaml';
     resolve.addEventListener('click', () => {
       closeComment();
-      sendComment({ remove: comment.id }, comment.slide);
+      sendComment({ resolve: comment.id }, comment.slide);
     });
   }
   words.addEventListener('keydown', (event) => {
@@ -291,7 +282,7 @@ function openComment(comment, anchor) {
 }
 
 // Saves what the editor holds: a new comment; a reply to one an agent marked; or new words for the ask still waiting,
-// where emptying a reply drops it and emptying the comment resolves it.
+// where emptying a reply drops it and emptying the comment withdraws it.
 function saveComment() {
   const open = commenting.open;
   if (!open) {
@@ -316,7 +307,7 @@ function saveComment() {
   if (!text && replies.length > 0) {
     sendComment({ restore: { ...comment, replies: replies.slice(0, -1) } }, comment.slide);
   } else if (!text) {
-    sendComment({ remove: comment.id }, comment.slide);
+    sendComment({ resolve: comment.id }, comment.slide);
   } else if (text !== commentAsks(comment).at(-1).text) {
     sendComment({ id: comment.id, text }, comment.slide);
   }

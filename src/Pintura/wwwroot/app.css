@@ -3613,12 +3613,6 @@ kbd {
   border-left-color: var(--muted);
 }
 
-.comment-summary .tool {
-  height: 24px;
-  padding: 0 6px;
-  font-size: 12px;
-}
-
 .comment-summary {
   display: flex;
   flex-wrap: wrap;

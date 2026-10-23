@@ -17,6 +17,11 @@ public record Comment
   public double[] At { get; init; } = [0, 0];
   public string? By { get; init; }
   public string? Date { get; init; }
+  /// <summary>The commit the deck was at when it was written, absent outside a repository.</summary>
+  public string? Rev { get; init; }
+  /// <summary>Whether the slides or theme had changed since <see cref="Rev"/>, so the reviewer saw more than it.
+  /// </summary>
+  [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool Uncommitted { get; init; }
   public string Text { get; init; } = "";
   /// <summary>What an agent changed for it, left for the reviewer to check and resolve.</summary>
   public string? Done { get; init; }
@@ -24,6 +29,8 @@ public record Comment
   public string? Skipped { get; init; }
   /// <summary>What the reviewer asked for after an agent marked the comment, each marked in turn.</summary>
   public List<Reply>? Replies { get; init; }
+  /// <summary>How it left the queue; only a comment in <c>comments-resolved.yaml</c> has one.</summary>
+  public Resolution? Resolved { get; init; }
   [JsonIgnore] public Origin Origin { get; init; } = new Origin("", 0, 0);
 
   /// <summary>The note on the last thing asked, the last reply or else the comment; with neither note, the comment
@@ -38,22 +45,35 @@ public record Reply
 {
   public string? By { get; init; }
   public string? Date { get; init; }
+  public string? Rev { get; init; }
+  [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool Uncommitted { get; init; }
   public string? Text { get; init; }
   [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool Revert { get; init; }
   public string? Done { get; init; }
   public string? Skipped { get; init; }
 }
 
+/// <summary>How a comment left the queue: who resolved it, when, the commit the deck was then at, and how its thread
+/// ended, one of <see cref="CommentFile.Outcomes"/>.</summary>
+public record Resolution(string? By, string? Date, string? Rev,
+  [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Uncommitted, string Outcome);
+
+/// <summary>The commit a deck was at and whether its slides or theme had changed since, as a reviewer saw it.
+/// </summary>
+public record Snapshot(string Rev, bool Uncommitted);
+
 /// <summary>One change to <c>comments.yaml</c>: a comment added, before the one <paramref name="Before"/> names when
 /// it is put back where it was; one removed; its last ask reworded to <paramref name="Text"/>, which reopens it; one
-/// replied to with <paramref name="Text"/>, or reverted; one restored as it was; or <paramref name="Many"/> of these,
-/// made together or not at all.</summary>
+/// replied to with <paramref name="Text"/>, or reverted; one restored as it was; one resolved into
+/// <c>comments-resolved.yaml</c>, or reopened from it before <paramref name="Before"/>; or <paramref name="Many"/> of
+/// these, made together or not at all.</summary>
 public record CommentChange(Comment? Add = null, string? Before = null, string? Remove = null, string? Id = null,
   string? Text = null, string? Reply = null, bool Revert = false, Comment? Restore = null,
-  List<CommentChange>? Many = null)
+  List<CommentChange>? Many = null, string? Resolve = null, string? Reopen = null)
 {
   public int Kinds => (Add is null ? 0 : 1) + (Remove is null ? 0 : 1) + (Id is null ? 0 : 1) +
-    (Reply is null ? 0 : 1) + (Restore is null ? 0 : 1) + (Many is null ? 0 : 1);
+    (Reply is null ? 0 : 1) + (Restore is null ? 0 : 1) + (Many is null ? 0 : 1) + (Resolve is null ? 0 : 1) +
+    (Reopen is null ? 0 : 1);
 }
 
 /// <summary>A comment as <c>--comments</c> lists it, with the file and line that write what it points at.</summary>
@@ -61,27 +81,46 @@ public record CommentEntry(string Id, string Slide, string? Element, double[] At
   string Text, string? Done, string? Skipped, List<Reply>? Replies, string? File, int? Line);
 
 /// <summary>Reads and writes <c>comments.yaml</c>, the comments beside the slides rather than in them, so a reviewer
-/// pinning one never touches a file an agent is editing. Each change rewrites only its own entry.</summary>
+/// pinning one never touches a file an agent is editing, and <c>comments-resolved.yaml</c>, where a resolved comment
+/// goes with its whole thread and how it ended. Each change rewrites only its own entries.</summary>
 public static class CommentFile
 {
   public const string Name = "comments.yaml";
+  public const string ResolvedName = "comments-resolved.yaml";
   private const string Alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+  /// <summary>How a thread can end: the agent's last note accepted as it stood, accepted after more replies, undone
+  /// at the reviewer's asking, passed on, dropped while waiting on an agent, or gone with its slide.</summary>
+  public static readonly string[] Outcomes = ["accepted", "partly", "reverted", "skipped", "withdrawn", "removed"];
 
   private static readonly object Gate = new object();
 
   private record Entry(Comment Comment, int Start, int End);
 
+  /// <summary>Both files as read, each with its entries.</summary>
+  private record Texts(string Live, List<Entry> Entries, string Archive, List<Entry> Archived);
+
   public static List<Comment> Load(string root, string displayBase)
   {
-    string path = Path.Combine(root, Name);
+    return Load(Path.Combine(root, Name), displayBase, false);
+  }
+
+  private static List<Comment> Load(string path, string displayBase, bool archive)
+  {
     if (!File.Exists(path))
     {
       return [];
     }
-    return Read(SourceFile.For(path, displayBase).Load("comments")).Select(entry => entry.Comment).ToList();
+    return Read(SourceFile.For(path, displayBase).Load("comments"), archive).Select(entry => entry.Comment).ToList();
   }
 
-  private static List<Entry> Read(Node document)
+  /// <summary>The resolved comments, in the order they were resolved.</summary>
+  public static List<Comment> LoadResolved(string root, string displayBase)
+  {
+    return Load(Path.Combine(root, ResolvedName), displayBase, true);
+  }
+
+  private static List<Entry> Read(Node document, bool archive)
   {
     if (document.Yaml is YamlMappingNode { Children.Count: 0 } or YamlScalarNode { Value: "" or null })
     {
@@ -102,10 +141,13 @@ public static class CommentFile
         At = map.Require("at").AsNumbers(2, "[x, y] in points"),
         By = map.Take("by")?.AsString(),
         Date = map.Take("date")?.AsString(),
+        Rev = map.Take("rev")?.AsString(),
+        Uncommitted = map.Take("uncommitted")?.AsBoolean() ?? false,
         Text = map.Require("text").AsString(),
         Done = map.Take("done")?.AsString(),
         Skipped = map.Take("skipped")?.AsString(),
         Replies = replies.Count > 0 ? replies.Select(ReadReply).ToList() : null,
+        Resolved = archive ? ReadResolution(map.Require("resolved")) : null,
         Origin = new Origin(document.File.Display, node.Origin.Line, node.Origin.Column)
       };
       map.Done();
@@ -131,7 +173,8 @@ public static class CommentFile
         }
         (done, skipped) = (reply.Done, reply.Skipped);
       }
-      if (!ids.Add(comment.Id))
+      // A resolved id can come back on a later comment written before ids avoided resolved ones.
+      if (!ids.Add(comment.Id) && !archive)
       {
         throw node.Error($"comment {comment.Id} is written twice");
       }
@@ -149,6 +192,8 @@ public static class CommentFile
     {
       By = map.Take("by")?.AsString(),
       Date = map.Take("date")?.AsString(),
+      Rev = map.Take("rev")?.AsString(),
+      Uncommitted = map.Take("uncommitted")?.AsBoolean() ?? false,
       Text = revert ? map.Take("text")?.AsString() : map.Require("text").AsString(),
       Revert = revert,
       Done = map.Take("done")?.AsString(),
@@ -158,9 +203,25 @@ public static class CommentFile
     return reply;
   }
 
+  private static Resolution ReadResolution(Node node)
+  {
+    MapNode map = node.AsMap();
+    Node outcomeNode = map.Require("outcome");
+    var resolution = new Resolution(map.Take("by")?.AsString(), map.Take("date")?.AsString(),
+      map.Take("rev")?.AsString(), map.Take("uncommitted")?.AsBoolean() ?? false, outcomeNode.AsString());
+    map.Done();
+    if (!Outcomes.Contains(resolution.Outcome))
+    {
+      throw outcomeNode.Error($"outcome is one of {string.Join(", ", Outcomes)}");
+    }
+    return resolution;
+  }
+
   /// <summary>Applies a change and answers with the change that undoes it. A comment someone already removed is a
-  /// conflict.</summary>
-  public static CommentChange Apply(Presentation presentation, CommentChange change, string author, DateTime now)
+  /// conflict. <paramref name="seen"/> is the version the reviewer is looking at, recorded on what they write and
+  /// resolve; null outside a repository.</summary>
+  public static CommentChange Apply(Presentation presentation, CommentChange change, string author, DateTime now,
+    Snapshot? seen = null)
   {
     if (change.Many is List<CommentChange> many)
     {
@@ -169,41 +230,47 @@ public static class CommentFile
       {
         foreach (CommentChange each in many)
         {
-          undos.Insert(0, Apply(presentation, each, author, now));
+          undos.Insert(0, Apply(presentation, each, author, now, seen));
         }
       }
       catch (PatchException)
       {
         foreach (CommentChange undo in undos)
         {
-          Apply(presentation, undo, author, now);
+          Apply(presentation, undo, author, now, seen);
         }
         throw;
       }
       return new CommentChange(Many: undos);
     }
-    return Rewrite(presentation, (text, entries) =>
+    if (change.Reopen is string reopen)
     {
+      return Reopen(presentation, reopen, change.Before);
+    }
+    if (change.Resolve is string resolve)
+    {
+      Resolve(presentation, resolve, author, now, seen, out CommentChange undo);
+      return undo;
+    }
+    return Rewrite(presentation, files =>
+    {
+      (string text, List<Entry> entries) = (files.Live, files.Entries);
       if (change.Add is Comment draft)
       {
-        Comment comment = Draft(presentation, draft, entries, author, now);
+        Comment comment = Draft(presentation, draft, files, author, now, seen);
         int index = change.Before is string before && entries.FindIndex(entry => entry.Comment.Id == before) is
           >= 0 and int found
           ? found
           : InDeckOrder(presentation, entries, comment.Slide);
-        return (Insert(text, entries, index, comment), new CommentChange(Remove: comment.Id));
+        return (Insert(text, entries, index, comment), files.Archive, new CommentChange(Remove: comment.Id));
       }
       string id = change.Remove ?? change.Id ?? change.Reply ?? change.Restore!.Id;
-      int at = entries.FindIndex(entry => entry.Comment.Id == id);
-      if (at < 0)
-      {
-        throw new PatchException($"comment {id} is gone; someone resolved it", true);
-      }
+      int at = Find(entries, id);
       Comment existing = entries[at].Comment;
       if (change.Remove is not null)
       {
         string? next = at + 1 < entries.Count ? entries[at + 1].Comment.Id : null;
-        return (Without(text, entries, at), new CommentChange(Add: existing, Before: next));
+        return (Without(text, entries, at), files.Archive, new CommentChange(Add: existing, Before: next));
       }
       Comment changed = change switch
       {
@@ -214,31 +281,92 @@ public static class CommentFile
         },
         { Reply: not null } => existing with
         {
-          Replies = [.. existing.Replies ?? [], Answer(existing, change, author, now)]
+          Replies = [.. existing.Replies ?? [], Answer(existing, change, author, now, seen)]
         },
         _ => Reworded(existing, Words(change.Text))
       };
-      return (Replace(text, entries, at, changed), new CommentChange(Restore: existing));
+      return (Replace(text, entries, at, changed), files.Archive, new CommentChange(Restore: existing));
     });
   }
 
-  /// <summary>Removes the comments on a slide, answering with them for an undo to put back.</summary>
-  public static List<Comment> RemoveSlide(Presentation presentation, string slide)
+  /// <summary>Moves a comment to the end of <c>comments-resolved.yaml</c> with how its thread ended, or with
+  /// <paramref name="outcome"/> when something other than the thread decided it.</summary>
+  private static Comment Resolve(Presentation presentation, string id, string author, DateTime now, Snapshot? seen,
+    out CommentChange undo, string? outcome = null)
+  {
+    CommentChange? reopen = null;
+    Comment resolved = Rewrite(presentation, files =>
+    {
+      int at = Find(files.Entries, id);
+      Comment existing = files.Entries[at].Comment;
+      reopen = new CommentChange(Reopen: id,
+        Before: at + 1 < files.Entries.Count ? files.Entries[at + 1].Comment.Id : null);
+      Comment archived = existing with
+      {
+        Resolved = new Resolution(author, Stamp(now), seen?.Rev, seen?.Uncommitted ?? false,
+          outcome ?? Outcome(existing))
+      };
+      return (Without(files.Live, files.Entries, at),
+        Insert(files.Archive, files.Archived, files.Archived.Count, archived), archived);
+    });
+    undo = reopen!;
+    return resolved;
+  }
+
+  /// <summary>Takes the latest resolution of a comment back out of <c>comments-resolved.yaml</c>, putting the
+  /// comment back before <paramref name="before"/>, or in deck order.</summary>
+  private static CommentChange Reopen(Presentation presentation, string id, string? before)
+  {
+    return Rewrite(presentation, files =>
+    {
+      int at = files.Archived.FindLastIndex(entry => entry.Comment.Id == id);
+      if (at < 0)
+      {
+        throw new PatchException($"comment {id} isn't resolved; someone reopened it", true);
+      }
+      if (files.Entries.Any(entry => entry.Comment.Id == id))
+      {
+        throw new PatchException($"comment {id} is already there", true);
+      }
+      Comment comment = files.Archived[at].Comment with { Resolved = null };
+      int index = before is not null &&
+        files.Entries.FindIndex(entry => entry.Comment.Id == before) is >= 0 and int found
+        ? found
+        : InDeckOrder(presentation, files.Entries, comment.Slide);
+      return (Insert(files.Live, files.Entries, index, comment), Without(files.Archive, files.Archived, at),
+        new CommentChange(Resolve: id));
+    });
+  }
+
+  /// <summary>How a thread ended: undone if the reviewer ever asked for that, dropped if it still waits on an agent,
+  /// and otherwise as the agent last marked it, partly if it took more than one ask.</summary>
+  public static string Outcome(Comment comment)
+  {
+    if (comment.Replies?.Any(reply => reply.Revert) == true)
+    {
+      return "reverted";
+    }
+    if (comment.LastDone is null && comment.LastSkipped is null)
+    {
+      return "withdrawn";
+    }
+    if (comment.Replies is { Count: > 0 })
+    {
+      return "partly";
+    }
+    return comment.Done is not null ? "accepted" : "skipped";
+  }
+
+  /// <summary>Resolves the comments on a slide being deleted, answering with them for an undo to reopen.</summary>
+  public static List<Comment> RemoveSlide(Presentation presentation, string slide, string author, DateTime now,
+    Snapshot? seen)
   {
     var removed = new List<Comment>();
-    while (true)
+    foreach (Comment comment in Load(presentation.Root, presentation.Root).Where(each => each.Slide == slide))
     {
-      Comment? next = Rewrite(presentation, (text, entries) =>
-      {
-        int at = entries.FindIndex(entry => entry.Comment.Slide == slide);
-        return at < 0 ? (text, null) : (Without(text, entries, at), entries[at].Comment);
-      });
-      if (next is null)
-      {
-        return removed;
-      }
-      removed.Add(next);
+      removed.Add(Resolve(presentation, comment.Id, author, now, seen, out _, "removed"));
     }
+    return removed;
   }
 
   /// <summary>Whoever git says is writing in the presentation's folder, or failing that the account.</summary>
@@ -267,50 +395,86 @@ public static class CommentFile
     return Environment.UserName;
   }
 
-  private static T Rewrite<T>(Presentation presentation, Func<string, List<Entry>, (string? Text, T Answer)> change)
+  private static int Find(List<Entry> entries, string id)
   {
-    string path = Path.Combine(presentation.Root, Name);
+    int at = entries.FindIndex(entry => entry.Comment.Id == id);
+    return at >= 0 ? at : throw new PatchException($"comment {id} is gone; someone resolved it", true);
+  }
+
+  /// <summary>Reads both files, applies the change, and writes what it changed, null deleting a file. A change to
+  /// both writes both or neither.</summary>
+  private static T Rewrite<T>(Presentation presentation, Func<Texts, (string? Live, string? Archive, T Answer)> change)
+  {
+    string livePath = Path.Combine(presentation.Root, Name);
+    string archivePath = Path.Combine(presentation.Root, ResolvedName);
     lock (Gate)
     {
-      bool exists = File.Exists(path);
-      string text = "";
-      List<Entry> entries = [];
-      if (exists)
+      (string live, List<Entry> entries) = ReadFile(livePath, presentation.Root, false);
+      (string archive, List<Entry> archived) = ReadFile(archivePath, presentation.Root, true);
+      (string? writtenLive, string? writtenArchive, T answer) = change(new Texts(live, entries, archive, archived));
+      bool liveChanged = writtenLive != live;
+      bool archiveChanged = writtenArchive != archive;
+      // An agent resolving a comment can save between the read and the write; refusing loses nothing.
+      if (liveChanged && Current(livePath) != live || archiveChanged && Current(archivePath) != archive)
+      {
+        throw new PatchException($"{(liveChanged && Current(livePath) != live ? Name : ResolvedName)} changed " +
+          "while the comment was written", true);
+      }
+      if (liveChanged)
+      {
+        Write(livePath, live, writtenLive);
+      }
+      if (archiveChanged)
       {
         try
         {
-          Node document = SourceFile.For(path, presentation.Root).Load("comments");
-          text = document.File.Text;
-          entries = Read(document);
+          Write(archivePath, archive, writtenArchive);
         }
-        catch (LoadException exception)
+        catch (Exception) when (liveChanged)
         {
-          throw new PatchException(exception.Message);
+          Write(livePath, writtenLive ?? "", live.Length > 0 ? live : null);
+          throw;
         }
-      }
-      (string? written, T answer) = change(text, entries);
-      if (written == text)
-      {
-        return answer;
-      }
-      // An agent resolving a comment can save between the read and the write; refusing loses nothing.
-      if ((File.Exists(path) ? File.ReadAllText(path) : "") != text || File.Exists(path) != exists)
-      {
-        throw new PatchException($"{Name} changed while the comment was written", true);
-      }
-      if (written is null)
-      {
-        File.Delete(path);
-      }
-      else
-      {
-        Files.Replace(path, Patcher.KeepLineEndings(text, written));
       }
       return answer;
     }
   }
 
-  private static Reply Answer(Comment comment, CommentChange change, string author, DateTime now)
+  private static (string Text, List<Entry> Entries) ReadFile(string path, string root, bool archive)
+  {
+    if (!File.Exists(path))
+    {
+      return ("", []);
+    }
+    try
+    {
+      Node document = SourceFile.For(path, root).Load("comments");
+      return (document.File.Text, Read(document, archive));
+    }
+    catch (LoadException exception)
+    {
+      throw new PatchException(exception.Message);
+    }
+  }
+
+  private static string Current(string path)
+  {
+    return File.Exists(path) ? File.ReadAllText(path) : "";
+  }
+
+  private static void Write(string path, string before, string? written)
+  {
+    if (written is null)
+    {
+      File.Delete(path);
+    }
+    else
+    {
+      Files.Replace(path, Patcher.KeepLineEndings(before, written));
+    }
+  }
+
+  private static Reply Answer(Comment comment, CommentChange change, string author, DateTime now, Snapshot? seen)
   {
     if (comment.LastDone is null && comment.LastSkipped is null)
     {
@@ -324,6 +488,8 @@ public static class CommentFile
     {
       By = author,
       Date = Stamp(now),
+      Rev = seen?.Rev,
+      Uncommitted = seen?.Uncommitted ?? false,
       Text = change.Revert && string.IsNullOrWhiteSpace(change.Text) ? null : Words(change.Text),
       Revert = change.Revert
     };
@@ -346,8 +512,8 @@ public static class CommentFile
     return now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
   }
 
-  private static Comment Draft(Presentation presentation, Comment draft, List<Entry> entries, string author,
-    DateTime now)
+  private static Comment Draft(Presentation presentation, Comment draft, Texts files, string author, DateTime now,
+    Snapshot? seen)
   {
     Slide slide = presentation.Slides.FirstOrDefault(candidate => candidate.Id == draft.Slide)
       ?? throw new PatchException($"no slide {draft.Slide}");
@@ -361,18 +527,24 @@ public static class CommentFile
     {
       throw new PatchException("a comment's at is [x, y] in points");
     }
-    var taken = entries.Select(entry => entry.Comment.Id).ToHashSet(StringComparer.Ordinal);
-    if (draft.Id.Length > 0 && taken.Contains(draft.Id))
+    if (draft.Id.Length > 0 && files.Entries.Any(entry => entry.Comment.Id == draft.Id))
     {
       throw new PatchException($"comment {draft.Id} is already there", true);
     }
+    bool fresh = draft.Id.Length == 0;
+    // Ids stay unique across the resolved comments too, so a thread's id names it for good.
+    var taken = files.Entries.Concat(files.Archived).Select(entry => entry.Comment.Id)
+      .ToHashSet(StringComparer.Ordinal);
     return draft with
     {
-      Id = draft.Id.Length > 0 ? draft.Id : NewId(taken),
+      Id = fresh ? NewId(taken) : draft.Id,
       At = [Math.Round(x, 1), Math.Round(y, 1)],
       By = draft.By ?? author,
       Date = draft.Date ?? Stamp(now),
-      Text = Words(draft.Text)
+      Rev = fresh ? seen?.Rev : draft.Rev,
+      Uncommitted = fresh ? seen?.Uncommitted ?? false : draft.Uncommitted,
+      Text = Words(draft.Text),
+      Resolved = null
     };
   }
 
@@ -421,6 +593,7 @@ public static class CommentFile
     {
       map["date"] = comment.Date;
     }
+    Seen(map, comment.Rev, comment.Uncommitted);
     map["text"] = comment.Text;
     if (comment.Done is not null)
     {
@@ -431,13 +604,41 @@ public static class CommentFile
       map["skipped"] = comment.Skipped;
     }
     string rendered = YamlWriter.Item(map);
-    if (comment.Replies is not { Count: > 0 } replies)
+    if (comment.Replies is { Count: > 0 } replies)
     {
-      return rendered;
+      // Written in block style whatever their length, so a thread reads down the page.
+      IEnumerable<string> lines = replies.SelectMany(reply => YamlWriter.Item(Render(reply)).Split('\n'));
+      rendered += "\n  replies:\n" + string.Join("\n", lines.Select(line => line.Length == 0 ? "" : "    " + line));
     }
-    // Written in block style whatever their length, so a thread reads down the page.
-    IEnumerable<string> lines = replies.SelectMany(reply => YamlWriter.Item(Render(reply)).Split('\n'));
-    return rendered + "\n  replies:\n" + string.Join("\n", lines.Select(line => line.Length == 0 ? "" : "    " + line));
+    if (comment.Resolved is Resolution resolved)
+    {
+      var resolution = new OrderedDictionary<string, object?>();
+      if (resolved.By is not null)
+      {
+        resolution["by"] = resolved.By;
+      }
+      if (resolved.Date is not null)
+      {
+        resolution["date"] = resolved.Date;
+      }
+      Seen(resolution, resolved.Rev, resolved.Uncommitted);
+      resolution["outcome"] = resolved.Outcome;
+      // An entry of its own, re-indented as the comment's last key.
+      rendered += "\n  " + YamlWriter.Item(new OrderedDictionary<string, object?> { ["resolved"] = resolution })[2..];
+    }
+    return rendered;
+  }
+
+  private static void Seen(OrderedDictionary<string, object?> map, string? rev, bool uncommitted)
+  {
+    if (rev is not null)
+    {
+      map["rev"] = rev;
+    }
+    if (uncommitted)
+    {
+      map["uncommitted"] = true;
+    }
   }
 
   private static OrderedDictionary<string, object?> Render(Reply reply)
@@ -451,6 +652,7 @@ public static class CommentFile
     {
       map["date"] = reply.Date;
     }
+    Seen(map, reply.Rev, reply.Uncommitted);
     if (reply.Text is not null)
     {
       map["text"] = reply.Text;
@@ -566,24 +768,8 @@ public static class CommentList
       Reply last = Last(entry);
       string mark = last.Done is not null ? "  done" : last.Skipped is not null ? "  skipped" : "";
       output.WriteLine($"{entry.Id}  {where}  {target}{mark}");
-      var asks = new List<Reply> { new Reply { By = entry.By, Date = entry.Date, Text = entry.Text, Done = entry.Done,
-        Skipped = entry.Skipped } };
-      asks.AddRange(entry.Replies ?? []);
-      foreach (Reply ask in asks)
-      {
-        string by = ask.By is null ? "" : ask.Date is null ? $"{ask.By}: " : $"{ask.By}, {ask.Date}: ";
-        string words = ask.Revert ? ask.Text is null ? "revert" : $"revert: {ask.Text}" : ask.Text ?? "";
-        output.WriteLine($"    {by}{Indented(words)}");
-        if (ask.Done is not null)
-        {
-          output.WriteLine($"    done: {Indented(ask.Done)}");
-        }
-        if (ask.Skipped is not null)
-        {
-          output.WriteLine($"    skipped: {Indented(ask.Skipped)}");
-        }
-      }
-      output.WriteLine();
+      WriteThread(new Reply { By = entry.By, Date = entry.Date, Text = entry.Text, Done = entry.Done,
+        Skipped = entry.Skipped }, entry.Replies, output);
     }
     string file = presentation.Comments[0].Origin.File;
     int done = entries.Count(entry => Last(entry).Done is not null);
@@ -593,6 +779,64 @@ public static class CommentList
     output.WriteLine("Act on each open one, then mark it done: with what you changed, or skipped: with why, for the " +
       "reviewer to resolve; in a thread, mark its last reply.");
     return 0;
+  }
+
+  /// <summary><c>--comments --resolved</c>: the resolved comments in the order they were resolved, each with how
+  /// its thread ended.</summary>
+  public static int WriteResolved(string root, bool json, TextWriter output)
+  {
+    List<Comment> resolved = CommentFile.LoadResolved(root, Directory.GetCurrentDirectory());
+    if (json)
+    {
+      output.WriteLine(JsonSerializer.Serialize(resolved, PayloadJson.Indented));
+      return 0;
+    }
+    if (resolved.Count == 0)
+    {
+      output.WriteLine("no resolved comments");
+      return 0;
+    }
+    foreach (Comment comment in resolved)
+    {
+      string where = comment.Element is null
+        ? $"{comment.Slide} at [{YamlWriter.Number(comment.At[0])}, {YamlWriter.Number(comment.At[1])}]"
+        : $"{comment.Slide}/{comment.Element}";
+      Resolution resolution = comment.Resolved!;
+      string by = resolution.By is null ? "" : resolution.Date is null ? $" by {resolution.By}" :
+        $" by {resolution.By}, {resolution.Date}";
+      string at = resolution.Rev is null ? "" : $" at {resolution.Rev}{(resolution.Uncommitted ? " and later" : "")}";
+      output.WriteLine($"{comment.Id}  {where}  {resolution.Outcome}{by}{at}");
+      WriteThread(new Reply { By = comment.By, Date = comment.Date, Text = comment.Text, Done = comment.Done,
+        Skipped = comment.Skipped }, comment.Replies, output);
+    }
+    IEnumerable<string> counts = CommentFile.Outcomes
+      .Select(outcome => (outcome, count: resolved.Count(comment => comment.Resolved!.Outcome == outcome)))
+      .Where(pair => pair.count > 0)
+      .Select(pair => $"{pair.count} {pair.outcome}");
+    output.WriteLine($"{resolved.Count} resolved comment{(resolved.Count == 1 ? "" : "s")}: " +
+      $"{string.Join(", ", counts)}.");
+    return 0;
+  }
+
+  /// <summary>A thread as a reader follows it: each ask with who wrote it and when, and the agent's note under it.
+  /// </summary>
+  private static void WriteThread(Reply first, List<Reply>? replies, TextWriter output)
+  {
+    foreach (Reply ask in replies is null ? [first] : replies.Prepend(first))
+    {
+      string by = ask.By is null ? "" : ask.Date is null ? $"{ask.By}: " : $"{ask.By}, {ask.Date}: ";
+      string words = ask.Revert ? ask.Text is null ? "revert" : $"revert: {ask.Text}" : ask.Text ?? "";
+      output.WriteLine($"    {by}{Indented(words)}");
+      if (ask.Done is not null)
+      {
+        output.WriteLine($"    done: {Indented(ask.Done)}");
+      }
+      if (ask.Skipped is not null)
+      {
+        output.WriteLine($"    skipped: {Indented(ask.Skipped)}");
+      }
+    }
+    output.WriteLine();
   }
 
   private static Reply Last(CommentEntry entry)

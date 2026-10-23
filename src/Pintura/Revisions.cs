@@ -20,10 +20,16 @@ public record DeckVersion(int Number, string Commit, DateTimeOffset Date, string
 /// theme it saves, and the books it reads, which Libreta saves.</summary>
 public record VersionScope(string Top, string Presentation, List<string> Saved, List<string> Books)
 {
-  public string CommentFile => $"{(Presentation == "." ? "" : Presentation + "/")}{Pintura.CommentFile.Name}";
+  public string CommentFile => InPresentation(Pintura.CommentFile.Name);
+  public string ResolvedFile => InPresentation(Pintura.CommentFile.ResolvedName);
 
   /// <summary>Comments are about a version rather than part of one.</summary>
-  public string Comments => $":(exclude){CommentFile}";
+  public string[] Comments => [$":(exclude){CommentFile}", $":(exclude){ResolvedFile}"];
+
+  private string InPresentation(string name)
+  {
+    return $"{(Presentation == "." ? "" : Presentation + "/")}{name}";
+  }
 }
 
 /// <summary>Presentations at a git revision. Each commit is extracted once, under the temporary folder, and loaded by
@@ -139,7 +145,7 @@ public static class Revisions
     {
       VersionScope scope = Scope(root);
       (int exit, string output, _) = Run(scope.Top, ["log", "--first-parent", $"-n{limit}", $"--format={Format}",
-        "HEAD", "--", .. scope.Saved, .. scope.Books, scope.Comments]);
+        "HEAD", "--", .. scope.Saved, .. scope.Books, .. scope.Comments]);
       if (exit != 0)
       {
         return [];
@@ -160,7 +166,7 @@ public static class Revisions
   public static int Count(VersionScope scope, string commit)
   {
     (int exit, string output, _) = Run(scope.Top, ["rev-list", "--count", "--first-parent", commit, "--",
-      .. scope.Saved, .. scope.Books, scope.Comments]);
+      .. scope.Saved, .. scope.Books, .. scope.Comments]);
     return exit == 0 ? int.Parse(output.Trim(), CultureInfo.InvariantCulture) : 0;
   }
 

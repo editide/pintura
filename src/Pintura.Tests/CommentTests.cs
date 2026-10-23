@@ -588,10 +588,10 @@ public class CommentTests
 
     // Assert
     findings.Select(finding => $"{finding.Level} {finding.Kind} {finding.Where}: {finding}").ShouldBe([
-      "warning comments gone: comment a1 is on slide gone, which no longer exists; move it to a slide or delete it " +
+      "warning comments gone: comment a1 is on slide gone, which no longer exists; move it to a slide or resolve it " +
         "in deck/comments.yaml:1; see pintura --docs comments",
       "warning comments two/chart: comment b2 is on element chart, which no longer exists; move it to an element " +
-        "or delete it in deck/comments.yaml:2; see pintura --docs comments"
+        "or resolve it in deck/comments.yaml:2; see pintura --docs comments"
     ]);
   }
 

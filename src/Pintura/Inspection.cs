@@ -60,8 +60,12 @@ public record CellEntry(
 public static class HeadlessRunner
 {
   public static int Run(string root, HeadlessCommand command, string? slide, string? element, bool json,
-    TextWriter output)
+    TextWriter output, bool resolved = false, IReadOnlyList<string>? ids = null)
   {
+    if (command == HeadlessCommand.Comments && resolved)
+    {
+      return CommentList.WriteResolved(root, json, output);
+    }
     Presentation presentation = PresentationLoader.Load(root);
     return command switch
     {
@@ -70,8 +74,30 @@ public static class HeadlessRunner
       HeadlessCommand.Element => Element(presentation, slide!, element!, json, output),
       HeadlessCommand.Export => Export(presentation, output),
       HeadlessCommand.Comments => CommentList.Write(presentation, json, output),
+      HeadlessCommand.Resolve => Resolve(presentation, ids!, output),
       _ => throw new ArgumentOutOfRangeException(nameof(command), command, "not a console command")
     };
+  }
+
+  /// <summary>Resolves the comments named, all of them or none.</summary>
+  private static int Resolve(Presentation presentation, IReadOnlyList<string> ids, TextWriter output)
+  {
+    var change = new CommentChange(Many: [.. ids.Select(id => new CommentChange(Resolve: id))]);
+    try
+    {
+      CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
+        Saves.Snapshot(presentation.Root));
+    }
+    catch (PatchException exception)
+    {
+      throw new InvalidDataException(exception.Message);
+    }
+    Dictionary<string, string> outcomes = CommentFile.LoadResolved(presentation.Root, presentation.Root)
+      .GroupBy(comment => comment.Id).ToDictionary(group => group.Key, group => group.Last().Resolved!.Outcome);
+    int left = CommentFile.Load(presentation.Root, presentation.Root).Count;
+    output.WriteLine($"resolved {string.Join(", ", ids.Select(id => $"{id} ({outcomes[id]})"))} into " +
+      $"{CommentFile.ResolvedName}; {left} comment{(left == 1 ? "" : "s")} left");
+    return 0;
   }
 
   private static int Export(Presentation presentation, TextWriter output)
