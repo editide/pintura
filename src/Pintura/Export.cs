@@ -15,7 +15,6 @@ public record ExportTheme(
   Dictionary<int, ExportLevel> Levels,
   ExportItem? Title,
   List<ExportItem> Placeholders,
-  List<ExportItem> Elements,
   Dictionary<string, ExportFormat> Formats,
   Dictionary<string, double[]> Areas);
 
@@ -32,14 +31,13 @@ public record ExportLayout(
   string Id,
   string Name,
   object? Background,
-  bool ThemeElements,
   bool TitleRemoved,
   ExportItem? Title,
   List<ExportItem> Placeholders,
   List<ExportItem> Elements,
   Dictionary<string, double[]> Areas);
 
-/// <summary><see cref="Hide"/> lists the theme and layout elements the slide leaves out.</summary>
+/// <summary><see cref="Hide"/> lists the layout's elements the slide leaves out.</summary>
 public record ExportSlide(string Id, int Number, string? Section, string Layout, string? Error,
   List<ExportItem>? Items, List<string> Hide);
 
@@ -119,7 +117,6 @@ public class ExportBuilder
       styles.Levels.ToDictionary(pair => pair.Key, pair => Level(pair.Value)),
       theme.Title is null ? null : Placeholder(anyLayout, "title", "title", [theme.Title]),
       theme.Placeholders.Select(pair => Placeholder(anyLayout, pair.Key, "placeholder", [pair.Value])).ToList(),
-      theme.Elements.Select(element => Element(anyLayout, element, "theme")).ToList(),
       styles.Formats.ToDictionary(pair => pair.Key, pair => Format(pair.Value)),
       theme.Areas.ToDictionary(pair => pair.Key, pair => pair.Value.Rect));
 
@@ -141,7 +138,6 @@ public class ExportBuilder
       layout.Id,
       layout.Name,
       layout.Background is null ? null : Value(layout.Background),
-      layout.ThemeElements,
       layout.TitleRemoved,
       title,
       placeholders,

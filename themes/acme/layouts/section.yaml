@@ -1,6 +1,5 @@
 name: Section
 background: accent1
-theme_elements: false
 
 title: { frame: [60, 200, 640, 70], style: display, color: light1 }
 

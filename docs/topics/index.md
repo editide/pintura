@@ -4,7 +4,7 @@ A presentation is a folder of YAML rendered as slides.
 Run `pintura --docs <topic>` for one topic: its keys, a complete example, and the usual mistakes.
 
 - `presentations`: `presentation.yaml`, the folder layout, slide order, sections, and fields.
-- `themes`: `theme.yaml`: theme colors, fonts, background, the title, areas, and elements every slide shares.
+- `themes`: `theme.yaml`: theme colors, fonts, background, the title, and areas.
 - `styles`: `styles.yaml`: the base text style, bullet levels, named text styles, and number formats.
 - `colors`: theme colors, lighter and darker steps, named colors, hex, and opacity.
 - `layouts`: variations on the theme: the title, placeholders, areas, elements, and background.

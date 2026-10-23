@@ -265,7 +265,7 @@ public class PowerPointImportTests
   }
 
   [Fact]
-  public void What_most_layouts_show_moves_to_the_theme_with_its_picture_copied_once()
+  public void Each_layout_keeps_the_shapes_it_shows_with_a_picture_copied_once()
   {
     // Arrange
     using var output = new TempFolder();
@@ -274,11 +274,10 @@ public class PowerPointImportTests
     (Presentation presentation, _) = Import(output);
 
     // Assert
-    presentation.Theme.Elements.Select(element => element.Id).ShouldBe(["slide-number", "picture-1", "line-1",
-      "text-1"]);
+    presentation.Theme.Layouts["content"].Elements.Select(element => element.Id).ShouldBe(["slide-number",
+      "picture-1", "line-1", "text-1"]);
     // The layouts show one logo, and the cover a white one.
     Directory.GetFiles(output.PathTo("imported/theme/media")).Length.ShouldBe(2);
-    presentation.Theme.Layouts["cover"].ThemeElements.ShouldBeFalse();
   }
 
   [Fact]
@@ -312,7 +311,7 @@ public class PowerPointImportTests
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
     Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
-    Element logo = PresentationLoader.Load(output.PathTo("imported")).Theme.Elements
+    Element logo = PresentationLoader.Load(output.PathTo("imported")).Theme.Layouts["content"].Elements
       .Single(element => element.Kind == "picture");
 
     // Assert

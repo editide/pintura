@@ -1,2 +1,13 @@
 name: Blank
 title: none
+
+elements:
+  - id: footer
+    text: ${footer}
+    style: caption
+    frame: [40, 508, 600, 22]
+  - id: page
+    text: ${slide}
+    style: caption
+    align: right
+    frame: [860, 508, 60, 22]

@@ -123,7 +123,7 @@ Delete or Backspace on a slide focused in the sidebar, or the current slide in t
 
 Values round to whole points.
 Moving an element placed in an area writes numbers in place of the area's name, and moving the title or a placeholder writes its frame into the slide, as `title: { text: …, frame: [x, y, w, h] }`.
-Theme and layout elements don't move on a slide, and the page names the file that owns them; a chart's or a table's text is edited in its files.
+A layout's elements don't move on a slide, and the page names the file that owns them; a chart's or a table's text is edited in its files.
 
 Edit on a layout in the theme view opens the layout on the slide view, its title and placeholders holding their names, with its areas drawn dashed and moved by their labels.
 The overlays toggle (O) hides the areas, or shows them with the placeholders' frames outlined, and the inspector lists the layout's placeholders, elements and areas, to pick one buried under another.
@@ -355,7 +355,7 @@ pintura --import deck.json out/deck
 `--import` writes a presentation folder with its theme inside from a `.pptx`, or from the model's JSON as `--export-json` prints it, with pictures read from beside the JSON; `--theme` writes the theme folder alone, for a deck handed over as the template to use.
 `--slides 3,5-7` writes only the slides it names, by number, or by id from the JSON, with the whole theme.
 A `.pptx` is read with editide's read tools, which need an account but bill nothing, and the reads are cached in that folder's `reads` until the deck or the API's `/version` changes.
-The master the slides use becomes the theme and its layouts layouts, with a single-line text placeholder kept as a placeholder, named for its prompt, and any other as an area; an element on half the layouts moves to the theme.
+The master the slides use becomes the theme and its layouts layouts, with a single-line text placeholder kept as a placeholder, named for its prompt, and any other as an area; each layout keeps its own shapes.
 A master no slide uses is left out, and a deck whose slides use two masters is refused.
 Pictures are copied out of the package, and elements take their ids from the names PowerPoint shows in its selection pane, unless PowerPoint made the name up.
 A table whose frame starts an area, as wide, takes the area as the room its rows have, and a bar chart's categories and clustered series read top down, where PowerPoint draws the first at the bottom.

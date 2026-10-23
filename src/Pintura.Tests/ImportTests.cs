@@ -194,7 +194,7 @@ public class ImportTests
     foreach (string layout in new[] { "content", "section" })
     {
       File.AppendAllText(source.PathTo($"themes/default/layouts/{layout}.yaml"),
-        "\nelements:\n  - { id: logo, picture: ../media/logo.svg, frame: [880, 500, 60, 20] }\n");
+        "\n  - { id: logo, picture: ../media/logo.svg, frame: [880, 500, 60, 20] }\n");
     }
     string root = source.PathTo("presentations/default-theme");
     JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
@@ -219,7 +219,7 @@ public class ImportTests
     CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme"),
       source.PathTo("presentations/default-theme"));
     File.AppendAllText(source.PathTo("themes/default/layouts/content.yaml"),
-      "\nelements:\n  - { id: band, shape: rectangle, frame: [0, 0, 960, 20], decorative: true }\n");
+      "\n  - { id: band, shape: rectangle, frame: [0, 0, 960, 20], decorative: true }\n");
     string root = source.PathTo("presentations/default-theme");
     JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
     using var output = new TempFolder();
@@ -444,7 +444,7 @@ public class ImportTests
     code.ShouldBe(0);
     Directory.GetFileSystemEntries(theme).Select(Path.GetFileName).ShouldBe(
       ["layouts", "media", "styles.yaml", "theme.yaml"], ignoreOrder: true);
-    File.ReadAllText(Path.Combine(theme, "theme.yaml")).ShouldContain("picture: media/logo.svg");
+    File.ReadAllText(Path.Combine(theme, "layouts", "content.yaml")).ShouldContain("picture: ../media/logo.svg");
   }
 
   private static void CopyFolder(string from, string to)

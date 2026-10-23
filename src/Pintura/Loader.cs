@@ -436,8 +436,6 @@ public partial class PresentationLoader
       RequireFrame(title, titleNode);
     }
     Dictionary<string, Placeholder> placeholders = ReadPlaceholders(map.Take("placeholders"), areas, null);
-    List<Element> elements = ReadElements(map.Take("elements"), areas, Path.Combine(themeRoot, "theme.yaml"),
-      "theme");
     ThemeChecks checks = ReadChecks(map.Take("checks"));
     map.Done();
 
@@ -447,7 +445,7 @@ public partial class PresentationLoader
     {
       foreach (string path in Directory.GetFiles(layoutFolder, "*.yaml").Order(StringComparer.Ordinal))
       {
-        Layout layout = LoadLayout(path, areas, elements, title, placeholders);
+        Layout layout = LoadLayout(path, areas, title, placeholders);
         layouts[layout.Id] = layout;
       }
     }
@@ -463,7 +461,6 @@ public partial class PresentationLoader
       Title = title,
       Placeholders = placeholders,
       Areas = areas,
-      Elements = elements,
       Styles = styles,
       Layouts = layouts,
       Checks = checks,
@@ -1022,7 +1019,6 @@ public partial class PresentationLoader
   private Layout LoadLayout(
     string path,
     Dictionary<string, Area> themeAreas,
-    List<Element> inheritedElements,
     Placeholder? themeTitle,
     Dictionary<string, Placeholder> themePlaceholders)
   {
@@ -1037,12 +1033,6 @@ public partial class PresentationLoader
     {
       background = ReadColor(backgroundNode, false);
       origins["background"] = backgroundNode.Origin;
-    }
-    bool themeElements = true;
-    if (map.Take("theme_elements") is Node themeElementsNode)
-    {
-      themeElements = themeElementsNode.AsBoolean();
-      origins["theme_elements"] = themeElementsNode.Origin;
     }
 
     Dictionary<string, Area> areas = ReadAreas(map.Take("areas"), themeAreas);
@@ -1069,21 +1059,11 @@ public partial class PresentationLoader
     List<Element> elements = ReadElements(map.Take("elements"), areas, path, "layout");
     map.Done();
 
-    Element? clash = themeElements
-      ? elements.FirstOrDefault(element => inheritedElements.Any(inherited => inherited.Id == element.Id))
-      : null;
-    if (clash is not null)
-    {
-      throw new LoadException($"duplicate id {clash.Id}: the theme has an element with that id; rename one, or " +
-        "drop the theme's with theme_elements: false", clash.Origin, "layouts");
-    }
-
     return new Layout
     {
       Id = id,
       Name = name,
       Background = background,
-      ThemeElements = themeElements,
       Title = title,
       TitleRemoved = titleRemoved,
       Placeholders = placeholders,
@@ -1299,29 +1279,21 @@ public partial class PresentationLoader
     var hide = new List<string>();
     if (hideNode is not null)
     {
-      List<string> drawn = (layout.ThemeElements ? theme.Elements : []).Concat(layout.Elements)
-        .Select(element => element.Id).ToList();
+      List<string> drawn = layout.Elements.Select(element => element.Id).ToList();
       foreach (Node idNode in hideNode.AsList())
       {
         string id = idNode.AsString();
         if (!drawn.Contains(id))
         {
           throw idNode.Error(drawn.Count == 0
-            ? $"unknown element {id}; layout {layoutId} draws no theme or layout elements"
-            : $"unknown element {id}; the theme and layout elements here are {string.Join(", ", drawn)}");
+            ? $"unknown element {id}; layout {layoutId} draws no elements"
+            : $"unknown element {id}; layout {layoutId} draws {string.Join(", ", drawn)}");
         }
         hide.Add(id);
       }
     }
 
     var owned = new Dictionary<string, string>(StringComparer.Ordinal);
-    if (layout.ThemeElements)
-    {
-      foreach (Element element in theme.Elements)
-      {
-        owned[element.Id] = "the theme";
-      }
-    }
     foreach (Element element in layout.Elements)
     {
       owned[element.Id] = $"layout {layoutId}";

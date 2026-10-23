@@ -4,3 +4,14 @@ title: { frame: [60, 200, 840, 70], style: display }
 
 placeholders:
   summary: { frame: [60, 280, 840, 60], style: subtitle }
+
+elements:
+  - id: footer
+    text: ${footer}
+    style: caption
+    frame: [40, 508, 600, 22]
+  - id: page
+    text: ${slide}
+    style: caption
+    align: right
+    frame: [860, 508, 60, 22]

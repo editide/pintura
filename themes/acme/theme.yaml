@@ -32,25 +32,4 @@ areas:
   left: [40, 100, 430, 380]
   right: [490, 100, 430, 380]
 
-elements:
-  - id: section
-    text: ${section}
-    style: kicker
-    frame: [40, 14, 600, 22]
-  - id: logo
-    picture: media/logo.svg
-    frame: [856, 44, 64, 24]
-  - id: rule
-    line: { from: [40, 88], to: [920, 88] }
-    stroke: { color: accent1, width: 1.5 }
-  - id: footer
-    text: ${footer}
-    style: caption
-    frame: [40, 508, 600, 22]
-  - id: page
-    text: ${slide}
-    style: caption
-    align: right
-    frame: [860, 508, 60, 22]
-
 checks: { shrink: 70 }

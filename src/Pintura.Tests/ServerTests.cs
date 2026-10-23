@@ -344,7 +344,7 @@ public class ServerTests
   }
 
   [Fact]
-  public async Task Reverting_an_element_the_theme_owns_is_refused()
+  public async Task Reverting_an_element_a_layout_owns_is_refused()
   {
     // Arrange
     using var deck = new DeckFixture();
@@ -352,7 +352,7 @@ public class ServerTests
     RevisionTests.Git(deck.Folder.Root, "add", ".");
     RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
     await using Served served = await Served.Start(deck);
-    var revert = new { @base = "HEAD", slide = "one", id = "page", owner = "theme" };
+    var revert = new { @base = "HEAD", slide = "two", id = "page", owner = "layout" };
 
     // Act
     HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/revert", revert);
@@ -420,6 +420,32 @@ public class ServerTests
     undone.StatusCode.ShouldBe(HttpStatusCode.OK);
     File.ReadAllText(deck.Folder.PathTo("theme/theme.yaml")).ShouldBe(themeBefore);
     File.ReadAllText(deck.Folder.PathTo("theme/layouts/cover.yaml")).ShouldBe(layoutBefore);
+  }
+
+  [Fact]
+  public async Task Deleting_an_element_on_a_layout_s_stage_removes_it_from_the_layout_and_undo_writes_it_back()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    await using Served served = await Served.Start(deck);
+    ItemPayload page = served.Store.Theme!.Layouts.Single(candidate => candidate.Id == "content").Stage.Items!
+      .Single(item => item.Id == "page");
+    string before = File.ReadAllText(deck.Folder.PathTo("theme/layouts/content.yaml"));
+    var edit = new { edits = new[] { new { file = page.Edit.File, path = page.Edit.Delete!.Path,
+      source = page.Edit.Delete.Source, delete = true } } };
+
+    // Act
+    HttpResponseMessage deleted = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+    string after = File.ReadAllText(deck.Folder.PathTo("theme/layouts/content.yaml"));
+    System.Text.Json.JsonElement undo = (await deleted.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
+      .GetProperty("undo");
+    HttpResponseMessage undone = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", new { edits = undo });
+
+    // Assert
+    deleted.StatusCode.ShouldBe(HttpStatusCode.OK);
+    after.ShouldNotContain("page");
+    undone.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("theme/layouts/content.yaml")).ShouldBe(before);
   }
 
   [Fact]

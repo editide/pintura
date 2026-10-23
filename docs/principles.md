@@ -26,6 +26,8 @@ Every effective property traces to the file and line that set it.
 
 Theme, layout, slide: the same ladder as PowerPoint's master, layout, slide, and nothing deeper.
 Inheritance isn't the problem; inheritance you can't see is.
+Only layouts and slides draw, so a layout's file shows everything on its slides but theirs.
+A logo on three layouts is written three times: repetition an agent keeps in step costs less than inheritance a reader has to undo.
 
 ## 5. Our model, PowerPoint's objects
 

@@ -135,13 +135,7 @@ public class SceneBuilder
   private SlideScene Build()
   {
     Theme theme = presentation.Theme;
-    var items = new List<SceneItem>();
-    if (layout.ThemeElements)
-    {
-      items.AddRange(theme.Elements.Where(element => !slide.Hide.Contains(element.Id))
-        .Select(element => Item(element, "theme")));
-    }
-    items.AddRange(layout.Elements.Where(element => !slide.Hide.Contains(element.Id))
+    var items = new List<SceneItem>(layout.Elements.Where(element => !slide.Hide.Contains(element.Id))
       .Select(element => Item(element, "layout")));
 
     if (slide.Title is not null)

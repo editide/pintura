@@ -30,7 +30,7 @@ public class IncrementalExportTests
       ["theme"] = new JsonObject(),
       ["layouts"] = new JsonArray(new JsonObject
       {
-        ["id"] = "content", ["name"] = "Content", ["themeElements"] = true
+        ["id"] = "content", ["name"] = "Content"
       }),
       ["slides"] = new JsonArray(slides.Select((id, index) => (JsonNode?)new JsonObject
       {

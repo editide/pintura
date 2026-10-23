@@ -1,5 +1,4 @@
 name: Cover
-theme_elements: false
 
 title: { frame: [40, 216, 880, 50], style: display }
 

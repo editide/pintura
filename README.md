@@ -137,13 +137,13 @@ Everything the blog calls a minefield (inheritance you can't see, element orderi
 ## Vocabulary
 
 - **presentation**: a folder holding `presentation.yaml`, an ordered list of slides on one theme; it exports to one `.pptx`.
-- **theme**: a folder holding `theme.yaml` (colors, fonts, and what every slide shares), `styles.yaml`, and its layouts; the equivalent of a `.potx`.
-- **layout**: a named variation on the theme: a different title, extra placeholders, areas, elements, or background.
+- **theme**: a folder holding `theme.yaml` (colors, fonts, the title, and areas), `styles.yaml`, and its layouts; the equivalent of a `.potx`.
+- **layout**: a named variation on the theme: a different title, extra placeholders, areas, or background, and the elements, such as a logo or the slide number, drawn on every slide using it.
 - **placeholder**: text whose position and style a layout owns and whose words each slide writes; the title is the one nearly every layout has.
 - **area**: a named rectangle on a theme or layout that elements take as their frame.
 - **field**: a value the presentation fills into text, such as `${slide}` or `${footer}`.
 - **slide**: a file under `slides/` that picks a layout, writes its title and placeholders, and adds elements.
-- **element**: one thing on a slide, layout, or theme: text, shape, line, picture, chart, or table.
+- **element**: one thing on a slide or layout: text, shape, line, picture, chart, or table.
 - **style**: a named set of text, table, or chart properties, such as `caption` or `positive`, defined in the theme's `styles.yaml`.
 
 ## Changing Pintura

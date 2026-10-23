@@ -1,6 +1,5 @@
 name: Cover
 background: dark2
-theme_elements: false
 
 title: { frame: [60, 190, 840, 90], style: display, color: light1 }
 

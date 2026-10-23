@@ -10,6 +10,19 @@ areas:
   right: [496, 148, 424, 324]
 
 elements:
+  - id: rule_top
+    line: { from: [40, 30], to: [920, 30] }
+  - id: rule_bottom
+    line: { from: [40, 508], to: [920, 508] }
+  - id: footer
+    text: ${footer}
+    style: caption
+    frame: [40, 512, 600, 14]
+  - id: page
+    text: ${slide}
+    style: caption
+    align: right
+    frame: [860, 512, 60, 14]
   - id: left_rule
     line: { from: [40, 140], to: [464, 140] }
     stroke: { color: accent1, width: 1 }

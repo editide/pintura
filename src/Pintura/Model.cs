@@ -73,7 +73,6 @@ public class Theme
   public Placeholder? Title { get; init; }
   public Dictionary<string, Placeholder> Placeholders { get; init; } = new Dictionary<string, Placeholder>();
   public Dictionary<string, Area> Areas { get; init; } = new Dictionary<string, Area>();
-  public List<Element> Elements { get; init; } = new List<Element>();
   public StyleSheet Styles { get; init; } = new StyleSheet();
   public Dictionary<string, Layout> Layouts { get; init; } = new Dictionary<string, Layout>();
   [JsonIgnore] public ThemeChecks Checks { get; init; } = new ThemeChecks();
@@ -96,7 +95,6 @@ public class Layout
   public string Id { get; init; } = "";
   public string Name { get; init; } = "";
   public Color? Background { get; init; }
-  public bool ThemeElements { get; init; } = true;
   /// <summary>Null inherits the theme's title; <see cref="TitleRemoved"/> is <c>title: none</c>.</summary>
   public Placeholder? Title { get; init; }
   public bool TitleRemoved { get; init; }
@@ -115,7 +113,7 @@ public class Slide
   public Placeholder? Title { get; init; }
   public Dictionary<string, Placeholder> Placeholders { get; init; } = new Dictionary<string, Placeholder>();
   public List<Element> Elements { get; init; } = new List<Element>();
-  /// <summary>Ids of theme and layout elements the slide leaves out.</summary>
+  /// <summary>Ids of the layout's elements the slide leaves out.</summary>
   public List<string> Hide { get; init; } = new List<string>();
   /// <summary>Set when the slide's file failed to load; the rest of the presentation still renders.</summary>
   [JsonIgnore] public LoadException? Error { get; init; }

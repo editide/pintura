@@ -54,12 +54,13 @@ The exporter turns it into calls to editide's tools, and the import turns their 
 theme ──► layout ──► slide
 ```
 
-A **theme** is a folder: `theme.yaml` with the colors, fonts, background, title, areas, and elements every slide shares, `styles.yaml` with the text, table, and chart styles and number formats, and `layouts/`.
+A **theme** is a folder: `theme.yaml` with the colors, fonts, background, title, and areas, `styles.yaml` with the text, table, and chart styles and number formats, and `layouts/`.
 It folds together what PowerPoint splits across a theme part and a slide master.
 The two are one-to-one in practice, and PowerPoint's own interface calls the pair a theme, so masters are an export artifact: the exporter writes one per theme, and authors never see one.
 
-A **layout** inherits everything the theme defines and overrides it by name: a different title position, an extra placeholder, its own background, no theme elements.
+A **layout** inherits everything the theme defines and overrides it by name: a different title position, an extra placeholder, its own background.
 It inherits from its theme only, as a PowerPoint layout inherits only from its master.
+Only layouts and slides draw elements: a logo on three layouts is written three times, so each layout's file shows all it draws, and nothing a layout inherits needs switching off.
 
 A **slide** picks a layout, writes its title and placeholders, and adds elements.
 
@@ -168,6 +169,7 @@ A theme can ship font files in `fonts/`, which the page registers under the fami
 | --- | --- |
 | A package of parts, one per slide, shared media by relationship | Kept: a folder of files, one per slide, media by path |
 | Master, layout, slide | Kept as theme, layout, slide |
+| Shapes on the master, hidden per layout all at once | Dropped: each layout lists its own elements |
 | Theme part separate from the master | Folded into the theme |
 | Placeholders for every kind of content, bound by type and numeric index | Replaced: a title and text placeholders bound by name, and areas for content |
 | Date, footer, and slide-number placeholders | Replaced by fields in ordinary text |
@@ -270,7 +272,7 @@ It reads the result back and tries the next way of writing the value, such as qu
 A value a gesture moves lands on a whole point or the edge it snapped to, and the rest keep the layout's values, to a hundredth of a point.
 
 Moving the title writes a frame into the slide's title, turning `title: Revenue` into `title: { text: Revenue, frame: [x, y, w, h] }` on its one line, and moving an element placed in an area replaces the area's name with numbers.
-Dragging a theme or layout element on a slide is refused with the path of the file that owns it, as PowerPoint locks master shapes on slides.
+Dragging a layout's element on a slide is refused with the path of the file that owns it, as PowerPoint locks master shapes on slides.
 
 A patch whose value no longer reads as the source the page drew is rejected and the page redraws from the file, so a person and an agent can work on one presentation at once.
 
@@ -334,7 +336,7 @@ Export runs on an editide API account, metered by slides delivered.
 | Title | `p:ph type="title"` on the master and layouts |
 | Layout | `p:sldLayout` |
 | Other placeholders | `p:ph type="body"`, or a text box (`p:sp`) |
-| Theme and layout elements | non-placeholder shapes on the master or layout |
+| Layout elements | non-placeholder shapes on the layout, but one showing `${section}`, which goes on each slide |
 | `${slide}` | `a:fld type="slidenum"` |
 | Area | nothing: elements get their frames (`a:xfrm`) |
 | Text | `p:sp` with `p:txBody` |

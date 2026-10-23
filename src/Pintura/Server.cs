@@ -298,7 +298,8 @@ public static class PreviewServer
         return Refused(group.Key is null
           ? "the mouse writes frames, line ends, text, fills, outlines, styles, and alignments, adds text boxes, and " +
             "deletes elements"
-          : "the mouse writes a layout's frames, areas, fills, and outlines", StatusCodes.Status400BadRequest);
+          : "the mouse writes a layout's frames, areas, fills, and outlines, and deletes its elements",
+          StatusCodes.Status400BadRequest);
       }
       if (group.Select(edit => Unnamed(edit, presentation.Theme)).FirstOrDefault(problem => problem is not null) is
         string unnamed)
@@ -521,8 +522,8 @@ public static class PreviewServer
   /// as a revert or its undo restores it.</summary>
   /// <summary>Whether the mouse may write the edit: on a slide, frames, line ends, text, fills, outlines, an
   /// element's style, the alignments of its text, the title's, or a placeholder's, adding a text box, and deleting
-  /// elements; on the theme or a layout, the frames of its title, placeholders, areas, and elements, and its
-  /// elements' fills and outlines.</summary>
+  /// elements; on the theme or a layout, the frames of its title, placeholders, areas, and elements, its elements'
+  /// fills and outlines, and deleting its elements.</summary>
   private static bool Writable(ValueEdit edit, bool theme)
   {
     if (edit.Path.Length == 0)
@@ -539,7 +540,7 @@ public static class PreviewServer
     }
     if (edit.Delete)
     {
-      return !theme && parts[0] == "elements" && parts.Length > 1 && edit.Numbers is null &&
+      return parts[0] == "elements" && parts.Length > 1 && edit.Numbers is null &&
         edit.Paragraphs is null && edit.Restore is null && edit.Value is null;
     }
     bool owned = parts[0] is "title" or "elements" || (parts[0] == "placeholders" && parts.Length > 1) ||
