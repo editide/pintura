@@ -922,7 +922,9 @@ public class SceneBuilder
     return name switch
     {
       "slide" => (slide.Number.ToString(CultureInfo.InvariantCulture), null),
-      "section" => (slide.Section ?? "", presentation.Origin),
+      "section" => (slide.Section ?? "",
+        presentation.Sections.FirstOrDefault(section => section.Slides.Contains(slide.Id))?.Origin ??
+          presentation.Origin),
       _ when presentation.References.TryGetValue(name, out BookValue? value) => (value.Text, value.Origin),
       _ => (presentation.Fields[name].Value, presentation.Fields[name].Origin)
     };

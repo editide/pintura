@@ -712,6 +712,60 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task Typing_over_a_section_s_name_on_a_slide_renames_the_section_and_undo_names_it_back()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    await using Served served = await Served.Start(deck);
+    string before = File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml"));
+    FieldEditPayload section = served.Store.Deck.Slides.Single(slide => slide.Id == "two").Items!
+      .Single(item => item.Id == "title").Text!.Paragraphs[0].Runs.Single(run => run.Field == "section").FieldEdit!;
+    var edit = new
+    {
+      slide = "two",
+      edits = new[] { new { file = section.File, path = section.Path, source = section.Source, value = "Outlook" } }
+    };
+
+    // Act
+    HttpResponseMessage renamed = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+    string after = File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml"));
+    string title = served.Store.Deck.Slides.Single(slide => slide.Id == "two").Title!;
+    System.Text.Json.JsonElement undo = (await renamed.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
+      .GetProperty("undo");
+    HttpResponseMessage undone = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", new { slide = "two", edits = undo });
+
+    // Assert
+    renamed.StatusCode.ShouldBe(HttpStatusCode.OK);
+    after.ShouldBe(before.Replace("section: Results", "section: Outlook"));
+    title.ShouldBe("Results in Outlook");
+    undone.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml")).ShouldBe(before);
+  }
+
+  [Theory]
+  [InlineData("name", "Test deck")]
+  [InlineData("theme", "../theme")]
+  [InlineData("slides[1]", "one")]
+  public async Task An_edit_to_presentation_yaml_beyond_its_fields_and_section_names_is_refused(string path,
+    string source)
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    await using Served served = await Served.Start(deck);
+    string before = File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml"));
+    string file = served.Store.Deck.Slides.Single(slide => slide.Id == "one").Items!
+      .Single(item => item.Id == "subtitle").Text!.Paragraphs[0].Runs.Single().FieldEdit!.File;
+    var edit = new { slide = "one", edits = new[] { new { file, path, source, value = "other" } } };
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
+
+    // Assert
+    response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml")).ShouldBe(before);
+  }
+
+  [Fact]
   public async Task An_edit_to_a_key_the_mouse_never_writes_is_refused()
   {
     // Arrange

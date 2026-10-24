@@ -1543,9 +1543,20 @@ public static partial class Patcher
       }
       key = parts[index];
       current = current is YamlMappingNode mapping ? Value(mapping, key) : null;
+      // A list's entry by its place, as origins name one without an id, such as slides[3].
+      if (current is null && parent is YamlMappingNode owner && PlacedEntry().Match(key) is { Success: true } entry &&
+        Value(owner, entry.Groups[1].Value) is YamlSequenceNode list)
+      {
+        int at = int.Parse(entry.Groups[2].Value, CultureInfo.InvariantCulture) - 1;
+        parent = list;
+        current = at < list.Children.Count ? list.Children[at] : null;
+      }
     }
     return (current, parent, key);
   }
+
+  [GeneratedRegex(@"^(.+)\[([1-9][0-9]{0,5})\]$")]
+  private static partial Regex PlacedEntry();
 
   private static YamlNode? Value(YamlMappingNode map, string key)
   {

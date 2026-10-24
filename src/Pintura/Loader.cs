@@ -123,9 +123,9 @@ public partial class PresentationLoader
       if (entry.IsMap)
       {
         MapNode sectionMap = entry.AsMap();
-        string sectionName = sectionMap.Require("section").AsString();
+        Node sectionNode = sectionMap.Require("section");
         sectionMap.Done();
-        current = new Section { Name = sectionName };
+        current = new Section { Name = sectionNode.AsString(), Origin = sectionNode.Origin };
         sections.Add(current);
         continue;
       }

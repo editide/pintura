@@ -107,6 +107,7 @@ In the one-slide view, the mouse moves, resizes, and rewords what the slide owns
 - Double-click text, or click it once it's selected, to reword it in place, then click away or press Escape to write it, and Ctrl+Z to take it back.
 - While rewording, Enter breaks the line in the title or a placeholder, and elsewhere starts a paragraph at the caret, at the level and in the style of the one it splits; Backspace at a paragraph's start, or Delete at its end, joins it to its neighbour.
   Fields such as `${date}` stay as written, and an edit that would cross formatting, such as the edge of a bold run, is refused.
+  Typing inside `${section}` renames the section in `presentation.yaml`, and inside a field `fields` defines rewrites its value there, so every slide showing it changes; `${slide}` and numbers from a book take no typing.
 - While rewording, a bar above the text, or Ctrl+B, Ctrl+I, and Ctrl+U, makes the selected words bold, italic, or underlined, writing `**`, `*`, or `[…]{underline=true}` around them, or takes the mark off where all of them have it.
   Text a style makes bold or italic is changed in the style, and the title and placeholders take no formatting, since the layout decides their look.
 - The text box button in the toolbar, or X, turns the pointer into a crosshair; drag across the slide to draw a box, snapping as a move does, and type its words straight in.
