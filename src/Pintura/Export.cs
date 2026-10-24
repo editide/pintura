@@ -37,9 +37,10 @@ public record ExportLayout(
   List<ExportItem> Elements,
   Dictionary<string, double[]> Areas);
 
-/// <summary><see cref="Hide"/> lists the layout's elements the slide leaves out.</summary>
+/// <summary><see cref="Hide"/> lists the layout's elements the slide leaves out, and a null background is the
+/// layout's.</summary>
 public record ExportSlide(string Id, int Number, string? Section, string Layout, string? Error,
-  List<ExportItem>? Items, List<string> Hide);
+  List<ExportItem>? Items, List<string> Hide, object? Background = null);
 
 public record ExportItem(
   string Id,
@@ -157,7 +158,8 @@ public class ExportBuilder
       .Where(item => item.Owner == "slide")
       .Select(item => Item(item, "slide"))
       .ToList();
-    return new ExportSlide(slide.Id, slide.Number, slide.Section, slide.Layout, null, items, slide.Hide);
+    return new ExportSlide(slide.Id, slide.Number, slide.Section, slide.Layout, null, items, slide.Hide,
+      slide.Background is null ? null : Value(slide.Background));
   }
 
   private ExportItem Placeholder(string layout, string name, string role, Placeholder?[] chain)

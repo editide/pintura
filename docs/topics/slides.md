@@ -7,6 +7,7 @@ A slide is a file in `slides/` that picks a layout, writes its title and placeho
 | Key | Value |
 | --- | --- |
 | `layout` | A layout's file stem. |
+| `background` | A color, replacing the layout's, such as one matching the edge of a picture that doesn't fill the slide. |
 | `title` | The title's text, or a map overriding the layout: `{ text: …, frame: [x, y, w, h] }`. |
 | `placeholders` | Each placeholder's text, or a map, by the names its layout defines in the theme's `layouts/` files (see `layouts`). |
 | `elements` | Everything else on the slide, back to front, in front of the title and placeholders unless it names them. |

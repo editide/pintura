@@ -112,6 +112,8 @@ public class Slide
   public int Number { get; init; }
   public string? Section { get; init; }
   public string Layout { get; init; } = "";
+  /// <summary>Null takes the layout's, or else the theme's.</summary>
+  public Color? Background { get; init; }
   public Placeholder? Title { get; init; }
   public Dictionary<string, Placeholder> Placeholders { get; init; } = new Dictionary<string, Placeholder>();
   public List<Element> Elements { get; init; } = new List<Element>();
@@ -123,6 +125,7 @@ public class Slide
   /// <summary>Set when the slide's file failed to load; the rest of the presentation still renders.</summary>
   [JsonIgnore] public LoadException? Error { get; init; }
   [JsonIgnore] public Origin Origin { get; init; } = new Origin("", 0, 0);
+  [JsonIgnore] public Origin? BackgroundOrigin { get; init; }
 }
 
 /// <summary>The title, or a placeholder by name, drawn in front of the slide's first <paramref name="Over"/> elements.

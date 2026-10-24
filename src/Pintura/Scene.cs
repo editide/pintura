@@ -164,9 +164,11 @@ public class SceneBuilder
       }
     }
 
-    Resolved background = layout.Background is not null
-      ? new Resolved(layout.Background, layout.Origins["background"])
-      : new Resolved(theme.Background, theme.Origins.GetValueOrDefault("background"));
+    Resolved background = slide.Background is not null
+      ? new Resolved(slide.Background, slide.BackgroundOrigin)
+      : layout.Background is not null
+        ? new Resolved(layout.Background, layout.Origins["background"])
+        : new Resolved(theme.Background, theme.Origins.GetValueOrDefault("background"));
     return new SlideScene { Slide = slide, Background = background, Items = items };
   }
 

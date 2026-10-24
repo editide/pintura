@@ -2479,6 +2479,10 @@ public partial class Exporter
         fills.Add(fill);
       }
       var edit = new JsonObject();
+      if (Truthy(Get(slide, "background")))
+      {
+        edit["background"] = new JsonObject { ["color"] = Color(Get(slide, "background")) };
+      }
       if (fills.Count > 0)
       {
         edit["text_elements"] = fills;
