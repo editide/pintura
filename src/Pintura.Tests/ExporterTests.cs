@@ -700,6 +700,49 @@ public class ExporterTests
   }
 
   [Fact]
+  public void A_title_drawn_over_an_element_moves_up_the_slides_order_with_the_elements_around_it()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    fixture.Write("deck/slides/one.yaml", """
+      layout: cover
+      title: Hello
+      placeholders:
+        subtitle: ${footer}
+      elements:
+        - id: band
+          shape: rectangle
+          frame: [0, 0, 960, 540]
+        - title
+        - id: note
+          text: On top
+          frame: [60, 400, 400, 40]
+      """);
+    var tools = new BlandTools
+    {
+      SlideRead = Json("""
+        { "text_elements": [
+          { "id": 2, "is_placeholder": true, "placeholder": { "role": "title" },
+            "position": { "left": 60, "top": 190 } },
+          { "id": 3, "is_placeholder": true, "placeholder": { "role": "body" },
+            "position": { "left": 60, "top": 290 } }] }
+        """)
+    };
+
+    // Act
+    Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
+
+    // Assert
+    JsonNode edit = tools.Inputs.First(call => call.Tool == "edit_slide" &&
+      call.Input["slide"]?["shape_elements_to_add"] is not null).Input["slide"]!;
+    ShouldMatch(edit["shape_elements_to_add"]![0]!["position"]!["z_index"], "1");
+    ShouldMatch(edit["text_elements_to_add"]![0]!["position"]!["z_index"], "3");
+    JsonArray fills = edit["text_elements"]!.AsArray();
+    ShouldMatch(fills.Single(fill => (int)fill!["id"]! == 2)!["position"]!["z_index"], "2");
+    fills.Single(fill => (int)fill!["id"]! == 3)!["position"].ShouldBeNull();
+  }
+
+  [Fact]
   public void An_exported_deck_is_titled_by_the_presentation_and_names_no_author_or_add_in()
   {
     // Arrange

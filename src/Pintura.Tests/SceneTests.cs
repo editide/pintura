@@ -40,6 +40,35 @@ public class SceneTests
   }
 
   [Fact]
+  public void An_elements_entry_naming_the_title_draws_it_there_and_unnamed_placeholders_draw_first()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/one.yaml", """
+      layout: cover
+      title: Hello
+      placeholders:
+        subtitle: ${footer}
+      elements:
+        - id: photo
+          shape: rectangle
+          frame: [0, 0, 960, 540]
+        - title
+        - id: note
+          text: On top
+          frame: [60, 400, 400, 40]
+      """);
+    Presentation presentation = deck.Load();
+
+    // Act
+    List<string> drawn = SceneBuilder.Build(presentation, presentation.Slides[0]).Items.Select(item => item.Id)
+      .ToList();
+
+    // Assert
+    drawn.ShouldBe(["subtitle", "photo", "title", "note"]);
+  }
+
+  [Fact]
   public void Fields_fill_in_per_slide()
   {
     // Arrange

@@ -115,12 +115,19 @@ public class Slide
   public Placeholder? Title { get; init; }
   public Dictionary<string, Placeholder> Placeholders { get; init; } = new Dictionary<string, Placeholder>();
   public List<Element> Elements { get; init; } = new List<Element>();
+  /// <summary>The title and placeholders the elements list names, in its order, each drawn where its entry sits.
+  /// </summary>
+  public List<Stacked> Stacked { get; init; } = new List<Stacked>();
   /// <summary>Ids of the layout's elements the slide leaves out.</summary>
   public List<string> Hide { get; init; } = new List<string>();
   /// <summary>Set when the slide's file failed to load; the rest of the presentation still renders.</summary>
   [JsonIgnore] public LoadException? Error { get; init; }
   [JsonIgnore] public Origin Origin { get; init; } = new Origin("", 0, 0);
 }
+
+/// <summary>The title, or a placeholder by name, drawn in front of the slide's first <paramref name="Over"/> elements.
+/// </summary>
+public record Stacked(string Id, int Over);
 
 public class Area
 {

@@ -596,6 +596,30 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Undoing_a_delete_puts_the_element_back_after_the_title_it_followed()
+  {
+    // Arrange
+    const string stacked = """
+      title: Hall
+      elements:
+        - id: photo
+          picture: hall.png
+          frame: [0, 0, 960, 540]
+        - title
+        - id: note
+          text: On top
+      """;
+    ValueEdit delete = new ValueEdit("elements.note", Patcher.SourceAt(stacked, "elements.note"), Delete: true);
+
+    // Act
+    Patched deleted = Patcher.Apply(stacked, [delete], Context);
+    string undone = Patcher.Apply(deleted.Text, deleted.Undo, Context).Text;
+
+    // Assert
+    undone.ShouldBe(stacked);
+  }
+
+  [Fact]
   public void Deleting_the_only_element_leaves_an_empty_list_and_undoing_it_restores_the_element()
   {
     // Arrange

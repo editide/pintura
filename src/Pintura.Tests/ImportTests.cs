@@ -31,6 +31,32 @@ public class ImportTests
   }
 
   [Fact]
+  public void A_title_drawn_over_an_element_survives_import()
+  {
+    // Arrange
+    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example");
+    JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
+    JsonObject slide = before["slides"]!.AsArray().Select(node => node!.AsObject())
+      .First(candidate => candidate["items"]!.AsArray().Any(item => (string?)item!["role"] == "title") &&
+        candidate["items"]!.AsArray().Any(item => item!["role"] is null));
+    JsonArray items = slide["items"]!.AsArray();
+    JsonNode title = items.First(item => (string?)item!["role"] == "title")!;
+    items.Remove(title);
+    items.Insert(items.IndexOf(items.First(item => item!["role"] is null)) + 1, title);
+    List<string> drawn = items.Select(item => (string)item!["id"]!).ToList();
+    using var output = new TempFolder();
+    string folder = output.PathTo("imported");
+
+    // Act
+    Importer.Import(before.ToJsonString(), root, folder);
+
+    // Assert
+    JsonObject after = Importer.Snapshot(PresentationLoader.Load(folder));
+    after["slides"]!.AsArray().Single(candidate => (string?)candidate!["id"] == (string?)slide["id"])!["items"]!
+      .AsArray().Select(item => (string)item!["id"]!).ShouldBe(drawn);
+  }
+
+  [Fact]
   public void A_table_cells_empty_paragraph_with_formatting_of_its_own_imports()
   {
     // Arrange

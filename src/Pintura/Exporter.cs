@@ -1854,13 +1854,19 @@ public partial class Exporter
 
   #region Slides
 
-  // Elements for one edit, in the order Pintura draws them.
-  private JsonObject Elements(IEnumerable<JsonNode> items, int start)
+  // Elements for one edit, in the order Pintura draws them, each at its slot when given one.
+  private JsonObject Elements(IEnumerable<JsonNode> items, int start, Func<int, int>? slot = null)
   {
     var edit = new JsonObject();
     int z = start;
+    int index = -1;
     foreach (JsonNode item in items)
     {
+      index++;
+      if (slot is not null)
+      {
+        z = slot(index);
+      }
       string? kind = Text(Get(item, "kind"));
       JsonNode? properties = Get(item, "properties");
       string key;
@@ -2441,6 +2447,8 @@ public partial class Exporter
       var fills = new JsonArray();
       var used = new HashSet<string>(StringComparer.Ordinal);
       var own = new List<JsonNode>();
+      // Placeholders drawn over some of the slide's elements, with how many, which the edit moves up among them.
+      var raised = new List<(JsonObject Fill, int Over)>();
       foreach (JsonNode? item in Items(Get(slide, "items")))
       {
         string? role = Text(Get(item, "role"));
@@ -2463,7 +2471,12 @@ public partial class Exporter
           continue;
         }
         used.Add(Get(target, "id")!.ToJsonString());
-        fills.Add(PlaceholderFill(Get(target, "id")!, item!, placeholder));
+        JsonObject fill = PlaceholderFill(Get(target, "id")!, item!, placeholder);
+        if (own.Count > 0)
+        {
+          raised.Add((fill, own.Count));
+        }
+        fills.Add(fill);
       }
       var edit = new JsonObject();
       if (fills.Count > 0)
@@ -2491,10 +2504,26 @@ public partial class Exporter
       {
         edit["elements_to_delete"] = unused;
       }
-      IEnumerable<JsonNode> sections = Items(Get(layout, "elements")).OfType<JsonNode>()
+      List<JsonNode> sections = Items(Get(layout, "elements")).OfType<JsonNode>()
         .Where(item => ShowsSection(item) && !hide.Contains(Text(Get(item, "id")) ?? ""))
-        .Select(item => WithSection(item, slide));
-      foreach ((string key, JsonNode? value) in Elements(sections.Concat(own), used.Count).ToList())
+        .Select(item => WithSection(item, slide))
+        .ToList();
+      int start = used.Count - raised.Count + sections.Count;
+      for (int at = 0; at < raised.Count; at++)
+      {
+        (JsonObject fill, int over) = raised[at];
+        (fill["position"] ??= new JsonObject())["z_index"] = start + over + at;
+      }
+      int Slot(int index)
+      {
+        if (index < sections.Count)
+        {
+          return used.Count - raised.Count + index;
+        }
+        int element = index - sections.Count;
+        return start + element + raised.Count(entry => entry.Over <= element);
+      }
+      foreach ((string key, JsonNode? value) in Elements(sections.Concat(own), used.Count, Slot).ToList())
       {
         edit[key] = value?.DeepClone();
       }

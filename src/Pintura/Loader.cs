@@ -1272,7 +1272,29 @@ public partial class PresentationLoader
       }
     }
 
-    List<Element> elements = ReadElements(map.Take("elements"), areas, document.File.FullPath, "slide");
+    var named = new List<(Node Entry, int Over)>();
+    List<Element> elements = ReadElements(map.Take("elements"), areas, document.File.FullPath, "slide", named);
+    var written = new List<string>(placeholders.Keys);
+    if (title is not null)
+    {
+      written.Insert(0, "title");
+    }
+    var stacked = new List<Stacked>();
+    foreach ((Node entry, int over) in named)
+    {
+      string id = entry.AsString();
+      if (!written.Contains(id))
+      {
+        throw entry.Error(written.Count == 0
+          ? $"{id} isn't the title or a placeholder, and this slide writes neither"
+          : $"{id} isn't the title or a placeholder this slide writes: {string.Join(", ", written)}", "slides");
+      }
+      if (stacked.Any(other => other.Id == id))
+      {
+        throw entry.Error($"{id} is placed twice", "slides");
+      }
+      stacked.Add(new Stacked(id, over));
+    }
     Node? hideNode = map.Take("hide");
     map.Done();
 
@@ -1323,6 +1345,7 @@ public partial class PresentationLoader
       Title = title,
       Placeholders = placeholders,
       Elements = elements,
+      Stacked = stacked,
       Hide = hide,
       Origin = document.Origin
     };
@@ -1390,7 +1413,10 @@ public partial class PresentationLoader
     return path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
   }
 
-  private List<Element> ReadElements(Node? node, Dictionary<string, Area> areas, string file, string owner)
+  /// <summary>The elements of a list, keeping in <paramref name="named"/> each entry naming the title or a
+  /// placeholder, with how many elements it follows, where the list may hold them.</summary>
+  private List<Element> ReadElements(Node? node, Dictionary<string, Area> areas, string file, string owner,
+    List<(Node Entry, int Over)>? named = null)
   {
     var elements = new List<Element>();
     if (node is null)
@@ -1400,6 +1426,11 @@ public partial class PresentationLoader
     var ids = new HashSet<string>(StringComparer.Ordinal);
     foreach (Node entry in node.AsList())
     {
+      if (named is not null && entry.IsScalar)
+      {
+        named.Add((entry, elements.Count));
+        continue;
+      }
       Element element = ReadElement(entry, areas, Path.GetDirectoryName(file)!);
       if (!ids.Add(element.Id))
       {
