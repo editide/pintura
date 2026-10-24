@@ -40,20 +40,27 @@ public class CommandLineTests
   }
 
   [Fact]
-  public void Slides_narrow_an_export_or_an_import()
+  public void Slides_narrow_an_export_an_import_a_check_a_diff_or_the_comments()
   {
     // Act
     CommandLineOptions export = CommandLineOptions.Parse(["deck", "--export", "out.pptx", "--slides", "cover,3-4"]);
     CommandLineOptions import = CommandLineOptions.Parse(["--import", "deck.pptx", "out", "--slides", "2"]);
+    CommandLineOptions check = CommandLineOptions.Parse(["deck", "--check", "--diff", "--slides", "2"]);
+    CommandLineOptions diff = CommandLineOptions.Parse(["deck", "--diff", "main", "--slides", "2"]);
+    CommandLineOptions comments = CommandLineOptions.Parse(["deck", "--comments", "--slides", "2"]);
 
     // Assert
     export.Slides.ShouldNotBeNull();
     import.Slides.ShouldNotBeNull();
+    check.Slides.ShouldNotBeNull();
+    diff.Slides.ShouldNotBeNull();
+    comments.Slides.ShouldNotBeNull();
   }
 
   [Theory]
   [InlineData("deck --list --slides 1")]
-  [InlineData("deck --check --export --slides 1")]
+  [InlineData("deck --comments --resolved --slides 1")]
+  [InlineData("deck --screenshot all --slides 1")]
   [InlineData("--import deck.pptx out --theme --slides 1")]
   public void Slides_combine_with_nothing_else(string arguments)
   {
@@ -89,18 +96,6 @@ public class CommandLineTests
     options.Command.ShouldBe(HeadlessCommand.Diff);
     options.Revision.ShouldBe("edited.pptx");
     check.ShouldThrow<ArgumentException>().Message.ShouldContain(".pptx");
-  }
-
-  [Fact]
-  public void Slides_narrow_a_diff_against_a_deck_but_not_against_a_revision()
-  {
-    // Act
-    CommandLineOptions deck = CommandLineOptions.Parse(["deck", "--diff", "edited.pptx", "--slides", "2"]);
-    Action revision = () => CommandLineOptions.Parse(["deck", "--diff", "main", "--slides", "2"]);
-
-    // Assert
-    deck.Slides.ShouldNotBeNull();
-    revision.ShouldThrow<ArgumentException>().Message.ShouldContain("--slides");
   }
 
   [Fact]

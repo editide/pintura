@@ -157,7 +157,8 @@ A done pin turns green and a skipped one grey, and opening one shows the agent's
 Resolve one from its pin, or every done one with Resolve done above the slides, where the open, done, and skipped are counted.
 To hand one back to the agent, type a reply into its pin, or press Revert to have the agent undo what it did, with the reason typed beside it if any; the agent marks the reply as it did the comment, and the pin shows the whole thread.
 Resolving one moves it, with its thread and how it ended, to `comments-resolved.yaml`, which keeps the history of every request.
-A new comment or reply records the last saved version as what you saw, so over unsaved changes its box asks you to save first, with a Save button beside the ask.
+A new comment or reply records the last saved version as what you saw, so over your own unsaved edits to its slide, or to the theme or `presentation.yaml`, its box asks you to save first, with a Save button beside the ask.
+An agent's unsaved changes don't ask, since Save leaves them to the agent; the comment records that the slide had changed since that version.
 Ctrl+Z undoes adding, rewording, replying to, or resolving one, and deleting a slide resolves its comments as removed, which undoing it reopens.
 A comment whose element is gone shows as a grey pin, and one on a slide that is gone is listed at the foot of the sidebar to resolve; `--check` warns of both.
 
@@ -180,11 +181,13 @@ The picker names what the page shows, as `Since v12`, or `Changes in v12` for th
 
 ## Save a version
 
-Save, beside the theme, commits the presentation and its theme, and nothing else in the repository, whatever is staged; books are Libreta's to save.
-Of the files git doesn't have yet, it takes only YAML and the pictures and CSVs the YAML names, so an export or a screenshot left in the folder stays out.
-It shows while either differs from `HEAD`, leaving aside the comments, and hides once they don't.
-`Ctrl+S` or a click opens it on a description of the changes, such as `Rearranged slide 4`, which typing replaces and Enter saves as the commit's subject.
-Outside a repository, Save starts one in the presentation's folder.
+Save, beside the theme, commits the files of the presentation and its theme that the page wrote since they were last saved, with the comments, and nothing else in the repository, whatever is staged; books are Libreta's to save.
+An agent working in the same folder commits its own changes, so Save can be pressed at any time without taking an agent's unfinished work.
+The server keeps the files the page wrote in the repository's git folder, so a restart doesn't lose them, and forgets a file once it's saved, or an undo puts it back as it was.
+Git commits whole files, so a file the page wrote that something else changed too goes with your edits, and the box says so: `Also saves changes you didn't make to slide 5`.
+It shows while your edits differ from `HEAD`, leaving aside the comments, and hides once they don't.
+`Ctrl+S` or a click opens it on a description of your edits, such as `Rearranged slide 4`, which typing replaces and Enter saves as the commit's subject.
+Outside a repository, or before its first commit, Save takes the whole presentation, leaving out of the files git doesn't have yet all but YAML and the pictures and CSVs the YAML names, so an export or a screenshot left in the folder stays out; outside a repository, it starts one in the presentation's folder.
 The sidebar and the grid mark each slide added, changed, or moved since, and list the slides the revision had and the working tree doesn't under the sidebar.
 Two keys review the changes:
 
@@ -207,6 +210,7 @@ Changes from the theme, the layout, or a chart's or table's data are reverted in
 pintura presentations/example --diff
 pintura presentations/example --diff main --json
 pintura presentations/example --diff main..HEAD
+pintura presentations/example --diff --slides 3-5
 ```
 
 `--diff` lists the same changes: each slide's own, by element and value, and then each theme or layout value once, with how many elements it restyled on how many slides.
@@ -215,6 +219,7 @@ Values compare as drawn, so a style edit reaches every element that takes it, an
 A slide counts as moved only when it left the order the others keep.
 A revision reads its books as the same commit left them, so a restated fact shows as a change; a book outside the repository can't be compared.
 An element whose `id` changed counts as removed and added.
+`--slides` keeps the slides it names, by id, number, or range, and the theme and layout changes that reach them, so an agent working beside others sees only its own.
 
 ```bash
 pintura presentations/example --diff edited.pptx
@@ -231,12 +236,14 @@ A slide inserted or deleted in PowerPoint shifts the pairing of every slide afte
 
 ```bash
 pintura presentations/example --check --diff
+pintura presentations/example --check --diff --slides revenue,segments
 pintura presentations/example --check --diff main..HEAD --json
 pintura presentations/example --screenshot revenue --diff main
 pintura presentations/example --screenshot all --diff
 ```
 
 `--check --diff` checks both sides and reports only the findings the change introduced, and counts those it cleared.
+`--slides` keeps those on the slides it names, as the working tree numbers them, and those on no slide, such as a font that isn't installed.
 A finding is the one already there when the revision had the same kind on the same element, so text that overflows further than it did isn't new.
 It exits 1 only when the change introduced an error.
 `--json` adds `since`, the revision compared against, and `gone`, the findings cleared.
@@ -268,7 +275,7 @@ The title is `title`, and a placeholder is its name.
 Add `--json` to any of the three for the same content as JSON.
 
 `pintura presentations/example --comments` lists reviewers' comments in slide order, each beside the file and line that writes what it points at; `--json` works here too.
-`--comments --resolved` lists the resolved ones in the order they were resolved, each with how its thread ended, and `--resolve <id>,<id>` resolves the ones a reviewer names.
+`--comments --slides 3-5` lists only those on the slides it names, `--comments --resolved` lists the resolved ones in the order they were resolved, each with how its thread ended, and `--resolve <id>,<id>` resolves the ones a reviewer names.
 
 ## Look at the rendered slides
 
@@ -291,6 +298,7 @@ Without `--output`, the PNG goes to `screenshots/<presentation>/<slide>.png` in 
 `--check` reports six kinds of finding, which `pintura --docs checks` lists: structure, such as a slide that fails to load; text, measured in every box; geometry; consistency across slides; comments on a slide or element that no longer exists, or in a file git doesn't track; and, with `--export`, what the PowerPoint export can't reproduce.
 It exits 1 when there are errors and 0 when there are only warnings, as Libreta's does, and `--json` prints the findings as JSON, a structure error with its `file`, `line`, and `topic`.
 A theme or layout element with a finding on several slides is one finding, named by its first slide.
+`--slides 3,revenue` still checks every slide, since consistency compares each with the rest, and reports the findings on those it names and on no slide.
 
 Both reload the presentation first, so a command run straight after a save sees the save.
 A server already running the presentation lends them its browser.

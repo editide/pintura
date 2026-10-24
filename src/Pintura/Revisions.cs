@@ -22,9 +22,20 @@ public record VersionScope(string Top, string Presentation, List<string> Saved, 
 {
   public string CommentFile => InPresentation(Pintura.CommentFile.Name);
   public string ResolvedFile => InPresentation(Pintura.CommentFile.ResolvedName);
+  public string Manifest => InPresentation("presentation.yaml");
 
   /// <summary>Comments are about a version rather than part of one.</summary>
   public string[] Comments => [$":(exclude){CommentFile}", $":(exclude){ResolvedFile}"];
+
+  /// <summary>The slide a repository path is the file of, or null when it's another of the deck's files.</summary>
+  public string? Slide(string path)
+  {
+    string folder = InPresentation("slides/");
+    return path.StartsWith(folder, StringComparison.Ordinal) && path.EndsWith(".yaml", StringComparison.Ordinal) &&
+      !path[folder.Length..].Contains('/')
+      ? path[folder.Length..^".yaml".Length]
+      : null;
+  }
 
   private string InPresentation(string name)
   {

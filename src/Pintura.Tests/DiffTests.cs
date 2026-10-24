@@ -6,6 +6,27 @@ namespace Pintura.Tests;
 public class DiffTests
 {
   [Fact]
+  public void Slides_narrow_a_diff_against_a_revision_to_the_slides_named()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: Changed");
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed too");
+    var output = new StringWriter();
+
+    // Act
+    DiffCommand.Run(deck.Folder.PathTo("deck"), "HEAD", true, output, SlideSelection.Parse("two"));
+
+    // Assert
+    System.Text.Json.JsonElement diff = System.Text.Json.JsonDocument.Parse(output.ToString()).RootElement;
+    diff.GetProperty("slides").EnumerateArray().Select(slide => slide.GetProperty("id").GetString())
+      .ShouldBe(["two"]);
+  }
+
+  [Fact]
   public void A_removed_paragraph_lists_as_one_line_and_a_run_that_only_rewords_shows_once_as_the_text()
   {
     // Arrange

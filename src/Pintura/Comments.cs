@@ -19,8 +19,7 @@ public record Comment
   public string? Date { get; init; }
   /// <summary>The commit the deck was at when it was written, absent outside a repository.</summary>
   public string? Rev { get; init; }
-  /// <summary>Whether the slides or theme had changed since <see cref="Rev"/>, so the reviewer saw more than it.
-  /// </summary>
+  /// <summary>Whether the slide had changed since <see cref="Rev"/>, so the reviewer saw more than it.</summary>
   [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool Uncommitted { get; init; }
   public string Text { get; init; } = "";
   /// <summary>What an agent changed for it, left for the reviewer to check and resolve.</summary>
@@ -58,9 +57,16 @@ public record Reply
 public record Resolution(string? By, string? Date, string? Rev,
   [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Uncommitted, string Outcome);
 
-/// <summary>The commit a deck was at and whether its slides or theme had changed since, as a reviewer saw it.
-/// </summary>
-public record Snapshot(string Rev, bool Uncommitted);
+/// <summary>The commit a deck was at and what had changed since, as a reviewer saw it: the slides whose own files
+/// changed, and whether anything they share did, such as the theme or the list.</summary>
+public record Snapshot(string Rev, bool Shared, IReadOnlySet<string> Slides)
+{
+  /// <summary>Whether the slide looked other than the commit has it, so the reviewer saw more than it.</summary>
+  public bool Uncommitted(string slide)
+  {
+    return Shared || Slides.Contains(slide);
+  }
+}
 
 /// <summary>One change to <c>comments.yaml</c>: a comment added, before the one <paramref name="Before"/> names when
 /// it is put back where it was; one removed; its last ask reworded to <paramref name="Text"/>, which reopens it; one
@@ -303,7 +309,7 @@ public static class CommentFile
         Before: at + 1 < files.Entries.Count ? files.Entries[at + 1].Comment.Id : null);
       Comment archived = existing with
       {
-        Resolved = new Resolution(author, Stamp(now), seen?.Rev, seen?.Uncommitted ?? false,
+        Resolved = new Resolution(author, Stamp(now), seen?.Rev, seen?.Uncommitted(existing.Slide) ?? false,
           outcome ?? Outcome(existing))
       };
       return (Without(files.Live, files.Entries, at),
@@ -489,7 +495,7 @@ public static class CommentFile
       By = author,
       Date = Stamp(now),
       Rev = seen?.Rev,
-      Uncommitted = seen?.Uncommitted ?? false,
+      Uncommitted = seen?.Uncommitted(comment.Slide) ?? false,
       Text = change.Revert && string.IsNullOrWhiteSpace(change.Text) ? null : Words(change.Text),
       Revert = change.Revert
     };
@@ -542,7 +548,7 @@ public static class CommentFile
       By = draft.By ?? author,
       Date = draft.Date ?? Stamp(now),
       Rev = fresh ? seen?.Rev : draft.Rev,
-      Uncommitted = fresh ? seen?.Uncommitted ?? false : draft.Uncommitted,
+      Uncommitted = fresh ? seen?.Uncommitted(draft.Slide) ?? false : draft.Uncommitted,
       Text = Words(draft.Text),
       Resolved = null
     };
@@ -746,9 +752,16 @@ public static class CommentList
     return SceneBuilder.Build(presentation, slide).Items.FirstOrDefault(item => item.Id == comment.Element)?.Origin;
   }
 
-  public static int Write(Presentation presentation, bool json, TextWriter output)
+  public static int Write(Presentation presentation, bool json, TextWriter output, SlideSelection? only = null)
   {
     List<CommentEntry> entries = Entries(presentation);
+    string named = "";
+    if (only is not null)
+    {
+      HashSet<string> picked = [.. only.Pick(presentation.Slides, slide => slide.Id).Select(slide => slide.Id)];
+      entries = [.. entries.Where(entry => picked.Contains(entry.Slide))];
+      named = " on the slides named";
+    }
     if (json)
     {
       output.WriteLine(JsonSerializer.Serialize(entries, PayloadJson.Indented));
@@ -756,7 +769,7 @@ public static class CommentList
     }
     if (entries.Count == 0)
     {
-      output.WriteLine("no comments");
+      output.WriteLine($"no comments{named}");
       return 0;
     }
     foreach (CommentEntry entry in entries)
@@ -774,7 +787,7 @@ public static class CommentList
     string file = presentation.Comments[0].Origin.File;
     int done = entries.Count(entry => Last(entry).Done is not null);
     int skipped = entries.Count(entry => Last(entry).Skipped is not null);
-    output.WriteLine($"{entries.Count} comment{(entries.Count == 1 ? "" : "s")} in {file}: " +
+    output.WriteLine($"{entries.Count} comment{(entries.Count == 1 ? "" : "s")}{named} in {file}: " +
       $"{entries.Count - done - skipped} open, {done} done, {skipped} skipped.");
     output.WriteLine("Act on each open one, then mark it done: with what you changed, or skipped: with why, for the " +
       "reviewer to resolve; in a thread, mark its last reply.");

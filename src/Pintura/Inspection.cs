@@ -60,7 +60,7 @@ public record CellEntry(
 public static class HeadlessRunner
 {
   public static int Run(string root, HeadlessCommand command, string? slide, string? element, bool json,
-    TextWriter output, bool resolved = false, IReadOnlyList<string>? ids = null)
+    TextWriter output, bool resolved = false, IReadOnlyList<string>? ids = null, SlideSelection? only = null)
   {
     if (command == HeadlessCommand.Comments && resolved)
     {
@@ -73,7 +73,7 @@ public static class HeadlessRunner
       HeadlessCommand.Slide => Slide(presentation, slide!, json, output),
       HeadlessCommand.Element => Element(presentation, slide!, element!, json, output),
       HeadlessCommand.Export => Export(presentation, output),
-      HeadlessCommand.Comments => CommentList.Write(presentation, json, output),
+      HeadlessCommand.Comments => CommentList.Write(presentation, json, output, only),
       HeadlessCommand.Resolve => Resolve(presentation, ids!, output),
       _ => throw new ArgumentOutOfRangeException(nameof(command), command, "not a console command")
     };

@@ -2,6 +2,7 @@
 
 `pintura --check` reports what an agent can't see; add `--export` for what the PowerPoint export can't reproduce, and `--json` for findings as JSON.
 It exits 1 when there are errors, and lists warnings without failing.
+`--slides 3,revenue` reports the findings on the slides it names, and those on no slide, such as a missing font, and `--diff` only those your changes since the last commit introduced.
 
 | Kind | Finding | Level |
 | --- | --- | --- |

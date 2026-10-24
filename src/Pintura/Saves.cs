@@ -4,30 +4,40 @@ using YamlDotNet.RepresentationModel;
 
 namespace Pintura;
 
-public record SaveStatus(bool Unsaved, int Next);
+/// <summary>Whether the deck differs from its last version, the number the next one takes, and of the changes, the
+/// ones the page made, which Save commits: the slides they're in, and whether they reach a file the slides share.
+/// </summary>
+public record SaveStatus(bool Unsaved, int Next, List<string> Slides, bool Shared)
+{
+  public bool Edited => Shared || Slides.Count > 0;
+}
 
 public record SaveRequest(string? Message);
 
-/// <summary>Saving is committing the presentation and its theme, and only those, so the page's readers can keep
-/// versions without knowing git. Books are Libreta's to save.</summary>
+/// <summary>Saving is committing what the page changed in the presentation and its theme, and only that, so the page's
+/// readers can keep versions without knowing git while agents commit their own work. Books are Libreta's to save.
+/// </summary>
 public static class Saves
 {
   public const string First = "First version";
 
-  /// <summary>Whether the presentation or its theme differs from its last version, and the number the next one takes.
-  /// Outside a repository everything is unsaved.</summary>
+  /// <summary>Outside a repository everything is unsaved, and the page's.</summary>
   public static SaveStatus Status(string root)
   {
     if (!Inside(root))
     {
-      return new SaveStatus(true, 1);
+      return new SaveStatus(true, 1, [], true);
     }
     VersionScope scope = Revisions.Scope(root);
-    return new SaveStatus(Unsaved(scope), Revisions.Count(scope, "HEAD") + 1);
+    Pending pending = Pend(scope, root);
+    Dictionary<string, bool> edited = pending.Edited;
+    return new SaveStatus(pending.Changed.Count > 0, Revisions.Count(scope, "HEAD") + 1,
+      [.. edited.Keys.Select(scope.Slide).OfType<string>().Order(StringComparer.Ordinal)],
+      edited.Keys.Any(path => scope.Slide(path) is null));
   }
 
-  /// <summary>The commit the presentation is at and whether its slides or theme changed since, which a comment
-  /// records as what its reviewer saw; null outside a repository or before its first commit.</summary>
+  /// <summary>The commit the presentation is at and what changed since, whoever changed it, which a comment records
+  /// as what its reviewer saw; null outside a repository or before its first commit.</summary>
   public static Snapshot? Snapshot(string root)
   {
     try
@@ -37,7 +47,14 @@ public static class Saves
         return null;
       }
       (int exit, string head, _) = Revisions.Run(root, "rev-parse", "--short", "HEAD");
-      return exit == 0 ? new Snapshot(head.Trim(), Unsaved(Revisions.Scope(root))) : null;
+      if (exit != 0)
+      {
+        return null;
+      }
+      VersionScope scope = Revisions.Scope(root);
+      List<string> changed = Substantive(scope, Changes(scope));
+      return new Snapshot(head.Trim(), changed.Any(path => scope.Slide(path) is null),
+        changed.Select(scope.Slide).OfType<string>().ToHashSet(StringComparer.Ordinal));
     }
     catch (InvalidDataException)
     {
@@ -45,12 +62,30 @@ public static class Saves
     }
   }
 
-  /// <summary>Comments alone wait for the next save, as does YAML only reformatted, which the next save takes along.
-  /// </summary>
-  private static bool Unsaved(VersionScope scope)
+  /// <summary>The deck's files that differ from its last version, those of them that are more than comments or
+  /// reformatting, and the ones the page wrote, each with whether something besides the page changed it too. Before
+  /// the first version, every file is the page's.</summary>
+  private record Pending(List<string> All, List<string> Changed, Dictionary<string, bool> Wrote)
   {
-    return Changes(scope).Any(path => path != scope.CommentFile && path != scope.ResolvedFile
-      && !Reformatted(scope, path));
+    public Dictionary<string, bool> Edited => Wrote.Where(pair => Changed.Contains(pair.Key))
+      .ToDictionary(pair => pair.Key, pair => pair.Value);
+  }
+
+  /// <summary>Comments alone wait for the next save, as does YAML only reformatted, which the next save takes along
+  /// when the page wrote it.</summary>
+  private static Pending Pend(VersionScope scope, string root)
+  {
+    List<string> all = Changes(scope);
+    bool born = Revisions.Run(scope.Top, "rev-parse", "--verify", "--quiet", "HEAD").Exit == 0;
+    return new Pending(all, Substantive(scope, all), born
+      ? PageEdits.Read(scope, root, all.ToHashSet(StringComparer.Ordinal))
+      : all.ToDictionary(path => path, _ => false));
+  }
+
+  private static List<string> Substantive(VersionScope scope, List<string> changes)
+  {
+    return [.. changes.Where(path => path != scope.CommentFile && path != scope.ResolvedFile &&
+      !Reformatted(scope, path))];
   }
 
   /// <summary>Whether a YAML file reads as it did in the last version, differing only in comments, blank lines,
@@ -111,8 +146,8 @@ public static class Saves
     }
   }
 
-  /// <summary>Commits the presentation and its theme, starting a repository in the presentation when there's none,
-  /// under the message or, without one, the draft.</summary>
+  /// <summary>Commits what the page changed in the presentation and its theme, with the comments, starting a
+  /// repository in the presentation when there's none, under the message or, without one, the draft.</summary>
   public static DeckVersion Save(string root, string? message, Presentation? current = null)
   {
     root = Path.GetFullPath(root);
@@ -120,16 +155,20 @@ public static class Saves
     {
       Check(Revisions.Run(root, "init", "-q"));
     }
-    if (!Status(root).Unsaved)
+    VersionScope scope = Revisions.Scope(root);
+    Pending pending = Pend(scope, root);
+    if (pending.Edited.Count == 0)
     {
       throw new InvalidDataException("there are no changes to save");
     }
     string subject = string.IsNullOrWhiteSpace(message) ? Draft(root, current) : message.Trim();
-    VersionScope scope = Revisions.Scope(root);
-    List<string> paths = [.. Changes(scope).Select(path => $":(literal){path}")];
+    List<string> files = [.. pending.All.Where(path => path == scope.CommentFile || path == scope.ResolvedFile ||
+      pending.Wrote.ContainsKey(path))];
+    List<string> paths = [.. files.Select(path => $":(literal){path}")];
     Check(Revisions.Run(scope.Top, ["add", "-A", "--", .. paths]));
     // Naming the paths commits them alone, leaving whatever else is staged staged.
     Check(Revisions.Run(scope.Top, [.. Identity(scope.Top), "commit", "-q", "--only", "-m", subject, "--", .. paths]));
+    PageEdits.Forget(scope, root, files);
     return Revisions.Versions(root, 1)[0];
   }
 
@@ -208,7 +247,7 @@ public static class Saves
     return named;
   }
 
-  /// <summary>What changed since the last version, as a reader would say it.</summary>
+  /// <summary>What the page changed since the last version, as a reader would say it.</summary>
   public static string Draft(string root, Presentation? current = null)
   {
     Presentation after = current ?? PresentationLoader.Load(root);
@@ -221,7 +260,51 @@ public static class Saves
     {
       return First;
     }
-    return Draft(Differ.Compare(before, after));
+    DeckDiff diff = Differ.Compare(before, after);
+    VersionScope scope = Revisions.Scope(root);
+    Pending pending = Pend(scope, root);
+    HashSet<string> edited = [.. pending.Edited.Keys];
+    HashSet<string> mine = [.. edited.Select(scope.Slide).OfType<string>()];
+    HashSet<string> others = [.. pending.Changed.Where(path => !edited.Contains(path)).Select(scope.Slide)
+      .OfType<string>()];
+    bool listed = edited.Contains(scope.Manifest);
+    bool themed = edited.Any(path => scope.Slide(path) is null && path != scope.Manifest);
+    // A slide's changes that came from the list or the theme are the page's when it wrote them, unless the slide's
+    // own file holds someone else's too.
+    List<SlideDiff> slides = [.. diff.Slides
+      .Where(slide => mine.Contains(slide.Id) || (listed || themed) && !others.Contains(slide.Id))
+      .Where(slide => listed || slide.Status != "moved")
+      .Select(slide => listed ? slide : slide with { Moved = false })];
+    return Draft(new DeckDiff(slides, themed ? diff.Causes : []));
+  }
+
+  /// <summary>What saving takes along that the page didn't write: the slides and shared files it wrote that
+  /// something else changed too, as <c>slide 5 and the theme</c>; null when there are none.</summary>
+  public static string? Mixed(string root, Presentation current)
+  {
+    if (!Inside(root))
+    {
+      return null;
+    }
+    VersionScope scope = Revisions.Scope(root);
+    List<string> mixed = [.. Pend(scope, root).Edited.Where(pair => pair.Value).Select(pair => pair.Key)];
+    List<int> numbers = [.. mixed.Select(scope.Slide).OfType<string>()
+      .Select(id => current.Slides.FindIndex(slide => slide.Id == id) + 1).Where(number => number > 0)];
+    List<string> parts = numbers.Count > 0 ? [Numbers(numbers)] : [];
+    if (mixed.Contains(scope.Manifest))
+    {
+      parts.Add("presentation.yaml");
+    }
+    if (mixed.Any(path => scope.Slide(path) is null && path != scope.Manifest))
+    {
+      parts.Add("the theme");
+    }
+    return parts switch
+    {
+      [] => null,
+      [string one] => one,
+      _ => string.Join(", ", parts[..^1]) + (parts.Count > 2 ? ", and " : " and ") + parts[^1]
+    };
   }
 
   public static string Draft(DeckDiff diff)

@@ -19,7 +19,10 @@ public class SaveIdentityTests
     Git(deck.Folder.Root, "init", "-q");
     Git(deck.Folder.Root, "add", ".");
     Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string slide = deck.Folder.PathTo("deck/slides/two.yaml");
+    string before = File.ReadAllText(slide);
     deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    PageEdits.Wrote(deck.Folder.PathTo("deck"), slide, before);
     string? global = Environment.GetEnvironmentVariable("GIT_CONFIG_GLOBAL");
     string? system = Environment.GetEnvironmentVariable("GIT_CONFIG_NOSYSTEM");
     Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", deck.Folder.PathTo("no-gitconfig"));

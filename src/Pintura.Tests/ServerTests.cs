@@ -146,7 +146,7 @@ public class ServerTests
   }
 
   [Fact]
-  public async Task Saving_commits_a_nudge_under_its_draft_and_leaves_nothing_unsaved()
+  public async Task Saving_commits_a_nudge_under_its_draft_and_leaves_an_agents_edit_unsaved()
   {
     // Arrange
     using var deck = new DeckFixture();
@@ -154,7 +154,9 @@ public class ServerTests
     RevisionTests.Git(deck.Folder.Root, "add", ".");
     RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
     await using Served served = await Served.Start(deck);
-    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: An agent's");
+    await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", new { slide = "two", edits = new[] {
+      new { path = "title.frame", source = (string?)null, numbers = new[] { 60.0, 180, 840, 90 } } } });
     System.Text.Json.JsonElement unsaved =
       await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/save");
     System.Text.Json.JsonElement draft =
@@ -169,10 +171,15 @@ public class ServerTests
     // Assert
     unsaved.GetProperty("unsaved").GetBoolean().ShouldBeTrue();
     unsaved.GetProperty("next").GetInt32().ShouldBe(2);
-    draft.GetProperty("message").GetString().ShouldBe("Reworded slide 2");
+    unsaved.GetProperty("slides").EnumerateArray().Select(slide => slide.GetString()).ShouldBe(["two"]);
+    unsaved.GetProperty("shared").GetBoolean().ShouldBeFalse();
+    unsaved.GetProperty("edited").GetBoolean().ShouldBeTrue();
+    draft.GetProperty("message").GetString().ShouldBe("Rearranged slide 2");
+    draft.TryGetProperty("mixed", out _).ShouldBeFalse();
     saved.GetProperty("number").GetInt32().ShouldBe(2);
-    saved.GetProperty("subject").GetString().ShouldBe("Reworded slide 2");
-    after.GetProperty("unsaved").GetBoolean().ShouldBeFalse();
+    saved.GetProperty("subject").GetString().ShouldBe("Rearranged slide 2");
+    after.GetProperty("unsaved").GetBoolean().ShouldBeTrue();
+    after.GetProperty("slides").GetArrayLength().ShouldBe(0);
   }
 
   [Fact]
