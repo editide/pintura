@@ -262,6 +262,55 @@ public class SaveTests
   }
 
   [Fact]
+  public void Saving_some_of_the_pages_edits_leaves_the_rest_unsaved()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    Edit(deck, "deck/slides/one.yaml", "layout: cover\ntitle: Half done");
+    Edit(deck, "theme/styles.yaml", Restyled);
+    List<SavePart> parts = Saves.Parts(root, deck.Load());
+    string draft = Saves.Draft(root, deck.Load(), ["deck/slides/two.yaml"]);
+
+    // Act
+    Saves.Save(root, null, deck.Load(), ["deck/slides/two.yaml"]);
+
+    // Assert
+    parts.Select(part => part.Label).ShouldBe(["Slide 1", "Slide 2", "The theme"]);
+    parts[1].Files.ShouldBe(["deck/slides/two.yaml"]);
+    draft.ShouldBe("Reworded slide 2");
+    Revisions.Versions(root)[0].Subject.ShouldBe("Reworded slide 2");
+    Status(deck.Folder.Root).ShouldBe([" M deck/slides/one.yaml", " M theme/styles.yaml"]);
+    Saves.Status(root).ShouldBeEquivalentTo(new SaveStatus(true, 3, ["one"], true));
+  }
+
+  [Fact]
+  public void A_deleted_slide_saves_with_presentation_yaml_so_the_version_loads()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    Edit(deck, "deck/slides/one.yaml", "layout: cover\ntitle: Half done");
+    Edit(deck, "deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nslides: [one]");
+    Edit(deck, "deck/slides/two.yaml", null);
+    List<SavePart> parts = Saves.Parts(root, deck.Load());
+
+    // Act
+    Saves.Save(root, "Removed slide 2", deck.Load(), ["deck/slides/two.yaml"]);
+
+    // Assert
+    parts.Select(part => part.Label).ShouldBe(["Slide 1", "presentation.yaml, removing slide two"]);
+    Status(deck.Folder.Root).ShouldBe([" M deck/slides/one.yaml"]);
+  }
+
+  [Fact]
   public void Saving_outside_a_repository_starts_one_in_the_presentation()
   {
     // Arrange

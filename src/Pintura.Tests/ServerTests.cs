@@ -183,6 +183,40 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task Saving_the_files_the_box_names_drafts_and_commits_only_their_part()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    await using Served served = await Served.Start(deck);
+    foreach (string slide in new[] { "one", "two" })
+    {
+      await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", new { slide, edits = new[] {
+        new { path = "title.frame", source = (string?)null, numbers = new[] { 60.0, 180, 840, 90 } } } });
+    }
+    System.Text.Json.JsonElement whole =
+      await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/save/draft");
+    System.Text.Json.JsonElement chosen = await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+      $"{served.Url}/api/save/draft?files=deck/slides/two.yaml");
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/save",
+      new { files = new[] { "deck/slides/two.yaml" } });
+    System.Text.Json.JsonElement after =
+      await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{served.Url}/api/save");
+
+    // Assert
+    whole.GetProperty("parts").EnumerateArray().Select(part => part.GetProperty("label").GetString())
+      .ShouldBe(["Slide 1", "Slide 2"]);
+    whole.GetProperty("message").GetString().ShouldBe("Rearranged slides 1 and 2");
+    chosen.GetProperty("message").GetString().ShouldBe("Rearranged slide 2");
+    response.IsSuccessStatusCode.ShouldBeTrue();
+    after.GetProperty("slides").EnumerateArray().Select(slide => slide.GetString()).ShouldBe(["one"]);
+  }
+
+  [Fact]
   public async Task An_edit_patches_the_slide_file_once_and_a_second_from_the_same_drawing_is_a_conflict()
   {
     // Arrange

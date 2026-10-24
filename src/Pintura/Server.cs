@@ -67,18 +67,26 @@ public static partial class PreviewServer
     app.MapPost("/api/revert", (RevertRequest request) => comparison.Revert(request));
     app.MapGet("/api/versions", () => Results.Json(Revisions.Versions(store.Root), PayloadJson.Options));
     app.MapGet("/api/save", () => Saving(() => Saves.Status(store.Root)));
-    app.MapGet("/api/save/draft", () => Saving(() =>
+    // Without files, the draft is of all the page's edits; with them, of the parts they're in.
+    app.MapGet("/api/save/draft", (string[]? files) => Saving(() =>
     {
       store.Refresh();
+      string[]? only = files is { Length: > 0 } ? files : null;
       return store.Deck.Error is null && store.Presentation is Presentation presentation
-        ? new { Message = Saves.Draft(store.Root, presentation), Mixed = Saves.Mixed(store.Root, presentation) }
-        : new { Message = "", Mixed = (string?)null };
+        ? new
+        {
+          Message = Saves.Draft(store.Root, presentation, only),
+          Mixed = Saves.Mixed(store.Root, presentation, only),
+          Parts = Saves.Parts(store.Root, presentation)
+        }
+        : new { Message = "", Mixed = (string?)null, Parts = new List<SavePart>() };
     }));
     app.MapPost("/api/save", (SaveRequest request) => Saving(() =>
     {
       // A nudge just made may still be in the watcher's debounce, and the draft must describe it.
       store.Refresh();
-      return Saves.Save(store.Root, request.Message, store.Deck.Error is null ? store.Presentation : null);
+      return Saves.Save(store.Root, request.Message, store.Deck.Error is null ? store.Presentation : null,
+        request.Files);
     }));
     app.MapGet("/api/media", (HttpContext context, string path, string? fill) =>
     {

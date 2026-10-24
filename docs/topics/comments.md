@@ -20,15 +20,6 @@ Asked to clear the comments, list those marked `done:` and leave them to the rev
 Never delete an entry by hand: its thread is the record of how the request went.
 An empty file means no comments.
 
-## Working beside other agents
-
-Other agents may be working in the same presentation, each on its own slides, while the reviewer edits in the preview.
-Given slides to work on, pass them to `--comments`, `--check`, and `--diff` with `--slides`, so each lists only what's yours, and act only on those.
-Commit your own changes at the end of every round, naming each file: `git add slides/revenue.yaml comments.yaml`, never `git add -A` or `git commit -a`, which would take other agents' unfinished work.
-Never stage, revert, or tidy a change you didn't make: a file `git status` shows changed that you didn't touch is another agent's or the reviewer's.
-Change the theme or `presentation.yaml` whenever your slides need it, and commit that change as soon as it's done, since git commits whole files and another agent committing one takes everything in it.
-The reviewer's Save commits only what they edited in the preview, never your unfinished work.
-
 ## Resolved comments
 
 ```bash
