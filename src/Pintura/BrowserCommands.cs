@@ -78,7 +78,32 @@ public static class BrowserCommands
   {
     List<Finding> findings = Checks.All(presentation, await Measure(client, ""),
       FontSetting.Current(FontFolders.Files()), options.Export);
-    return Report(findings, options.Json, output);
+    return Report(Named(findings, presentation, options.Slides), options.Json, output);
+  }
+
+  /// <summary>The working tree's presentation, or null when it doesn't load, which its findings already say.</summary>
+  private static Presentation? Loaded(string root)
+  {
+    try
+    {
+      return PresentationLoader.Load(root);
+    }
+    catch (LoadException)
+    {
+      return null;
+    }
+  }
+
+  /// <summary>The findings on the slides <paramref name="only"/> names, and those on no slide, such as the theme's.
+  /// Every slide is still checked, since consistency compares each with the rest.</summary>
+  private static List<Finding> Named(List<Finding> findings, Presentation presentation, SlideSelection? only)
+  {
+    if (only is null)
+    {
+      return findings;
+    }
+    HashSet<string> picked = [.. only.Pick(presentation.Slides, slide => slide.Id).Select(slide => slide.Id)];
+    return [.. findings.Where(finding => finding.Slide is null || picked.Contains(finding.Slide))];
   }
 
   /// <summary>The findings the change introduced, each side checked as <c>--check</c> checks it: a revision is drawn
@@ -89,6 +114,7 @@ public static class BrowserCommands
   {
     string[] ends = revision.Split("..", 2);
     string first = ends[0].Length == 0 ? "HEAD" : ends[0];
+    Presentation? named = null;
     async Task<List<Finding>> Findings(string? name)
     {
       string drawn = root;
@@ -98,6 +124,7 @@ public static class BrowserCommands
         if (name is null)
         {
           presentation = PresentationLoader.Load(root);
+          named = presentation;
         }
         else
         {
@@ -118,6 +145,12 @@ public static class BrowserCommands
     List<Finding> before = await Findings(first);
     List<Finding> after = await Findings(ends.Length == 1 ? null : ends[1]);
     (List<Finding> introduced, List<Finding> gone) = Checks.Since(before, after);
+    // The working tree names the slides, as the page and --list number them.
+    if (options.Slides is not null && (named ?? Loaded(root)) is Presentation names)
+    {
+      introduced = Named(introduced, names, options.Slides);
+      gone = Named(gone, names, options.Slides);
+    }
 
     string since = $"{first} ({Revisions.Commit(root, first)[..7]})";
     int errors = introduced.Count(finding => finding.Level == "error");

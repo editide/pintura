@@ -10,7 +10,7 @@ pintura presentations/q3 --comments
 pintura presentations/q3 --comments --json
 ```
 
-`--comments` lists them in slide order, each beside the file and line that writes what it points at, which is the line to change.
+`--comments` lists them in slide order, each beside the file and line that writes what it points at, which is the line to change, and `--slides 3-5` only those on the slides it names.
 Act on each open comment, then mark it in `comments.yaml`: `done:` with what you changed, or `skipped:` with why you didn't.
 Leave the entry: the reviewer checks each marked comment against its pin, then resolves it or answers it with a reply.
 A comment with replies waits on its last one: act on that reply, and mark it `done:` or `skipped:` rather than the comment.
@@ -19,6 +19,15 @@ Resolve only the comments the reviewer names, with `--resolve`.
 Asked to clear the comments, list those marked `done:` and leave them to the reviewer to resolve from their pins: resolving records the outcome as the reviewer's, so `accepted` has to mean they looked at that comment.
 Never delete an entry by hand: its thread is the record of how the request went.
 An empty file means no comments.
+
+## Working beside other agents
+
+Other agents may be working in the same presentation, each on its own slides, while the reviewer edits in the preview.
+Given slides to work on, pass them to `--comments`, `--check`, and `--diff` with `--slides`, so each lists only what's yours, and act only on those.
+Commit your own changes at the end of every round, naming each file: `git add slides/revenue.yaml comments.yaml`, never `git add -A` or `git commit -a`, which would take other agents' unfinished work.
+Never stage, revert, or tidy a change you didn't make: a file `git status` shows changed that you didn't touch is another agent's or the reviewer's.
+Change the theme or `presentation.yaml` whenever your slides need it, and commit that change as soon as it's done, since git commits whole files and another agent committing one takes everything in it.
+The reviewer's Save commits only what they edited in the preview, never your unfinished work.
 
 ## Resolved comments
 
@@ -53,7 +62,7 @@ New comments take ids no resolved comment had, so an id names one thread for goo
 | `by` | Who wrote it. |
 | `date` | When, as `2026-10-07 14:03`. |
 | `rev` | The commit the deck was at when the reviewer wrote it, absent outside a repository; commit at the end of every round, before the reviewer looks, so it names what they saw. |
-| `uncommitted` | `true` when the slides or theme had changed since `rev`, so the reviewer saw more than that commit. |
+| `uncommitted` | `true` when the slide, or a file every slide shares such as the theme or `presentation.yaml`, had changed since `rev`, so the reviewer saw more than that commit. |
 | `text` | What the reviewer asks for. |
 | `done` | What an agent changed for it, for the reviewer to check. |
 | `skipped` | Why an agent didn't act on it; a comment is done or skipped, never both. |

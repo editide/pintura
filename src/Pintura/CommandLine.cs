@@ -298,11 +298,12 @@ public class CommandLineOptions
     {
       throw new ArgumentException("--theme requires --import.");
     }
-    bool deckDiff = command is HeadlessCommand.Diff && DiffCommand.IsDeck(revision!);
-    if (slides is not null && (themeOnly || import is null && command is not HeadlessCommand.ExportPptx && !deckDiff))
+    if (slides is not null && (themeOnly || resolved || import is null &&
+      command is not (HeadlessCommand.ExportPptx or HeadlessCommand.Diff or HeadlessCommand.Check or
+        HeadlessCommand.Comments)))
     {
-      throw new ArgumentException("--slides requires --export <deck.pptx>, --diff <deck.pptx>, or --import without " +
-        "--theme.");
+      throw new ArgumentException("--slides requires --check, --comments without --resolved, --diff, --export " +
+        "<deck.pptx>, or --import without --theme.");
     }
     return new CommandLineOptions
     {
@@ -341,12 +342,14 @@ public class CommandLineOptions
     writer.WriteLine("  pintura [<presentation>] --screenshot <slide>|all|theme [--diff [<rev>]] [--output <png>]   " +
       "(the slide, by id or number, as a PNG, a contact sheet of every slide, or the preview's theme view; --diff " +
       "draws a slide before and after, with the changes marked)");
-    writer.WriteLine("  pintura [<presentation>] --check [--export] [--diff [<rev>|<a>..<b>]] [--json]   (structure, " +
-      "text, geometry, and consistency findings; --export adds what the PowerPoint export can't reproduce, and " +
-      "--diff keeps only those the change introduced)");
-    writer.WriteLine("  pintura [<presentation>] --comments [--resolved] [--json]   (reviewers' comments in slide " +
-      "order, each beside the file and line of what it points at; --resolved lists the resolved ones instead, in " +
-      "the order they were resolved, with how each thread ended)");
+    writer.WriteLine("  pintura [<presentation>] --check [--export] [--diff [<rev>|<a>..<b>]] [--slides <list>] " +
+      "[--json]   (structure, text, geometry, and consistency findings; --export adds what the PowerPoint export " +
+      "can't reproduce, --diff keeps only those the change introduced, and --slides those on the slides it names " +
+      "and the theme)");
+    writer.WriteLine("  pintura [<presentation>] --comments [--resolved|--slides <list>] [--json]   (reviewers' " +
+      "comments in slide order, each beside the file and line of what it points at; --slides lists those on the " +
+      "slides it names, and --resolved the resolved ones instead, in the order they were resolved, with how each " +
+      "thread ended)");
     writer.WriteLine("  pintura [<presentation>] --resolve <id>[,<id>...]   (moves the comments the reviewer names " +
       "to comments-resolved.yaml, with how each thread ended)");
     writer.WriteLine("  pintura [<presentation>] --url   (the address of the server already running it)");
@@ -356,8 +359,9 @@ public class CommandLineOptions
       "theme colors and fonts kept as references)");
     writer.WriteLine("  pintura [<presentation>] --export-html <file>   (one HTML file that shows the slides with no " +
       "server, for sending)");
-    writer.WriteLine("  pintura [<presentation>] --diff [<rev>|<a>..<b>] [--json]   (what changed since a git " +
-      "revision, HEAD by default, or between two)");
+    writer.WriteLine("  pintura [<presentation>] --diff [<rev>|<a>..<b>] [--slides <list>] [--json]   (what changed " +
+      "since a git revision, HEAD by default, or between two; --slides keeps the slides it names and the theme " +
+      "changes that reach them)");
     writer.WriteLine("  pintura [<presentation>] --diff <deck.pptx> [--slides <list>] [--json]   (what was changed " +
       "in PowerPoint since the export: a line a slide, or each change on the slides --slides names)");
     writer.WriteLine("  pintura --import <deck.pptx>|<deck.json> <folder> [--theme|--slides <list>]   (a " +

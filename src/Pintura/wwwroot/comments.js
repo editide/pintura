@@ -203,11 +203,17 @@ function startComment(event) {
   openComment(draft, { left: event.clientX, top: event.clientY, right: event.clientX, bottom: event.clientY });
 }
 
-// A new comment or reply records the last saved version as what its reviewer saw, so over unsaved changes the
-// editor asks to save first; rewording what still waits on an agent keeps the version the comment already has.
-function unsavedWarning(saving, existing, marked) {
-  return saving?.unsaved && (!existing || marked !== 'open')
-    ? 'Unsaved changes: save first, so this points at what you see'
+// Whether the page's own unsaved edits reach the slide, which Save would commit; an agent's commit their own.
+function editedSlide(saving, slide) {
+  return Boolean(saving?.shared || saving?.slides?.includes(slide));
+}
+
+// A new comment or reply records the last saved version as what its reviewer saw, so over the page's unsaved edits
+// to its slide the editor asks to save first; rewording what still waits on an agent keeps the version the comment
+// already has.
+function unsavedWarning(saving, slide, existing, marked) {
+  return editedSlide(saving, slide) && (!existing || marked !== 'open')
+    ? 'Unsaved edits: save first, so this points at what you see'
     : null;
 }
 
@@ -246,14 +252,15 @@ function openComment(comment, anchor) {
       element('div', 'comment-ask reverting', node).textContent = 'Revert';
     }
   }
-  const warning = unsavedWarning(state.saving, existing, marked);
+  const warning = unsavedWarning(state.saving, comment.slide, existing, marked);
   if (warning) {
     const row = element('div', 'comment-unsaved', node);
+    row.dataset.slide = comment.slide;
     element('span', null, row).textContent = warning;
     const save = element('button', 'tool', row);
     save.type = 'button';
     save.textContent = 'Save';
-    save.title = 'Save the changes as a version (Ctrl+S)';
+    save.title = 'Save your edits as a version (Ctrl+S)';
     save.addEventListener('click', () => openSave());
   }
   const words = element('textarea', null, node);
@@ -361,5 +368,5 @@ function installComments(slideView) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { commentPoint, commentDraft, commentCounts, commentDate, commentTitle, unsavedWarning };
+  module.exports = { commentPoint, commentDraft, commentCounts, commentDate, commentTitle, unsavedWarning, editedSlide };
 }

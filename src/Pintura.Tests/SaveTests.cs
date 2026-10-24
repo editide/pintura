@@ -6,6 +6,9 @@ namespace Pintura.Tests;
 
 public class SaveTests
 {
+  private static readonly string Restyled = DeckFixture.Styles.Replace("title: { font: heading, size: 28 }",
+    "title: { font: heading, size: 30 }");
+
   [Fact]
   public void Versions_are_numbered_from_the_first_and_skip_commits_that_left_the_presentation_alone()
   {
@@ -42,15 +45,107 @@ public class SaveTests
     SaveStatus clean = Saves.Status(root);
     deck.Write("deck/comments.yaml", "- { id: a1, slide: two, at: [0, 0], text: Hi }");
     SaveStatus commented = Saves.Status(root);
-    deck.Write("theme/styles.yaml", DeckFixture.Styles + "\ncaption: { size: 9 }");
+    Edit(deck, "theme/styles.yaml", DeckFixture.Styles + "\ncaption: { size: 9 }");
 
     // Act
     SaveStatus edited = Saves.Status(root);
 
     // Assert
-    clean.ShouldBe(new SaveStatus(false, 2));
-    commented.Unsaved.ShouldBeFalse();
-    edited.ShouldBe(new SaveStatus(true, 2));
+    (clean.Unsaved, clean.Next, clean.Edited).ShouldBe((false, 2, false));
+    (commented.Unsaved, commented.Edited).ShouldBe((false, false));
+    (edited.Unsaved, edited.Next, edited.Shared, edited.Slides.Count).ShouldBe((true, 2, true, 0));
+  }
+
+  [Fact]
+  public void Saving_commits_only_what_the_page_wrote_and_leaves_the_rest_to_whoever_wrote_it()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: An agent's");
+    deck.Write("deck/slides/three.yaml", "layout: content\ntitle: New");
+    deck.Write("theme/styles.yaml", Restyled);
+    SaveStatus status = Saves.Status(root);
+    string draft = Saves.Draft(root);
+
+    // Act
+    Saves.Save(root, null);
+
+    // Assert
+    (status.Unsaved, status.Shared).ShouldBe((true, false));
+    status.Slides.ShouldBe(["two"]);
+    draft.ShouldBe("Reworded slide 2");
+    Revisions.Versions(root)[0].Subject.ShouldBe("Reworded slide 2");
+    Status(deck.Folder.Root).ShouldBe([" M deck/slides/one.yaml", " M theme/styles.yaml", "?? deck/slides/three.yaml"]);
+    (Saves.Status(root).Unsaved, Saves.Status(root).Edited).ShouldBe((true, false));
+  }
+
+  [Fact]
+  public void Changes_the_page_did_not_write_leave_nothing_to_save()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: An agent's");
+
+    // Act
+    Action save = () => Saves.Save(root, "Mine");
+
+    // Assert
+    (Saves.Status(root).Unsaved, Saves.Status(root).Edited).ShouldBe((true, false));
+    save.ShouldThrow<InvalidDataException>().Message.ShouldBe("there are no changes to save");
+  }
+
+  [Fact]
+  public void An_edit_the_page_puts_back_is_forgotten_so_a_later_change_there_is_not_the_pages()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    string slide = File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml"));
+    Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    Edit(deck, "deck/slides/two.yaml", slide);
+    Saves.Status(root);
+
+    // Act
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: An agent's");
+
+    // Assert
+    Saves.Status(root).Edited.ShouldBeFalse();
+  }
+
+  [Fact]
+  public void Saving_names_the_files_the_page_wrote_that_something_else_changed_too()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    Edit(deck, "deck/slides/one.yaml", "layout: cover\ntitle: Mine");
+    string? alone = Saves.Mixed(root, deck.Load());
+    deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: Mine\nplaceholders: { subtitle: An agent's }");
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: An agent's");
+    Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Mine over an agent's");
+    Edit(deck, "theme/styles.yaml", Restyled);
+
+    // Act
+    string? mixed = Saves.Mixed(root, deck.Load());
+
+    // Assert
+    alone.ShouldBeNull();
+    mixed.ShouldBe("slides 1 and 2");
   }
 
   [Fact]
@@ -84,9 +179,8 @@ public class SaveTests
     Git(deck.Folder.Root, "add", ".");
     Git(deck.Folder.Root, "commit", "-q", "-m", "first");
     string root = deck.Folder.PathTo("deck");
-    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
-    deck.Write("deck/slides/three.yaml", "layout: content\ntitle: New");
-    deck.Write("theme/styles.yaml", DeckFixture.Styles + "\ncaption: { size: 9 }");
+    Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    Edit(deck, "theme/styles.yaml", DeckFixture.Styles + "\ncaption: { size: 9 }");
     deck.Write("notes.txt", "staged elsewhere");
     deck.Write("other.txt", "untracked elsewhere");
     Git(deck.Folder.Root, "add", "notes.txt");
@@ -112,7 +206,7 @@ public class SaveTests
     Git(deck.Folder.Root, "commit", "-q", "-m", "first");
     string root = deck.Folder.PathTo("deck");
     deck.Write("deck/comments.yaml", "- { id: a1, slide: two, at: [0, 0], text: Hi, done: Said hi }");
-    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Hi");
+    Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Hi");
 
     // Act
     Saves.Save(root, "Said hi");
@@ -122,18 +216,15 @@ public class SaveTests
   }
 
   [Fact]
-  public void Saving_leaves_new_files_out_unless_they_are_yaml_or_named_by_it()
+  public void The_first_save_leaves_new_files_out_unless_they_are_yaml_or_named_by_it()
   {
     // Arrange
     using var deck = new DeckFixture();
     Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
     string root = deck.Folder.PathTo("deck");
     deck.Write("deck/Test deck.pptx", "exported");
     deck.Write("deck/screenshot.png", "scratch");
     deck.Write("theme/notes.txt", "scratch");
-    SaveStatus stray = Saves.Status(root);
     deck.Write("deck/assets/logo.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>");
     deck.Write("deck/slides/two.yaml", """
       layout: content
@@ -144,10 +235,9 @@ public class SaveTests
     Git(deck.Folder.Root, "add", "deck/screenshot.png");
 
     // Act
-    Saves.Save(root, "Added the logo");
+    Saves.Save(root, null);
 
     // Assert
-    stray.Unsaved.ShouldBeFalse();
     Status(deck.Folder.Root).ShouldBe(["A  deck/screenshot.png", "?? \"deck/Test deck.pptx\"",
       "?? theme/notes.txt"]);
   }
@@ -161,8 +251,8 @@ public class SaveTests
     Git(deck.Folder.Root, "add", ".");
     Git(deck.Folder.Root, "commit", "-q", "-m", "first");
     string root = deck.Folder.PathTo("deck");
-    deck.Write("deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nslides: [one]");
-    File.Delete(deck.Folder.PathTo("deck/slides/two.yaml"));
+    Edit(deck, "deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nslides: [one]");
+    Edit(deck, "deck/slides/two.yaml", null);
 
     // Act
     Saves.Save(root, "Removed slide 2");
@@ -190,7 +280,7 @@ public class SaveTests
     DeckVersion saved = Saves.Save(root, null);
 
     // Assert
-    before.ShouldBe(new SaveStatus(true, 1));
+    (before.Unsaved, before.Next, before.Edited).ShouldBe((true, 1, true));
     saved.Number.ShouldBe(1);
     saved.Subject.ShouldBe("First version");
     Directory.Exists(Path.Combine(root, ".git")).ShouldBeTrue();
@@ -220,7 +310,7 @@ public class SaveTests
     Git(deck.Folder.Root, "init", "-q");
     Git(deck.Folder.Root, "add", ".");
     Git(deck.Folder.Root, "commit", "-q", "-m", "first");
-    deck.Write("deck/presentation.yaml", """
+    Edit(deck, "deck/presentation.yaml", """
       name: Test deck
       theme: ../theme
       fields:
@@ -231,17 +321,17 @@ public class SaveTests
         - two
         - three
       """);
-    deck.Write("deck/slides/one.yaml", """
+    Edit(deck, "deck/slides/one.yaml", """
       layout: cover
       title: Hello again
       placeholders:
         subtitle: ${footer}
       """);
-    deck.Write("deck/slides/two.yaml", """
+    Edit(deck, "deck/slides/two.yaml", """
       layout: content
       title: { text: "Results in ${section}", frame: [40, 30, 880, 56] }
       """);
-    deck.Write("deck/slides/three.yaml", "layout: content\ntitle: New");
+    Edit(deck, "deck/slides/three.yaml", "layout: content\ntitle: New");
 
     // Act
     string draft = Saves.Draft(deck.Folder.PathTo("deck"));
@@ -258,9 +348,9 @@ public class SaveTests
     Git(deck.Folder.Root, "init", "-q");
     Git(deck.Folder.Root, "add", ".");
     Git(deck.Folder.Root, "commit", "-q", "-m", "first");
-    deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: Hi\nplaceholders:\n  subtitle: ${footer}");
-    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
-    deck.Write("theme/styles.yaml", DeckFixture.Styles.Replace("title: { font: heading, size: 28 }",
+    Edit(deck, "deck/slides/one.yaml", "layout: cover\ntitle: Hi\nplaceholders:\n  subtitle: ${footer}");
+    Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
+    Edit(deck, "theme/styles.yaml", DeckFixture.Styles.Replace("title: { font: heading, size: 28 }",
       "title: { font: heading, size: 30 }"));
 
     // Act
@@ -281,6 +371,22 @@ public class SaveTests
 
     // Assert
     draft.ShouldBe("First version");
+  }
+
+  /// <summary>Writes a file as the page does, so saving takes it; a null content removes it.</summary>
+  private static void Edit(DeckFixture deck, string relative, string? content)
+  {
+    string path = deck.Folder.PathTo(relative);
+    string? before = File.Exists(path) ? File.ReadAllText(path) : null;
+    if (content is null)
+    {
+      File.Delete(path);
+    }
+    else
+    {
+      deck.Write(relative, content);
+    }
+    PageEdits.Wrote(deck.Folder.PathTo("deck"), path, before);
   }
 
   private static List<string> Status(string folder)

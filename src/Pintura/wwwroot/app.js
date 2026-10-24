@@ -45,7 +45,9 @@ const state = {
   folds: saved.folds || {},
   // The revision compared against, as drawn, and what changed since; its error when there's nothing to compare.
   compare: null,
-  // Whether the presentation has changes to save, and the number its next version takes; null outside saving's reach.
+  // Whether the presentation differs from its last version, the slides the page's own edits are in and whether they
+  // reach the files slides share, which Save commits, and the number the next version takes; null outside saving's
+  // reach.
   saving: null,
   before: false,
   presenting: false,
@@ -1356,17 +1358,17 @@ async function fetchSaving() {
   }
 }
 
-// Saving is the page's word for committing: Save shows while the presentation differs from its last version, and the
-// picker beside it names the version the changes are counted from.
+// Saving is the page's word for committing: Save shows while the page's own edits are unsaved, leaving an agent's
+// changes for it to commit, and the picker beside it names the version the changes are counted from.
 function renderSaving() {
   const saving = state.saving;
   const button = document.getElementById('save-button');
-  button.hidden = !saving?.unsaved;
+  button.hidden = !saving?.edited;
   for (const warning of document.querySelectorAll('.comment-unsaved')) {
-    warning.hidden = !saving?.unsaved;
+    warning.hidden = !editedSlide(saving, warning.dataset.slide);
   }
   if (saving) {
-    button.title = `Save the changes as v${saving.next} (Ctrl+S)`;
+    button.title = `Save your edits as v${saving.next} (Ctrl+S)`;
   }
   const versions = document.getElementById('versions-button');
   // A version that failed to compare still shows its picker, to choose another.
@@ -1383,7 +1385,7 @@ function openSave() {
   const menu = document.getElementById('save-menu');
   if (menu.matches(':popover-open')) {
     menu.requestSubmit();
-  } else if (state.saving?.unsaved) {
+  } else if (state.saving?.edited) {
     menu.showPopover();
   }
 }
@@ -1399,16 +1401,23 @@ document.getElementById('save-menu').addEventListener('toggle', async (event) =>
   placeBelow(menu, document.getElementById('saving'));
   document.getElementById('save-heading').textContent = `Save as v${state.saving.next}`;
   document.getElementById('save-error').hidden = true;
+  document.getElementById('save-mixed').hidden = true;
   document.getElementById('save-submit').disabled = false;
   const input = document.getElementById('save-message');
   input.value = '';
   input.focus();
   try {
     const response = await fetch('api/save/draft', { cache: 'no-store' });
-    const { message } = response.ok ? await response.json() : {};
+    const { message, mixed } = response.ok ? await response.json() : {};
     if (message && menu.matches(':popover-open') && input.value === '') {
       input.value = message;
       input.select();
+    }
+    // Git commits whole files, so a file an agent changed beside the page goes with the page's edits.
+    if (mixed && menu.matches(':popover-open')) {
+      const note = document.getElementById('save-mixed');
+      note.textContent = `Also saves changes you didn't make to ${mixed}`;
+      note.hidden = false;
     }
   } catch {
     // Without a draft the version takes one when it's saved.

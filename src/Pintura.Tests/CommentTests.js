@@ -106,21 +106,23 @@ test('a comment shows its time on the 12-hour clock', () => {
   assert.deepEqual(dates, ['2026-10-07 12:05 AM', '2026-10-07 9:30 AM', '2026-10-07 12:00 PM', '2026-10-07 3:45 PM', 'yesterday']);
 });
 
-test('writing a comment or a reply over unsaved changes warns, since it records the last saved version', () => {
+test('writing a comment or a reply over edits unsaved on its slide warns, since it records the last saved version', () => {
   // Arrange
-  const unsaved = { unsaved: true, next: 7 };
+  const edited = { unsaved: true, next: 7, slides: ['revenue'], shared: false };
 
   // Act
   const warnings = [
-    unsavedWarning(unsaved, false, 'open'),
-    unsavedWarning(unsaved, true, 'done'),
-    unsavedWarning(unsaved, true, 'skipped'),
-    unsavedWarning(unsaved, true, 'open'),
-    unsavedWarning({ unsaved: false, next: 7 }, false, 'open'),
-    unsavedWarning(null, false, 'open')
+    unsavedWarning(edited, 'revenue', false, 'open'),
+    unsavedWarning(edited, 'revenue', true, 'done'),
+    unsavedWarning(edited, 'revenue', true, 'skipped'),
+    unsavedWarning(edited, 'revenue', true, 'open'),
+    unsavedWarning(edited, 'cover', false, 'open'),
+    unsavedWarning({ ...edited, slides: [], shared: true }, 'cover', false, 'open'),
+    unsavedWarning({ unsaved: true, next: 7, slides: [], shared: false }, 'revenue', false, 'open'),
+    unsavedWarning(null, 'revenue', false, 'open')
   ];
 
   // Assert
-  const warning = 'Unsaved changes: save first, so this points at what you see';
-  assert.deepEqual(warnings, [warning, warning, warning, null, null, null]);
+  const warning = 'Unsaved edits: save first, so this points at what you see';
+  assert.deepEqual(warnings, [warning, warning, warning, null, null, warning, null, null]);
 });

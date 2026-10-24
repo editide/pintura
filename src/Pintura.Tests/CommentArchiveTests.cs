@@ -9,7 +9,7 @@ namespace Pintura.Tests;
 public class CommentArchiveTests
 {
   private static readonly DateTime Now = new DateTime(2026, 10, 7, 17, 30, 0);
-  private static readonly Snapshot Seen = new Snapshot("abc1234", false);
+  private static readonly Snapshot Seen = new Snapshot("abc1234", false, new HashSet<string>());
 
   private const string Done = """
     - id: a1
@@ -88,7 +88,7 @@ public class CommentArchiveTests
     // Act
     CommentFile.Apply(deck.Load(), new CommentChange(Resolve: "b2"), "Ana", Now, Seen);
     CommentFile.Apply(deck.Load(), new CommentChange(Resolve: "a1"), "Ana", Now.AddMinutes(5),
-      new Snapshot("def5678", true));
+      new Snapshot("def5678", true, new HashSet<string>()));
 
     // Assert
     File.Exists(deck.Folder.PathTo("deck/comments.yaml")).ShouldBeFalse();
@@ -144,8 +144,9 @@ public class CommentArchiveTests
     var add = new CommentChange(Add: new Comment { Slide = "two", At = [1, 2], Text = "Hi" });
 
     // Act
-    CommentFile.Apply(deck.Load(), add, "Ana", Now, new Snapshot("abc1234", true));
-    CommentFile.Apply(deck.Load(), new CommentChange(Reply: "a1", Text: "Shorter"), "Ana", Now, Seen);
+    CommentFile.Apply(deck.Load(), add, "Ana", Now, new Snapshot("abc1234", false, new HashSet<string> { "two" }));
+    CommentFile.Apply(deck.Load(), new CommentChange(Reply: "a1", Text: "Shorter"), "Ana", Now,
+      new Snapshot("abc1234", false, new HashSet<string> { "one" }));
 
     // Assert
     List<Comment> comments = deck.Load().Comments;
@@ -279,7 +280,7 @@ public class CommentArchiveTests
   }
 
   [Fact]
-  public void A_snapshot_is_the_commit_and_whether_the_deck_changed_since_leaving_comments_aside()
+  public void A_snapshot_is_the_commit_and_which_slides_changed_since_leaving_comments_aside()
   {
     // Arrange
     using var deck = new DeckFixture();
@@ -290,17 +291,20 @@ public class CommentArchiveTests
     string head = Revisions.Run(root, "rev-parse", "--short", "HEAD").Output.Trim();
 
     // Act
-    Snapshot? clean = Saves.Snapshot(deck.Folder.PathTo("deck"));
+    Snapshot clean = Saves.Snapshot(deck.Folder.PathTo("deck"))!;
     deck.Write("deck/comments.yaml", Open);
     deck.Write("deck/comments-resolved.yaml", Done + "\n  resolved: { outcome: accepted }");
-    Snapshot? commented = Saves.Snapshot(deck.Folder.PathTo("deck"));
+    Snapshot commented = Saves.Snapshot(deck.Folder.PathTo("deck"))!;
     deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
-    Snapshot? edited = Saves.Snapshot(deck.Folder.PathTo("deck"));
+    Snapshot edited = Saves.Snapshot(deck.Folder.PathTo("deck"))!;
+    deck.Write("theme/styles.yaml", DeckFixture.Styles + "\ncaption: { size: 9 }");
+    Snapshot restyled = Saves.Snapshot(deck.Folder.PathTo("deck"))!;
 
     // Assert
-    clean.ShouldBe(new Snapshot(head, false));
-    commented.ShouldBe(new Snapshot(head, false));
-    edited.ShouldBe(new Snapshot(head, true));
+    (clean.Rev, clean.Uncommitted("one"), clean.Uncommitted("two")).ShouldBe((head, false, false));
+    (commented.Uncommitted("one"), commented.Uncommitted("two")).ShouldBe((false, false));
+    (edited.Rev, edited.Uncommitted("one"), edited.Uncommitted("two")).ShouldBe((head, false, true));
+    restyled.Uncommitted("one").ShouldBeTrue();
     Saves.Status(deck.Folder.PathTo("deck")).Unsaved.ShouldBeTrue();
   }
 

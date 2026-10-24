@@ -70,7 +70,9 @@ public static partial class PreviewServer
     app.MapGet("/api/save/draft", () => Saving(() =>
     {
       store.Refresh();
-      return new { Message = store.Deck.Error is null ? Saves.Draft(store.Root, store.Presentation) : "" };
+      return store.Deck.Error is null && store.Presentation is Presentation presentation
+        ? new { Message = Saves.Draft(store.Root, presentation), Mixed = Saves.Mixed(store.Root, presentation) }
+        : new { Message = "", Mixed = (string?)null };
     }));
     app.MapPost("/api/save", (SaveRequest request) => Saving(() =>
     {
@@ -363,6 +365,10 @@ public static partial class PreviewServer
       }
       return Unwritten(store, exception);
     }
+    foreach ((string path, string text) in written)
+    {
+      PageEdits.Wrote(presentation.Root, path, text);
+    }
     store.Refresh();
     return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
   }
@@ -456,6 +462,11 @@ public static partial class PreviewServer
         Put(file, slideBefore);
       }
       return Unwritten(store, exception);
+    }
+    PageEdits.Wrote(presentation.Root, list, listBefore);
+    if (move.Delete || move.Restore is not null)
+    {
+      PageEdits.Wrote(presentation.Root, file, slideBefore);
     }
     store.Refresh();
     return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);

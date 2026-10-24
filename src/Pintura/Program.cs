@@ -216,7 +216,7 @@ try
   if (options.Command is not null)
   {
     return HeadlessRunner.Run(root, options.Command.Value, options.Slide, options.Element, options.Json,
-      Console.Out, options.Resolved, options.Ids);
+      Console.Out, options.Resolved, options.Ids, options.Slides);
   }
 
   // dotnet watch restarts the process on edits it cannot apply in place, so only its first run opens a tab, and neither

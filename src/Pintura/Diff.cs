@@ -635,6 +635,12 @@ public static partial class DiffCommand
     Presentation before = Revisions.Load(root, first);
     Presentation after = ends.Length == 1 ? PresentationLoader.Load(root) : Revisions.Load(root, ends[1]);
     DeckDiff diff = Differ.Compare(before, after);
+    if (only is not null)
+    {
+      HashSet<string> picked = [.. only.Pick(after.Slides, slide => slide.Id).Select(slide => slide.Id)];
+      diff = new DeckDiff([.. diff.Slides.Where(slide => picked.Contains(slide.Id))],
+        [.. diff.Causes.Where(cause => cause.Slides.Any(picked.Contains))]);
+    }
     if (json)
     {
       output.WriteLine(System.Text.Json.JsonSerializer.Serialize(diff, PayloadJson.Indented));

@@ -29,6 +29,26 @@ public class CommentTests
         Add the chart from the book.
     """;
 
+  [Fact]
+  public void Slides_narrow_the_comments_listed()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/comments.yaml", TwoComments + "\n\n- { id: c3, slide: one, at: [0, 0], text: Hello }");
+    var first = new StringWriter();
+    var second = new StringWriter();
+
+    // Act
+    CommentList.Write(deck.Load(), false, first, SlideSelection.Parse("1"));
+    CommentList.Write(deck.Load(), false, second, SlideSelection.Parse("two"));
+
+    // Assert
+    first.ToString().ShouldStartWith("c3  one at [0, 0]");
+    first.ToString().ShouldContain("1 comment on the slides named in deck/comments.yaml: 1 open");
+    second.ToString().ShouldNotContain("c3");
+    second.ToString().ShouldContain("2 comments on the slides named");
+  }
+
   private const string Thread = """
     - id: a1
       slide: two
