@@ -1706,7 +1706,21 @@ public partial class Importer
     {
       map["placeholders"] = placeholders;
     }
-    List<object?> elements = owned.Where(item => item.Role is null).Select(item => (object?)Element(item)).ToList();
+    // A slide's title or placeholder drawn over one of its elements is named in its elements where it's drawn.
+    bool stacking = false;
+    var elements = new List<object?>();
+    foreach (ItemDraft item in owned)
+    {
+      if (item.Role is null)
+      {
+        elements.Add(Element(item));
+        stacking = level == 2;
+      }
+      else if (stacking)
+      {
+        elements.Add(item.Role == "title" ? "title" : item.Id);
+      }
+    }
     if (elements.Count > 0)
     {
       map["elements"] = elements;

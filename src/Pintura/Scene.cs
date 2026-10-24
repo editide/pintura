@@ -7,7 +7,8 @@ namespace Pintura;
 public record Resolved(object Value, Origin? Origin);
 
 /// <summary>A slide as drawn: the background, then the theme's and layout's elements, the title and placeholders,
-/// and the slide's own elements, each with its effective properties.</summary>
+/// and the slide's own elements, among which its elements list may place the title and placeholders, each with its
+/// effective properties.</summary>
 public class SlideScene
 {
   public Slide Slide { get; init; } = new Slide();
@@ -138,20 +139,30 @@ public class SceneBuilder
     var items = new List<SceneItem>(layout.Elements.Where(element => !slide.Hide.Contains(element.Id))
       .Select(element => Item(element, "layout")));
 
+    var words = new List<SceneItem>();
     if (slide.Title is not null)
     {
-      items.Add(Placeholder("title", "title", [theme.Title, layout.Title, slide.Title]));
+      words.Add(Placeholder("title", "title", [theme.Title, layout.Title, slide.Title]));
     }
     IEnumerable<string> names = theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct();
     foreach (string name in names.Where(slide.Placeholders.ContainsKey))
     {
-      items.Add(Placeholder(name, "placeholder", [
+      words.Add(Placeholder(name, "placeholder", [
         theme.Placeholders.GetValueOrDefault(name),
         layout.Placeholders.GetValueOrDefault(name),
         slide.Placeholders[name]
       ]));
     }
-    items.AddRange(slide.Elements.Select(element => Item(element, "slide")));
+    items.AddRange(words.Where(item => !slide.Stacked.Any(entry => entry.Id == item.Id)));
+    for (int index = 0; index <= slide.Elements.Count; index++)
+    {
+      items.AddRange(slide.Stacked.Where(entry => entry.Over == index)
+        .Select(entry => words.Single(item => item.Id == entry.Id)));
+      if (index < slide.Elements.Count)
+      {
+        items.Add(Item(slide.Elements[index], "slide"));
+      }
+    }
 
     Resolved background = layout.Background is not null
       ? new Resolved(layout.Background, layout.Origins["background"])

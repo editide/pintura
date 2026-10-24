@@ -17,6 +17,9 @@ public sealed class BlandTools : IToolHost
   /// <summary>A tool these tools fail, as an older editide does one it lacks.</summary>
   public string? Missing { get; init; }
 
+  /// <summary>What read_slide answers; a slide holding nothing when null.</summary>
+  public JsonNode? SlideRead { get; init; }
+
   public string Version => "bland";
 
   public int? MostPictures => 25;
@@ -51,7 +54,7 @@ public sealed class BlandTools : IToolHost
           [{ "theme_name": "Office Theme", "layouts": [{ "name": "Title Slide", "slides": [1] }] }]
           """),
         "list_slides" => JsonNode.Parse("[{}]"),
-        "read_slide" => new JsonObject { ["text_elements"] = new JsonArray() },
+        "read_slide" => tools.SlideRead?.DeepClone() ?? new JsonObject { ["text_elements"] = new JsonArray() },
         _ => JsonValue.Create("ok")
       };
     }

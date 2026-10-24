@@ -9,7 +9,7 @@ A slide is a file in `slides/` that picks a layout, writes its title and placeho
 | `layout` | A layout's file stem. |
 | `title` | The title's text, or a map overriding the layout: `{ text: …, frame: [x, y, w, h] }`. |
 | `placeholders` | Each placeholder's text, or a map, by the names its layout defines in the theme's `layouts/` files (see `layouts`). |
-| `elements` | Everything else on the slide, back to front. |
+| `elements` | Everything else on the slide, back to front, in front of the title and placeholders unless it names them. |
 | `hide` | Ids of the layout's elements this slide leaves out, such as `[page]` for the slide number. |
 
 The title and placeholders take one paragraph of plain text, in the layout's style: fields such as `${date}` work, markup doesn't, and a `$` not followed by `{` is literal, as everywhere.
@@ -30,6 +30,20 @@ The key naming the kind carries its content or its reference.
 
 Every element has an `id`, unique within its slide, which `--check` and `--element` use to name it.
 Every element but a line has a `frame`: `[x, y, w, h]` in points from the top-left corner, or an area's name.
+
+The title and placeholders draw behind the slide's elements.
+To draw one in front of some of them, name it in `elements` where it belongs, as `- title` or `- number`: elements before the entry sit behind it, and those after it in front.
+
+```yaml
+title: The compute hall
+elements:
+  - id: hall
+    picture: ../media/hall.png
+    frame: [0, 0, 960, 540]
+    fit: cover
+    decorative: true
+  - title
+```
 
 Shared keys: `id`, `frame`, `rotate` (degrees clockwise), `flip` (`horizontal`, `vertical`), `style`, `fill`, `stroke`, `shadow`, `opacity`, `decorative`.
 Lines, charts, and tables take no `shadow` (see `shapes`).
@@ -79,6 +93,7 @@ elements:
 - Pixels, inches, or percentages: every length is in points.
 - `x`, `y`, `width`, `height`, or `position`: write `frame: [x, y, w, h]`.
 - A frame for a line: lines have `from` and `to` instead.
+- A layout of its own to put a slide's picture behind its title: name the title in the slide's `elements`, after the picture.
 - Text YAML reads as a number or a boolean, such as `2025`, `1.5`, `yes`, or `no`: quote it, `text: "2025"`.
 - Markup in a title: bold, spans, and links aren't allowed there; the layout's style decides how a title looks.
 - Text containing `: ` or starting with `[`, `{`, `*`, or `#`: quote it or use a block scalar (`|`), since YAML reads those characters itself.

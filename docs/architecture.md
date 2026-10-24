@@ -108,6 +108,7 @@ The export doesn't write them as shape names, since editide's tools take no name
 They are slide-local, so `chart` and `source` can recur on every slide; OOXML's numeric shape ids are allocated by the exporter.
 
 List order is z-order, back to front.
+A slide's title and placeholders draw behind its elements unless the list names them, as `- title`, where they draw instead, as PowerPoint keeps a slide's placeholders among its shapes.
 
 ### Geometry and units
 

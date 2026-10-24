@@ -275,6 +275,67 @@ public class LoaderTests
     error.Problem.ShouldBe("unknown placeholder subtitle; layout content has none");
   }
 
+  [Theory]
+  [InlineData("subtitle", "subtitle isn't the title or a placeholder this slide writes: title")]
+  [InlineData("missing", "missing isn't the title or a placeholder this slide writes: title")]
+  public void An_elements_entry_naming_what_the_slide_doesnt_write_is_an_error(string name, string problem)
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/one.yaml", $"""
+      layout: cover
+      title: Hello
+      elements:
+        - {name}
+      """);
+
+    // Act
+    LoadException error = deck.Error("one");
+
+    // Assert
+    error.Problem.ShouldBe(problem);
+    error.Origin.ToString().ShouldBe("deck/slides/one.yaml:4 elements[1]");
+  }
+
+  [Fact]
+  public void An_elements_entry_naming_the_title_twice_is_an_error()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/one.yaml", """
+      layout: cover
+      title: Hello
+      elements:
+        - title
+        - title
+      """);
+
+    // Act
+    LoadException error = deck.Error("one");
+
+    // Assert
+    error.Problem.ShouldBe("title is placed twice");
+  }
+
+  [Fact]
+  public void A_layouts_elements_take_no_entry_naming_the_title()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("theme/layouts/cover.yaml", """
+      name: Cover
+      title: { frame: [60, 190, 840, 90], color: light1 }
+      elements:
+        - title
+      """);
+
+    // Act
+    LoadException error = deck.Error("one");
+
+    // Assert
+    error.Problem.ShouldBe("elements[1] must be a map of keys");
+  }
+
   [Fact]
   public void A_slide_element_reusing_a_layout_elements_id_is_an_error()
   {

@@ -592,9 +592,15 @@ public static partial class Patcher
       : [];
   }
 
+  /// <summary>An element's id, or the name of the title or placeholder an entry places.</summary>
   private static string? Id(YamlNode entry)
   {
-    return entry is YamlMappingNode map && Value(map, "id") is YamlScalarNode { Value: string id } ? id : null;
+    return entry switch
+    {
+      YamlScalarNode { Value: string name } => name,
+      YamlMappingNode map when Value(map, "id") is YamlScalarNode { Value: string id } => id,
+      _ => null
+    };
   }
 
   /// <summary>From the start of the line holding an entry's dash to past the end of its last line.</summary>
