@@ -303,7 +303,7 @@ A theme or layout element with a finding on several slides is one finding, named
 `--slides 3,revenue` still checks every slide, since consistency compares each with the rest, and reports the findings on those it names and on no slide.
 
 Both reload the presentation first, so a command run straight after a save sees the save.
-A server already running the presentation lends them its browser.
+A preview already running the presentation lends them its browser, when the same build of Pintura started it, since it loads the slides with that build's code.
 Otherwise the first run starts a headless server in the background, which costs the browser's start of a few seconds once, and later runs reuse it and answer in about a second.
 It opens no tab, and stops after five minutes without a request; one started by an older build of Pintura is replaced.
 It holds none of the command's handles, so a shell reading the command's output is done when the command is, and the command finds its address in the instance registry.

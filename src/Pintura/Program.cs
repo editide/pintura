@@ -242,7 +242,7 @@ try
   string assets = PreviewServer.InterfaceFolder();
   using var store = new PresentationStore(root, assets, Console.Out);
   int port = PreviewServer.ChoosePort(options.Port, options.PortSpecified);
-  var instance = new ServerInstance(Environment.ProcessId, root, port);
+  var instance = new ServerInstance(Environment.ProcessId, root, port, Build: ServerInstance.CurrentBuild);
   WebApplication app = PreviewServer.Create(assets, instance.Url);
   using var viewers = new Viewers(TimeSpan.FromSeconds(10), () =>
   {

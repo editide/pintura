@@ -7,8 +7,8 @@ using System.Text.Json.Serialization;
 
 namespace Pintura;
 
-/// <summary>A running server. A headless one serves only <c>--screenshot</c> and <c>--check</c>, and is reused
-/// only by the build that started it, since it runs that build's code.</summary>
+/// <summary>A running server. A headless one serves only <c>--screenshot</c> and <c>--check</c>. Either is borrowed
+/// to draw only by the build that started it, since it loads slides with that build's code.</summary>
 public record ServerInstance(int ProcessId, string Root, int Port, bool Headless = false, string? Build = null)
 {
   [JsonIgnore]
