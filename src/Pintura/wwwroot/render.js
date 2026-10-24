@@ -283,13 +283,16 @@ function renderTextItem(item, parent) {
   return node;
 }
 
+// A marker's 12-unit box is drawn 3.6 line-widths wide.
+const MARKER_SCALE = 3.6 / 12;
+
 function marker(kind, color, defs) {
   const shape = MARKERS[kind];
   const id = `marker-${++markerCount}`;
   const node = svgElement('marker', {
     id,
     viewBox: '-1 -1 12 12',
-    refX: shape.anchor,
+    refX: shape.shaft,
     refY: 5,
     markerWidth: 3.6,
     markerHeight: 3.6,
@@ -330,11 +333,18 @@ function renderLine(item, parent) {
     stroke: 'transparent',
     'stroke-width': Math.max(8, item.stroke.width + 6)
   }, svg);
+  const length = Math.hypot(x2 - x1, y2 - y1) || 1;
+  const inset = (kind) => {
+    const shape = kind && MARKERS[kind];
+    return shape ? Math.min(length / 2, (shape.anchor - shape.shaft) * MARKER_SCALE * item.stroke.width) / length : 0;
+  };
+  const start = inset(item.start);
+  const end = inset(item.end);
   svgElement('line', {
-    x1: x1 - left,
-    y1: y1 - top,
-    x2: x2 - left,
-    y2: y2 - top,
+    x1: x1 - left + (x2 - x1) * start,
+    y1: y1 - top + (y2 - y1) * start,
+    x2: x2 - left - (x2 - x1) * end,
+    y2: y2 - top - (y2 - y1) * end,
     'marker-start': item.start ? marker(item.start, item.stroke.color, defs) : null,
     'marker-end': item.end ? marker(item.end, item.stroke.color, defs) : null,
     ...strokeAttributes(item.stroke, opacity)
