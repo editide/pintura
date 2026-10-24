@@ -290,6 +290,7 @@ Literal text is edited in place and written back as markup.
 The markup parser records the source of every character it reads, so a reworded stretch is replaced in its line, escaped where it would read as markup, while formatting and fields outside it stay as written.
 A paragraph split or joined is the same stretch replaced across lines, a paragraph break counting as a character that spans the line's end, the next one's style line, and its list marker.
 Typing over a field replaces its source with the typed text, and a stretch that crosses formatting is refused rather than guessed at.
+Typing inside a field instead rewrites its value where `presentation.yaml` writes it, a section's name or an entry in `fields`, which the payload gives each such run as its key path and source, a list entry named by its place as in `slides[6].section`.
 
 ## Checks
 

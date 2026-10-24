@@ -138,6 +138,9 @@ function renderParagraph(paragraph, index, parent) {
     if (run.field) {
       span.dataset.field = run.field;
     }
+    if (run.fieldEdit) {
+      span.dataset.fieldEdit = JSON.stringify(run.fieldEdit);
+    }
     if (run.trace) {
       markTrace(span, run.trace);
     }

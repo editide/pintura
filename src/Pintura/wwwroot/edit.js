@@ -974,15 +974,23 @@ function beginText(node, place) {
   if (!flow) {
     return;
   }
+  const fields = [];
   for (const fixed of flow.querySelectorAll('.bullet, [data-field]')) {
-    fixed.contentEditable = 'false';
+    if (fixed.dataset.fieldEdit && fixed.children.length === 0) {
+      fields.push({ span: fixed, edit: JSON.parse(fixed.dataset.fieldEdit), before: fieldText(fixed) });
+      if (!fixed.firstChild) {
+        fixed.append('\u200B');
+      }
+    } else {
+      fixed.contentEditable = 'false';
+    }
   }
   // Firefox puts no caret beside a field without text there to hold it.
   for (const field of flow.querySelectorAll('[data-field]')) {
     field.before('\u200B');
     field.after('\u200B');
   }
-  editing.text = { slide: currentSlide().id, node, item, flow, before: paragraphTexts(flow) };
+  editing.text = { slide: currentSlide().id, node, item, flow, fields, before: paragraphTexts(flow) };
   node.classList.add('editing');
   drawSelection();
   flow.contentEditable = 'true';
@@ -999,11 +1007,19 @@ function textKey(event) {
   event.stopPropagation();
   const marks = { b: 'bold', i: 'italic', u: 'underline' };
   const mark = (event.ctrlKey || event.metaKey) && !event.altKey && marks[event.key.toLowerCase()];
+  const locked = caretField('false');
   if (mark) {
     event.preventDefault();
     formatText(mark);
+  } else if (locked && event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    notice(lockedField(locked));
   } else if (event.key === 'Enter' && !event.isComposing) {
     event.preventDefault();
+    // A field's value is one line in presentation.yaml.
+    if (caretField('inherit')) {
+      return;
+    }
     // The title and placeholders are a paragraph each, so Enter breaks the line there.
     if (editing.text.item.role) {
       breakLine();
@@ -1117,13 +1133,109 @@ function joinParagraphs(forward) {
 function textInput(event) {
   if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
     event.preventDefault();
+    return;
+  }
+  const typing = event.inputType === 'insertText' || event.inputType === 'insertReplacementText';
+  const target = event.getTargetRanges()[0];
+  if (event.isComposing || !target || !(typing || event.inputType.startsWith('delete'))) {
+    return;
+  }
+  const range = document.createRange();
+  range.setStart(target.startContainer, target.startOffset);
+  range.setEnd(target.endContainer, target.endOffset);
+  const data = typing ? event.data ?? event.dataTransfer?.getData('text/plain') ?? '' : '';
+  if (fieldInput(range, data)) {
+    event.preventDefault();
   }
 }
 
 function textPaste(event) {
   event.preventDefault();
   const text = event.clipboardData.getData('text/plain').replace(/\s*\n\s*/g, ' ');
-  document.execCommand('insertText', false, text);
+  const selection = getSelection();
+  if (selection.rangeCount === 0 || !fieldInput(selection.getRangeAt(0), text)) {
+    document.execCommand('insertText', false, text);
+  }
+}
+
+function fieldText(span) {
+  return span.textContent.replace(/\u200B/g, '');
+}
+
+// Typing over a field's text rewrites the field's value, so text typed in a field, or over the whole of one, is
+// written into it here: the browser would drop a field emptied of its text, and the field with it. True when it was.
+function fieldInput(range, data) {
+  for (const { span } of editing.text.fields) {
+    if (!span.isConnected || !range.intersectsNode(span)) {
+      continue;
+    }
+    const start = fieldOffset(span, range.startContainer, range.startOffset, true);
+    const end = fieldOffset(span, range.endContainer, range.endOffset, false);
+    const text = fieldText(span);
+    if (start === null || end === null) {
+      return false;
+    }
+    // Deleting nothing is moving past the characters that hold the caret, except in an emptied field, which stays.
+    if (start === end && data === '') {
+      return text === '';
+    }
+    const typed = text.slice(0, start) + data + text.slice(end);
+    // An emptied field keeps a character to hold the caret, so what is typed next goes into it.
+    span.textContent = typed || '\u200B';
+    getSelection().collapse(span.firstChild, typed ? start + data.length : 1);
+    return true;
+  }
+  return false;
+}
+
+// Characters of a field's text before a range's edge, or null where the range takes in text outside the field; an
+// edge outside it, past only the characters that hold the caret, is the field's start or end.
+function fieldOffset(span, container, offset, start) {
+  const length = fieldText(span).length;
+  if (span.contains(container)) {
+    return container.nodeType === Node.TEXT_NODE ? container.data.slice(0, offset).replace(/\u200B/g, '').length
+      : offset === 0 ? 0 : length;
+  }
+  const between = document.createRange();
+  if (start) {
+    between.setStart(container, offset);
+    between.setEndBefore(span);
+  } else {
+    between.setStartAfter(span);
+    between.setEnd(container, offset);
+  }
+  return between.toString().replace(/\u200B/g, '') === '' ? (start ? 0 : length) : null;
+}
+
+// The field the caret is in, among those taking no typing ('false') or those that do ('inherit').
+function caretField(editable) {
+  const node = getSelection().focusNode;
+  const field = (node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement)?.closest('[data-field]');
+  return field && editing.text.flow.contains(field) && field.contentEditable === editable ? field : null;
+}
+
+function lockedField(span) {
+  const name = `\${${span.dataset.field}}`;
+  return span.dataset.field === 'slide' ? `${name} is the slide's number`
+    : span.dataset.trace ? `${name} reads from a book; change it there`
+    : `${name} can't be typed over on the slide`;
+}
+
+// The values of the fields typed over, each written where presentation.yaml defines it, once however often it shows.
+function fieldEdits(editor) {
+  const edits = new Map();
+  for (const { span, edit, before } of editor.fields) {
+    const value = span.isConnected ? fieldText(span).trim() : before;
+    if (value === before.trim()) {
+      continue;
+    }
+    if (value === '') {
+      notice(`\${${span.dataset.field}} can't be empty, so it keeps its value`);
+      continue;
+    }
+    edits.set(edit.path, { file: edit.file, path: edit.path, source: edit.source, value });
+  }
+  return [...edits.values()];
 }
 
 function finishText(commit) {
@@ -1143,8 +1255,12 @@ function finishText(commit) {
     return;
   }
   const changed = after.length !== editor.before.length || after.some((text, index) => text !== editor.before[index]);
+  const edits = commit ? fieldEdits(editor) : [];
   if (commit && changed) {
-    send(editor.slide, [{ path: editor.item.edit.text.path, source: editor.item.edit.text.source, paragraphs: after }]);
+    edits.unshift({ path: editor.item.edit.text.path, source: editor.item.edit.text.source, paragraphs: after });
+  }
+  if (edits.length > 0) {
+    send(editor.slide, edits);
     return;
   }
   if (editing.reloadPending) {

@@ -17,7 +17,8 @@ public record SlideDiff
   public int? Before { get; init; }
   public int? After { get; init; }
   public bool Moved { get; init; }
-  /// <summary>The slide's own values: its layout, section, background, or load error.</summary>
+  /// <summary>The slide's own values: its layout, background, or load error. A section counts only where a slide
+  /// draws its name.</summary>
   public List<ChangeEntry> Changes { get; init; } = new List<ChangeEntry>();
   public List<ItemDiff> Items { get; init; } = new List<ItemDiff>();
 }
@@ -257,8 +258,7 @@ public static partial class Differ
   {
     var values = new Dictionary<string, (string, string?)>
     {
-      ["layout"] = (slide.Layout, null),
-      ["section"] = (slide.Section ?? "", null)
+      ["layout"] = (slide.Layout, null)
     };
     PropertyEntry background = HeadlessRunner.Property("background", scene.Background, presentation.Theme);
     values["background"] = (background.Display, background.Origin);

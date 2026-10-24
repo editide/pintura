@@ -248,6 +248,42 @@ public class DiffTests
   }
 
   [Fact]
+  public void Renaming_a_section_changes_only_the_slides_that_show_its_name()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/three.yaml", "layout: content\ntitle: Detail");
+    deck.Write("deck/presentation.yaml", """
+      name: Test deck
+      theme: ../theme
+      slides:
+        - one
+        - section: Results
+        - two
+        - three
+      """);
+    Presentation before = deck.Load();
+    deck.Write("deck/presentation.yaml", """
+      name: Test deck
+      theme: ../theme
+      slides:
+        - one
+        - section: Outlook
+        - two
+        - three
+      """);
+
+    // Act
+    DeckDiff diff = Differ.Compare(before, deck.Load());
+
+    // Assert
+    SlideDiff two = diff.Slides.ShouldHaveSingleItem();
+    two.Id.ShouldBe("two");
+    two.Changes.ShouldBeEmpty();
+    two.Items.ShouldHaveSingleItem().Id.ShouldBe("title");
+  }
+
+  [Fact]
   public void Changed_chart_data_names_the_series_that_changed()
   {
     // Arrange

@@ -239,8 +239,13 @@ public record RunPayload
   public bool? Underline { get; init; }
   public string? Link { get; init; }
   public string? Field { get; init; }
+  public FieldEditPayload? FieldEdit { get; init; }
   public TracePayload? Trace { get; init; }
 }
+
+/// <summary>Where a field's value is written in presentation.yaml, so typing over it on a slide rewrites it there: a
+/// section's name, or a field <c>fields</c> defines.</summary>
+public record FieldEditPayload(string File, string Path, string Source);
 
 /// <summary>Where the page finds a picture, recolored by <paramref name="fill"/> when it is an SVG with a fill.
 /// </summary>
@@ -726,10 +731,19 @@ public static class PayloadBuilder
       Runs = paragraph.Runs.Select(run => Run(run.Text, run.Link, run.Properties, theme) with
       {
         Field = run.Field,
+        FieldEdit = FieldEdit(run),
         Trace = Reference.Trace(run.Field)
       })
         .ToList()
     };
+  }
+
+  private static FieldEditPayload? FieldEdit(SceneRun run)
+  {
+    return run.Field is not (null or "slide") && !Reference.Looks(run.Field) &&
+      run.Origin is { Path.Length: > 0, Source: string source }
+      ? new FieldEditPayload(run.Origin.File, run.Origin.Path, source)
+      : null;
   }
 
   private static RunPayload Run(string text, string? link, Dictionary<string, Resolved> properties, Theme theme)

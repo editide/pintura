@@ -130,6 +130,28 @@ public class PayloadTests
   }
 
   [Fact]
+  public void A_section_or_a_field_presentation_yaml_defines_carries_where_its_value_is_written_and_the_slide_number_doesnt()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+
+    // Act
+    List<SlidePayload> slides = PayloadBuilder.Build(deck.Load(), 1, (path, _) => path).Slides;
+    RunPayload Field(string slide, string id)
+    {
+      return slides.Single(candidate => candidate.Id == slide).Items!.Single(item => item.Id == id).Text!
+        .Paragraphs.SelectMany(paragraph => paragraph.Runs).Single(run => run.Field is not null);
+    }
+
+    // Assert
+    Field("two", "title").FieldEdit.ShouldBe(
+      new FieldEditPayload("deck/presentation.yaml", "slides[2].section", "Results"));
+    Field("one", "subtitle").FieldEdit.ShouldBe(
+      new FieldEditPayload("deck/presentation.yaml", "fields.footer", "Confidential"));
+    Field("two", "page").FieldEdit.ShouldBeNull();
+  }
+
+  [Fact]
   public void A_layout_s_stage_writes_each_frame_where_it_is_set_and_draws_its_areas_as_items()
   {
     // Arrange

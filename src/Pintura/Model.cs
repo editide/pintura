@@ -58,6 +58,8 @@ public class BookValue
 public class Section
 {
   public string? Name { get; init; }
+  /// <summary>Where the name is written; null for the slides before the first section.</summary>
+  [JsonIgnore] public Origin? Origin { get; init; }
   public List<string> Slides { get; init; } = new List<string>();
 }
 

@@ -4,11 +4,12 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 
 namespace Pintura;
 
-public static class PreviewServer
+public static partial class PreviewServer
 {
   private const string PptxType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
@@ -284,7 +285,9 @@ public static class PreviewServer
     var files = new List<(string Path, string? Name, List<ValueEdit> Edits)>();
     foreach (IGrouping<string?, ValueEdit> group in request.Edits.GroupBy(edit => edit.File))
     {
-      string? path = group.Key is not null ? ThemeFile(presentation.Theme, group.Key)
+      bool listing = group.Key == presentation.Origin.File;
+      string? path = listing ? Path.Combine(presentation.Root, "presentation.yaml")
+        : group.Key is not null ? ThemeFile(presentation.Theme, group.Key)
         : presentation.Slides.Any(slide => slide.Id == request.Slide) ? SlideFile(presentation, request.Slide!)
         : null;
       if (path is null)
@@ -293,7 +296,12 @@ public static class PreviewServer
           : $"the mouse writes only the theme's theme.yaml and layouts, not {group.Key}",
           StatusCodes.Status404NotFound);
       }
-      if (!group.All(edit => Writable(edit, group.Key is not null)))
+      if (listing && !group.All(Renamed))
+      {
+        return Refused("the mouse writes only presentation.yaml's fields and section names",
+          StatusCodes.Status400BadRequest);
+      }
+      if (!listing && !group.All(edit => Writable(edit, group.Key is not null)))
       {
         return Refused(group.Key is null
           ? "the mouse writes frames, line ends, text, fills, outlines, styles, and alignments, adds text boxes, and " +
@@ -557,6 +565,18 @@ public static class PreviewServer
         : !theme && edit.Paragraphs is not null && (last == "text" || edit.Path == "title" ||
           (parts[0] == "placeholders" && parts.Length == 2)));
   }
+
+  /// <summary>Whether an edit to presentation.yaml rewrites, or undoes rewriting, a field <c>fields</c> defines or a
+  /// section's name, which a slide shows where it writes the field.</summary>
+  private static bool Renamed(ValueEdit edit)
+  {
+    return SectionOrField().IsMatch(edit.Path) && edit.Source is not null && (edit.Value is not null ^
+      edit.Restore is not null) && edit.Numbers is null && edit.Paragraphs is null && !edit.Delete && !edit.Add &&
+      edit.Format is null;
+  }
+
+  [GeneratedRegex(@"^(fields\.[^.]+|slides\[[0-9]+\]\.section)$")]
+  private static partial Regex SectionOrField();
 
   /// <summary>Why the mouse can't write the edit's style or alignment, which must be one the theme or the format
   /// names, or null.</summary>
