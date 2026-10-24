@@ -165,13 +165,14 @@ function isOpen(shape) {
   return shape === 'brace' || shape === 'bracket';
 }
 
-// Arrowheads as SVG markers in a 10 × 10 box, drawn three line-widths long as PowerPoint's medium size is.
+// Arrowheads as SVG markers in a 10 × 10 box, drawn three line-widths long as PowerPoint's medium size is. The anchor
+// sits on the line's end, and the shaft stops short of a pointed tip, which is narrower than the line near its end.
 const MARKERS = {
-  arrow: { path: 'M0 0 L10 5 L0 10', fill: false, anchor: 10 },
-  triangle: { path: 'M0 0 L10 5 L0 10 Z', fill: true, anchor: 10 },
-  stealth: { path: 'M0 0 L10 5 L0 10 L3 5 Z', fill: true, anchor: 10 },
-  diamond: { path: 'M0 5 L5 0 L10 5 L5 10 Z', fill: true, anchor: 5 },
-  oval: { path: 'M0 5 A5 5 0 1 0 10 5 A5 5 0 1 0 0 5 Z', fill: true, anchor: 5 }
+  arrow: { path: 'M0 0 L10 5 L0 10', fill: false, anchor: 10, shaft: 10 },
+  triangle: { path: 'M0 0 L10 5 L0 10 Z', fill: true, anchor: 10, shaft: 5 },
+  stealth: { path: 'M0 0 L10 5 L0 10 L3 5 Z', fill: true, anchor: 10, shaft: 5 },
+  diamond: { path: 'M0 5 L5 0 L10 5 L5 10 Z', fill: true, anchor: 5, shaft: 5 },
+  oval: { path: 'M0 5 A5 5 0 1 0 10 5 A5 5 0 1 0 0 5 Z', fill: true, anchor: 5, shaft: 5 }
 };
 
 function dashArray(dash, width) {
