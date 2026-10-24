@@ -1402,25 +1402,73 @@ document.getElementById('save-menu').addEventListener('toggle', async (event) =>
   document.getElementById('save-heading').textContent = `Save as v${state.saving.next}`;
   document.getElementById('save-error').hidden = true;
   document.getElementById('save-mixed').hidden = true;
+  document.getElementById('save-parts').hidden = true;
+  document.getElementById('save-parts').replaceChildren();
   document.getElementById('save-submit').disabled = false;
   const input = document.getElementById('save-message');
   input.value = '';
   input.focus();
+  const parts = await draftSave(null);
+  // With a single part there's nothing to leave out.
+  if (parts?.length > 1 && menu.matches(':popover-open')) {
+    const fieldset = document.getElementById('save-parts');
+    fieldset.replaceChildren(...parts.map((part) => {
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      box.dataset.files = part.files.join('\n');
+      label.append(box, part.label);
+      return label;
+    }));
+    fieldset.hidden = false;
+  }
+});
+
+let saveDraft = '';
+
+// Describes the page's edits in the files given, or all of them, replacing the message unless it was typed, and
+// answers with the parts the box can save one by one.
+async function draftSave(files) {
+  const menu = document.getElementById('save-menu');
+  const input = document.getElementById('save-message');
+  const query = files ? '?' + new URLSearchParams(files.map((file) => ['files', file])) : '';
   try {
-    const response = await fetch('api/save/draft', { cache: 'no-store' });
-    const { message, mixed } = response.ok ? await response.json() : {};
-    if (message && menu.matches(':popover-open') && input.value === '') {
+    const response = await fetch(`api/save/draft${query}`, { cache: 'no-store' });
+    const { message, mixed, parts } = response.ok ? await response.json() : {};
+    if (!menu.matches(':popover-open')) {
+      return null;
+    }
+    if (message && (input.value === '' || input.value === saveDraft)) {
       input.value = message;
-      input.select();
+      if (document.activeElement === input) {
+        input.select();
+      }
     }
+    saveDraft = message ?? '';
     // Git commits whole files, so a file an agent changed beside the page goes with the page's edits.
-    if (mixed && menu.matches(':popover-open')) {
-      const note = document.getElementById('save-mixed');
-      note.textContent = `Also saves changes you didn't make to ${mixed}`;
-      note.hidden = false;
-    }
+    const note = document.getElementById('save-mixed');
+    note.textContent = mixed ? `Also saves changes you didn't make to ${mixed}` : '';
+    note.hidden = !mixed;
+    return parts ?? null;
   } catch {
     // Without a draft the version takes one when it's saved.
+    return null;
+  }
+}
+
+// The files of the parts ticked, or null when every part is, so an edit made while the box is open goes too.
+function savedFiles() {
+  const boxes = [...document.querySelectorAll('#save-parts input')];
+  return boxes.every((box) => box.checked) ? null
+    : boxes.filter((box) => box.checked).flatMap((box) => box.dataset.files.split('\n'));
+}
+
+document.getElementById('save-parts').addEventListener('change', () => {
+  const files = savedFiles();
+  document.getElementById('save-submit').disabled = files?.length === 0;
+  if (files?.length !== 0) {
+    draftSave(files);
   }
 });
 
@@ -1436,7 +1484,7 @@ document.getElementById('save-menu').addEventListener('submit', async (event) =>
   const response = await fetch('api/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: document.getElementById('save-message').value })
+    body: JSON.stringify({ message: document.getElementById('save-message').value, files: savedFiles() })
   }).catch((error) => ({ ok: false, json: async () => ({ error: String(error) }) }));
   const body = await response.json();
   if (!response.ok) {

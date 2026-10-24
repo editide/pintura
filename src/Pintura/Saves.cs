@@ -12,7 +12,11 @@ public record SaveStatus(bool Unsaved, int Next, List<string> Slides, bool Share
   public bool Edited => Shared || Slides.Count > 0;
 }
 
-public record SaveRequest(string? Message);
+/// <summary>A save, of the page's edits in the files named, or all of them when none are.</summary>
+public record SaveRequest(string? Message, List<string>? Files);
+
+/// <summary>Edits a save can take without the rest, as the save box lists them, and the files they're in.</summary>
+public record SavePart(string Label, List<string> Files);
 
 /// <summary>Saving is committing what the page changed in the presentation and its theme, and only that, so the page's
 /// readers can keep versions without knowing git while agents commit their own work. Books are Libreta's to save.
@@ -72,14 +76,104 @@ public static class Saves
   }
 
   /// <summary>Comments alone wait for the next save, as does YAML only reformatted, which the next save takes along
-  /// when the page wrote it.</summary>
-  private static Pending Pend(VersionScope scope, string root)
+  /// when the page wrote it. Given files, the page's edits are only the parts they're in.</summary>
+  private static Pending Pend(VersionScope scope, string root, IReadOnlyCollection<string>? only = null)
   {
     List<string> all = Changes(scope);
-    bool born = Revisions.Run(scope.Top, "rev-parse", "--verify", "--quiet", "HEAD").Exit == 0;
-    return new Pending(all, Substantive(scope, all), born
+    List<string> changed = Substantive(scope, all);
+    Dictionary<string, bool> wrote = Born(scope)
       ? PageEdits.Read(scope, root, all.ToHashSet(StringComparer.Ordinal))
-      : all.ToDictionary(path => path, _ => false));
+      : all.ToDictionary(path => path, _ => false);
+    if (only is not null)
+    {
+      HashSet<string> chosen = [.. Groups(scope, wrote.Keys.Where(changed.Contains))
+        .Where(files => files.Any(only.Contains)).SelectMany(files => files)];
+      wrote = wrote.Where(pair => chosen.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
+    }
+    return new Pending(all, changed, wrote);
+  }
+
+  /// <summary>The parts of the page's edits a save can take without the rest, in slide order; none outside a
+  /// repository or before its first version, which takes everything.</summary>
+  public static List<SavePart> Parts(string root, Presentation current)
+  {
+    if (!Inside(root))
+    {
+      return [];
+    }
+    VersionScope scope = Revisions.Scope(root);
+    if (!Born(scope))
+    {
+      return [];
+    }
+    int Number(string path) => current.Slides.FindIndex(slide => slide.Id == scope.Slide(path)) + 1;
+    return [.. Groups(scope, Pend(scope, root).Edited.Keys)
+      .OrderBy(files => files is [string file] && scope.Slide(file) is not null ? Number(file) : int.MaxValue)
+      .Select(files => new SavePart(Label(scope, files, Number), files))];
+  }
+
+  /// <summary>Each slide's file is a part, as are presentation.yaml and the theme. A slide deleted or restored goes
+  /// with presentation.yaml, since a version listing a slide it lacks, or lacking one it lists, doesn't load.
+  /// </summary>
+  private static List<List<string>> Groups(VersionScope scope, IEnumerable<string> edited)
+  {
+    List<List<string>> slides = [];
+    List<string> listed = [];
+    List<string> themed = [];
+    foreach (string path in edited.Order(StringComparer.Ordinal))
+    {
+      if (path == scope.Manifest || scope.Slide(path) is not null && CameOrWent(scope, path))
+      {
+        listed.Add(path);
+      }
+      else if (scope.Slide(path) is not null)
+      {
+        slides.Add([path]);
+      }
+      else
+      {
+        themed.Add(path);
+      }
+    }
+    return [.. slides, .. new[] { listed, themed }.Where(files => files.Count > 0)];
+  }
+
+  private static bool CameOrWent(VersionScope scope, string path)
+  {
+    bool saved = Revisions.Run(scope.Top, "rev-parse", "--verify", "--quiet", $"HEAD:{path}").Exit == 0;
+    return saved != File.Exists(Path.Combine(scope.Top, path));
+  }
+
+  /// <summary>A part as <c>Slide 4 and presentation.yaml</c> or <c>presentation.yaml, removing slide intro</c>.
+  /// </summary>
+  private static string Label(VersionScope scope, List<string> files, Func<string, int> number)
+  {
+    List<string> slides = [.. files.Where(path => scope.Slide(path) is not null)];
+    List<int> numbers = [.. slides.Select(number).Where(found => found > 0)];
+    List<string> removed = [.. slides.Where(path => number(path) == 0).Select(path => scope.Slide(path)!)];
+    List<string> parts = numbers.Count > 0 ? [Numbers(numbers)] : [];
+    if (files.Contains(scope.Manifest))
+    {
+      parts.Add("presentation.yaml");
+    }
+    if (files.Any(path => scope.Slide(path) is null && path != scope.Manifest))
+    {
+      parts.Add("the theme");
+    }
+    string label = Joined(parts) ?? "";
+    if (removed.Count > 0)
+    {
+      string gone = $"removing {(removed.Count == 1 ? "slide" : "slides")} {Joined(removed)}";
+      label = label.Length > 0 ? $"{label}, {gone}" : gone;
+    }
+    return label.StartsWith("presentation.yaml", StringComparison.Ordinal)
+      ? label
+      : char.ToUpperInvariant(label[0]) + label[1..];
+  }
+
+  private static bool Born(VersionScope scope)
+  {
+    return Revisions.Run(scope.Top, "rev-parse", "--verify", "--quiet", "HEAD").Exit == 0;
   }
 
   private static List<string> Substantive(VersionScope scope, List<string> changes)
@@ -146,9 +240,11 @@ public static class Saves
     }
   }
 
-  /// <summary>Commits what the page changed in the presentation and its theme, with the comments, starting a
-  /// repository in the presentation when there's none, under the message or, without one, the draft.</summary>
-  public static DeckVersion Save(string root, string? message, Presentation? current = null)
+  /// <summary>Commits what the page changed in the presentation and its theme, or in the parts of it the files named
+  /// are in, with the comments, starting a repository in the presentation when there's none, under the message or,
+  /// without one, the draft.</summary>
+  public static DeckVersion Save(string root, string? message, Presentation? current = null,
+    IReadOnlyCollection<string>? only = null)
   {
     root = Path.GetFullPath(root);
     if (!Inside(root))
@@ -156,12 +252,12 @@ public static class Saves
       Check(Revisions.Run(root, "init", "-q"));
     }
     VersionScope scope = Revisions.Scope(root);
-    Pending pending = Pend(scope, root);
+    Pending pending = Pend(scope, root, only);
     if (pending.Edited.Count == 0)
     {
       throw new InvalidDataException("there are no changes to save");
     }
-    string subject = string.IsNullOrWhiteSpace(message) ? Draft(root, current) : message.Trim();
+    string subject = string.IsNullOrWhiteSpace(message) ? Draft(root, current, only) : message.Trim();
     List<string> files = [.. pending.All.Where(path => path == scope.CommentFile || path == scope.ResolvedFile ||
       pending.Wrote.ContainsKey(path))];
     List<string> paths = [.. files.Select(path => $":(literal){path}")];
@@ -182,7 +278,7 @@ public static class Saves
       (int exit, string output, _) = Revisions.Run(scope.Top, [.. arguments, "--", .. scope.Saved]);
       return exit == 0 ? output.Split('\0', StringSplitOptions.RemoveEmptyEntries) : [];
     }
-    bool born = Revisions.Run(scope.Top, "rev-parse", "--verify", "--quiet", "HEAD").Exit == 0;
+    bool born = Born(scope);
     var changed = new SortedSet<string>(StringComparer.Ordinal);
     var added = new List<string>(Listed("ls-files", "-z", "--others", "--exclude-standard"));
     if (born)
@@ -247,8 +343,9 @@ public static class Saves
     return named;
   }
 
-  /// <summary>What the page changed since the last version, as a reader would say it.</summary>
-  public static string Draft(string root, Presentation? current = null)
+  /// <summary>What the page changed since the last version, or in the parts the files named are in, as a reader
+  /// would say it.</summary>
+  public static string Draft(string root, Presentation? current = null, IReadOnlyCollection<string>? only = null)
   {
     Presentation after = current ?? PresentationLoader.Load(root);
     Presentation before;
@@ -262,7 +359,7 @@ public static class Saves
     }
     DeckDiff diff = Differ.Compare(before, after);
     VersionScope scope = Revisions.Scope(root);
-    Pending pending = Pend(scope, root);
+    Pending pending = Pend(scope, root, only);
     HashSet<string> edited = [.. pending.Edited.Keys];
     HashSet<string> mine = [.. edited.Select(scope.Slide).OfType<string>()];
     HashSet<string> others = [.. pending.Changed.Where(path => !edited.Contains(path)).Select(scope.Slide)
@@ -278,16 +375,17 @@ public static class Saves
     return Draft(new DeckDiff(slides, themed ? diff.Causes : []));
   }
 
-  /// <summary>What saving takes along that the page didn't write: the slides and shared files it wrote that
-  /// something else changed too, as <c>slide 5 and the theme</c>; null when there are none.</summary>
-  public static string? Mixed(string root, Presentation current)
+  /// <summary>What saving takes along that the page didn't write: the slides and shared files it wrote, of the parts
+  /// the files named are in when there are any, that something else changed too, as <c>slide 5 and the theme</c>;
+  /// null when there are none.</summary>
+  public static string? Mixed(string root, Presentation current, IReadOnlyCollection<string>? only = null)
   {
     if (!Inside(root))
     {
       return null;
     }
     VersionScope scope = Revisions.Scope(root);
-    List<string> mixed = [.. Pend(scope, root).Edited.Where(pair => pair.Value).Select(pair => pair.Key)];
+    List<string> mixed = [.. Pend(scope, root, only).Edited.Where(pair => pair.Value).Select(pair => pair.Key)];
     List<int> numbers = [.. mixed.Select(scope.Slide).OfType<string>()
       .Select(id => current.Slides.FindIndex(slide => slide.Id == id) + 1).Where(number => number > 0)];
     List<string> parts = numbers.Count > 0 ? [Numbers(numbers)] : [];
@@ -299,6 +397,11 @@ public static class Saves
     {
       parts.Add("the theme");
     }
+    return Joined(parts);
+  }
+
+  private static string? Joined(List<string> parts)
+  {
     return parts switch
     {
       [] => null,
