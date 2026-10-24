@@ -335,6 +335,7 @@ Export runs on an editide API account, metered by slides delivered.
 | Theme fonts | `a:fontScheme`, `+mj-lt`, `+mn-lt` |
 | Base text style, title style | `p:txStyles` |
 | Theme background | `p:bg` on the master |
+| Layout and slide backgrounds | `p:bg` on the layout or slide |
 | Title | `p:ph type="title"` on the master and layouts |
 | Layout | `p:sldLayout` |
 | Other placeholders | `p:ph type="body"`, or a text box (`p:sp`) |

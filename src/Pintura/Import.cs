@@ -1753,6 +1753,10 @@ public partial class Importer
   private OrderedDictionary<string, object?> SlideFile(JsonObject slide)
   {
     var map = new OrderedDictionary<string, object?> { ["layout"] = (string)slide["layout"]! };
+    if (slide["background"] is JsonNode background)
+    {
+      map["background"] = Yaml("background", background);
+    }
     Scope(map, $"slide:{slide["id"]}", 2);
     if (slide["hide"]!.AsArray().Count > 0)
     {

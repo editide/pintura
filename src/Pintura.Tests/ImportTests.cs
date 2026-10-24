@@ -514,5 +514,23 @@ public class ImportTests
     };
   }
 
+  [Fact]
+  public void A_slides_own_background_survives_import()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", "layout: content\nbackground: dark2");
+    JsonObject before = Importer.Snapshot(deck.Load());
+    string folder = deck.Folder.PathTo("imported");
+
+    // Act
+    Importer.Import(before.ToJsonString(), deck.Folder.PathTo("deck"), folder);
+
+    // Assert
+    Presentation after = PresentationLoader.Load(folder);
+    after.Slides.Single(slide => slide.Id == "two").Background.ShouldBeOfType<Color>().Theme.ShouldBe("dark2");
+    after.Slides.Single(slide => slide.Id == "one").Background.ShouldBeNull();
+  }
+
 
 }

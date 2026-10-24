@@ -815,5 +815,24 @@ public class ExporterTests
     capped.ShouldBe((4096, 1536));
   }
 
+  [Fact]
+  public void A_slides_own_background_is_set_on_its_slide()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    fixture.Write("deck/slides/two.yaml", "layout: content\nbackground: \"#091024\"");
+    var tools = new BlandTools();
+
+    // Act
+    Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
+
+    // Assert
+    List<JsonObject> edits = tools.Inputs.Where(call => call.Tool == "edit_slide" && call.Input["slide_index"] is not null)
+      .Select(call => call.Input).ToList();
+    edits.Count.ShouldBe(2);
+    edits[0]["slide"]!["background"].ShouldBeNull();
+    ShouldMatch(edits[1]["slide"]!["background"], """{ "color": { "rgb": "#091024" } }""");
+  }
+
 
 }

@@ -374,6 +374,22 @@ public class SceneTests
     error.Problem.ShouldBe("unknown element footer; layout content draws page");
   }
 
+  [Fact]
+  public void A_slides_background_replaces_its_layouts()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("theme/layouts/cover.yaml", "name: Cover\nbackground: dark2");
+    deck.Write("deck/slides/two.yaml", "layout: cover\nbackground: \"#091024\"");
+    Presentation presentation = deck.Load();
+
+    // Act
+    SlideScene scene = SceneBuilder.Build(presentation, presentation.Slides[1]);
+
+    // Assert
+    scene.Background.Value.ShouldBeOfType<Color>().Hex.ShouldBe("#091024");
+    scene.Background.Origin!.ToString().ShouldBe("deck/slides/two.yaml:2 background");
+  }
 
 
 }

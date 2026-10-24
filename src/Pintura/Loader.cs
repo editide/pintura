@@ -1245,6 +1245,14 @@ public partial class PresentationLoader
       areas[key] = area;
     }
 
+    Color? background = null;
+    Origin? backgroundOrigin = null;
+    if (map.Take("background") is Node backgroundNode)
+    {
+      background = ReadColor(backgroundNode, false);
+      backgroundOrigin = backgroundNode.Origin;
+    }
+
     Placeholder? title = null;
     if (map.Take("title") is Node titleNode)
     {
@@ -1342,6 +1350,8 @@ public partial class PresentationLoader
       Number = number,
       Section = section,
       Layout = layoutId,
+      Background = background,
+      BackgroundOrigin = backgroundOrigin,
       Title = title,
       Placeholders = placeholders,
       Elements = elements,

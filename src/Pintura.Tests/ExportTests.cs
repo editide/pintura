@@ -115,5 +115,21 @@ public class ExportTests
     chart.Properties["text.font"].ShouldBe(new ExportFont("heading", null));
   }
 
+  [Fact]
+  public void A_slide_carries_only_a_background_of_its_own()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", "layout: content\nbackground: dark2");
+
+    // Act
+    ExportDeck export = ExportBuilder.Build(deck.Load());
+
+    // Assert
+    export.Slides.Single(slide => slide.Id == "two").Background.ShouldBe(new ExportColor("dark2", null, null, null,
+      null));
+    export.Slides.Single(slide => slide.Id == "one").Background.ShouldBeNull();
+  }
+
 
 }
