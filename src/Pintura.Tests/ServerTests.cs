@@ -1212,6 +1212,31 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task A_preview_running_another_build_isnt_borrowed_to_draw()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    var registry = new InstanceRegistry(folder.PathTo("servers"));
+    var preview = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+    var headless = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+    preview.Start();
+    headless.Start();
+    int previewPort = ((IPEndPoint)preview.LocalEndpoint).Port;
+    int headlessPort = ((IPEndPoint)headless.LocalEndpoint).Port;
+    registry.Register(new ServerInstance(Environment.ProcessId, folder.Root, previewPort, false, "older"));
+    registry.Register(new ServerInstance(Environment.ProcessId + 1, folder.Root, headlessPort, true,
+      ServerInstance.CurrentBuild));
+
+    // Act
+    string url = await HeadlessServer.Find(folder.Root, registry);
+    preview.Stop();
+    headless.Stop();
+
+    // Assert
+    url.ShouldBe($"http://localhost:{headlessPort}");
+  }
+
+  [Fact]
   public async Task A_headless_server_that_stops_before_registering_names_its_log()
   {
     // Arrange

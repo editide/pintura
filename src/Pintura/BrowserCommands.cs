@@ -239,7 +239,7 @@ public static class HeadlessServer
   /// <summary>The address of a server that can draw the presentation, starting one when none runs.</summary>
   public static async Task<string> Find(string root, InstanceRegistry registry)
   {
-    if (registry.Find(root) is ServerInstance preview)
+    if (registry.Find(root) is ServerInstance preview && preview.Build == ServerInstance.CurrentBuild)
     {
       return preview.Url;
     }
