@@ -373,26 +373,34 @@ function renderPicture(item, parent) {
     ]);
     return node;
   }
-  // A crop needs the image's own size before the visible part can be fitted into the frame.
-  node.loaded = imageSize(item.picture).then(([width, height]) => {
-    const [left, top, right, bottom] = item.crop;
-    const svg = svgElement('svg', {
-      class: 'picture',
-      viewBox: `${left} ${top} ${width - left - right} ${height - top - bottom}`,
-      preserveAspectRatio: aspect,
-      role: 'img',
-      'aria-label': item.alt || null
-    }, node);
-    const image = svgElement('image', { href: item.picture, width, height, preserveAspectRatio: 'none' }, svg);
-    if (item.stroke) {
-      outline(item, node, [width - left - right, height - top - bottom]);
-    }
-    return new Promise((resolve) => {
-      image.addEventListener('load', resolve);
-      image.addEventListener('error', resolve);
-    });
-  }).catch(() => {});
+  // A crop needs the image's own size before the visible part can be fitted into the frame; once known, the picture is
+  // drawn at once, so a redraw doesn't blank it while the size is read again.
+  const size = imageSizes.get(item.picture);
+  if (Array.isArray(size)) {
+    node.loaded = drawCropped(item, node, size, aspect);
+    return node;
+  }
+  node.loaded = imageSize(item.picture).then((size) => drawCropped(item, node, size, aspect)).catch(() => {});
   return node;
+}
+
+function drawCropped(item, node, [width, height], aspect) {
+  const [left, top, right, bottom] = item.crop;
+  const svg = svgElement('svg', {
+    class: 'picture',
+    viewBox: `${left} ${top} ${width - left - right} ${height - top - bottom}`,
+    preserveAspectRatio: aspect,
+    role: 'img',
+    'aria-label': item.alt || null
+  }, node);
+  const image = svgElement('image', { href: item.picture, width, height, preserveAspectRatio: 'none' }, svg);
+  if (item.stroke) {
+    outline(item, node, [width - left - right, height - top - bottom]);
+  }
+  return new Promise((resolve) => {
+    image.addEventListener('load', resolve);
+    image.addEventListener('error', resolve);
+  });
 }
 
 // Where in its frame a picture is drawn, as [x, y, width, height], given the size of the part of the image it shows.
@@ -413,7 +421,27 @@ function outline(item, node, size) {
 }
 
 // An SVG's size is its width and height, or else its viewBox; browsers invent 300 × 150 for one with only a viewBox.
-async function imageSize(url) {
+// Sizes by URL, which carries the file's stamp, so a picture replaced in place is measured again. Each entry is the
+// promise until it settles, then the size, which a redraw can use without waiting.
+const imageSizes = new Map();
+
+function imageSize(url) {
+  const known = imageSizes.get(url);
+  if (known) {
+    return Array.isArray(known) ? Promise.resolve(known) : known;
+  }
+  const measuring = measureImage(url).then((size) => {
+    imageSizes.set(url, size);
+    return size;
+  }, (error) => {
+    imageSizes.delete(url);
+    throw error;
+  });
+  imageSizes.set(url, measuring);
+  return measuring;
+}
+
+async function measureImage(url) {
   const response = await fetch(url);
   if ((response.headers.get('content-type') || '').startsWith('image/svg')) {
     const root = new DOMParser().parseFromString(await response.text(), 'image/svg+xml').documentElement;
