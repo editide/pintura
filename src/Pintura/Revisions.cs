@@ -181,6 +181,18 @@ public static class Revisions
     return exit == 0 ? int.Parse(output.Trim(), CultureInfo.InvariantCulture) : 0;
   }
 
+  /// <summary>The repository paths of the presentation's files that differ between two commits.</summary>
+  public static List<string> ChangedFiles(VersionScope scope, string from, string to)
+  {
+    (int exit, string output, string error) = Run(scope.Top, ["diff", "--name-only", "--no-renames", from, to, "--",
+      .. scope.Saved, .. scope.Books, .. scope.Comments]);
+    if (exit != 0)
+    {
+      throw new InvalidDataException(error.Trim());
+    }
+    return [.. output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+  }
+
   /// <summary>One commit as a version, named by its full hash.</summary>
   public static DeckVersion Describe(string root, string commit)
   {

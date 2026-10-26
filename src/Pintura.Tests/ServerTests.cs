@@ -146,6 +146,94 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task Compare_between_two_versions_draws_the_later_one_as_the_after_side()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    string[] commits = CommitVersions(deck, ("deck/slides/two.yaml", "Second"), ("deck/slides/one.yaml", "Third"));
+    deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Unsaved");
+    await using Served served = await Served.Start(deck);
+
+    // Act
+    System.Text.Json.JsonElement compare = await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+      $"{served.Url}/api/compare?base={commits[0]}&head={commits[1]}");
+
+    // Assert
+    compare.GetProperty("version").GetProperty("number").GetInt32().ShouldBe(1);
+    compare.GetProperty("head").GetProperty("number").GetInt32().ShouldBe(2);
+    compare.GetProperty("after").GetProperty("slides")[1].GetProperty("title").GetString().ShouldBe("Second");
+    compare.GetProperty("diff").GetProperty("slides").EnumerateArray().Single().GetProperty("id").GetString()
+      .ShouldBe("two");
+  }
+
+  [Fact]
+  public async Task A_slide_s_history_steps_through_the_versions_that_changed_how_it_draws()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    string[] commits = CommitVersions(deck, ("deck/slides/two.yaml", "Second"), ("deck/slides/one.yaml", "Third"),
+      ("deck/slides/two.yaml", "Fourth"));
+    await using Served served = await Served.Start(deck);
+
+    // Act
+    string history = $"{served.Url}/api/history?slide=two";
+    HttpResponseMessage fromLatest = await served.Client.GetAsync($"{history}&before={commits[2]}");
+    HttpResponseMessage fromFirst = await served.Client.GetAsync($"{history}&before={commits[0]}");
+    HttpResponseMessage forward = await served.Client.GetAsync($"{history}&after={commits[1]}");
+    HttpResponseMessage pastNewest = await served.Client.GetAsync($"{history}&after={commits[3]}");
+
+    // Assert
+    System.Text.Json.JsonElement older = await fromLatest.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+    older.GetProperty("base").GetProperty("number").GetInt32().ShouldBe(1);
+    older.GetProperty("head").GetProperty("number").GetInt32().ShouldBe(2);
+    fromFirst.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    System.Text.Json.JsonElement newer = await forward.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+    newer.GetProperty("base").GetProperty("number").GetInt32().ShouldBe(3);
+    newer.GetProperty("head").GetProperty("number").GetInt32().ShouldBe(4);
+    pastNewest.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+  }
+
+  [Fact]
+  public async Task A_slide_s_history_counts_a_theme_change_that_restyles_it()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    CommitVersions(deck, ("deck/slides/two.yaml", "Second"));
+    deck.Write("theme/styles.yaml", DeckFixture.Styles.Replace("size: 28", "size: 30"));
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-am", "bigger titles");
+    deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: Fourth");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-am", "retitled one");
+    await using Served served = await Served.Start(deck);
+    string latestBase = (await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+      $"{served.Url}/api/versions"))[1].GetProperty("commit").GetString()!;
+
+    // Act
+    System.Text.Json.JsonElement step = await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+      $"{served.Url}/api/history?slide=two&before={latestBase}");
+
+    // Assert
+    step.GetProperty("head").GetProperty("subject").GetString().ShouldBe("bigger titles");
+  }
+
+  // The fixture as the first version, then one version per slide retitled, answering each version's commit, oldest
+  // first.
+  private static string[] CommitVersions(DeckFixture deck, params (string File, string Title)[] retitles)
+  {
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    List<string> commits = [Revisions.Commit(deck.Folder.Root, "HEAD")];
+    foreach ((string file, string title) in retitles)
+    {
+      string layout = file.EndsWith("one.yaml", StringComparison.Ordinal) ? "cover" : "content";
+      deck.Write(file, $"layout: {layout}\ntitle: {title}");
+      RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-am", title);
+      commits.Add(Revisions.Commit(deck.Folder.Root, "HEAD"));
+    }
+    return [.. commits];
+  }
+
+  [Fact]
   public async Task Saving_commits_a_nudge_under_its_draft_and_leaves_an_agents_edit_unsaved()
   {
     // Arrange

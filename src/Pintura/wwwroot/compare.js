@@ -322,11 +322,20 @@ function compareBase() {
   return new URLSearchParams(location.search).get('base');
 }
 
+// The later version the address pins the comparison to, drawn in the working tree's place; null for the working tree.
+function compareHead() {
+  return new URLSearchParams(location.search).get('head');
+}
+
 async function fetchCompare() {
   try {
-    const base = compareBase();
-    const response = await fetch(`api/compare${base ? `?base=${encodeURIComponent(base)}` : ''}`,
-      { cache: 'no-store' });
+    const query = new URLSearchParams();
+    for (const [name, value] of [['base', compareBase()], ['head', compareHead()]]) {
+      if (value) {
+        query.set(name, value);
+      }
+    }
+    const response = await fetch(`api/compare${query.size ? `?${query}` : ''}`, { cache: 'no-store' });
     const body = await response.json();
     return response.ok ? body : { error: body.error || `comparing failed (${response.status})` };
   } catch (error) {
@@ -358,29 +367,46 @@ function versionTime(date) {
 }
 
 function baseName() {
-  return comparing() ? `${namedBase() || 'the last save'} (${state.compare.commit.slice(0, 7)})` : compareBase();
+  return comparing() ? `${namedBase()} (${state.compare.commit.slice(0, 7)})` : compareBase();
 }
 
-// The revision compared against, unnamed when it's the last save and the changes are unsaved, since the page's
-// readers needn't know git.
 function namedBase() {
-  if (!comparing()) {
-    return compareBase();
+  return comparing() ? `v${state.compare.version.number}` : compareBase()?.slice(0, 7) ?? null;
+}
+
+// What the changes run to: a later version, the working tree as the last version saved it, or its unsaved changes.
+function namedHead() {
+  if (state.compare?.head) {
+    return `v${state.compare.head.number}`;
   }
-  return compareBase() || state.compare.lastSave ? `v${state.compare.version.number}` : null;
+  if (state.compare?.lastSave) {
+    return `v${state.compare.lastSave.number}`;
+  }
+  return !state.saving || state.saving.unsaved ? 'unsaved' : `v${state.saving.next - 1}`;
+}
+
+// Both ends, since a range named by its start alone leaves the reader guessing what it's compared with.
+function rangeName() {
+  return `${namedBase()} → ${namedHead()}`;
 }
 
 function sinceBase() {
-  return namedBase() ? ` since ${namedBase()}` : '';
+  if (!namedBase()) {
+    return '';
+  }
+  return state.compare?.head ? ` from ${namedBase()} to ${namedHead()}` : ` since ${namedBase()}`;
 }
 
-// Pins the comparison to a version, or without one follows the latest changes, keeping the choice in the address.
-function chooseBase(commit) {
+// Pins the comparison to a version, and to a later one in the working tree's place, or without one follows the
+// latest changes, keeping the choice in the address.
+function chooseBase(commit, head = null) {
   const url = new URL(location.href);
-  if (commit) {
-    url.searchParams.set('base', commit);
-  } else {
-    url.searchParams.delete('base');
+  for (const [name, value] of [['base', commit], ['head', head]]) {
+    if (value) {
+      url.searchParams.set(name, value);
+    } else {
+      url.searchParams.delete(name);
+    }
   }
   history.replaceState(history.state, '', url);
 }
@@ -424,9 +450,10 @@ function removedSlide(id) {
   return slideDiff(id)?.status === 'removed' ? beforeSlide(id) : null;
 }
 
-// The revision shows, flipped to or as a slide only it has, so the slide on screen isn't the one edits would write.
+// A revision shows, flipped to, as a slide only it has, or as the later of two versions, so the slide on screen isn't
+// the one edits would write.
 function reviewing(slide = currentSlide()) {
-  return comparing() && (state.before || Boolean(slide && removedSlide(slide.id)));
+  return comparing() && (state.before || Boolean(state.compare.head) || Boolean(slide && removedSlide(slide.id)));
 }
 
 // The slide as the side showing draws it; null for a slide added since the revision.

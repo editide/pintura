@@ -127,6 +127,16 @@
             <span class="label" id="versions-label"></span>
             <svg class="icon caret" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 8l4 4 4-4"></path></svg>
           </button>
+          <div class="slide-history" id="slide-history" hidden>
+            <button type="button" class="tool" id="history-older" title="This slide's previous change ([)"
+                    aria-label="This slide's previous change">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M12 5l-5 5 5 5"></path></svg>
+            </button>
+            <button type="button" class="tool" id="history-newer" title="This slide's next change (])"
+                    aria-label="This slide's next change">
+              <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5l5 5-5 5"></path></svg>
+            </button>
+          </div>
         </div>
         <div class="group compare" id="compare">
           <button type="button" class="tool" data-action="before" data-compare="Flip to the revision (B)">
@@ -256,6 +266,7 @@
       <dt><kbd>D</kbd></dt><dd>Show only the changed slides, or every slide</dd>
       <dt><kbd>B</kbd></dt><dd>Flip to the version compared against</dd>
       <dt><kbd>C</kbd></dt><dd>Mark the changes since it</dd>
+      <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>The slide's previous or next change</dd>
     </dl>
     <p class="shortcuts-foot"><kbd>?</kbd> Show this list</p>
   </dialog>
