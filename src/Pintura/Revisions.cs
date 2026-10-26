@@ -11,10 +11,10 @@ namespace Pintura;
 /// name into a folder of its own.</summary>
 public record Revision(string Name, string Commit, string Folder, string Root, string DisplayBase);
 
-/// <summary>A commit that changed a presentation, as the page lists it to compare against, numbered from its first.
-/// </summary>
+/// <summary>A commit that changed a presentation, as the page lists it to compare against, numbered from its first;
+/// <see cref="ByHand"/> when the page's Save made it rather than an agent or git.</summary>
 public record DeckVersion(int Number, string Commit, DateTimeOffset Date, string Subject, string Author, bool Mine,
-  List<string> Tags);
+  List<string> Tags, bool ByHand = false);
 
 /// <summary>The repository's top, the presentation's folder in it, and the paths its versions cover: the folder and
 /// theme it saves, and the books it reads, which Libreta saves.</summary>
@@ -206,8 +206,12 @@ public static class Revisions
       Run(scope.Top, "config", "user.email").Output.Trim());
   }
 
+  /// <summary>The trailer the page's Save writes, since every version is authored as whoever runs git, agents too.
+  /// </summary>
+  public const string SavedFrom = "Saved-from";
+
   // Unit and record separators, which no subject or name holds.
-  private const string Format = "%H%x1f%aI%x1f%an%x1f%ae%x1f%D%x1f%s%x1e";
+  private const string Format = $"%H%x1f%aI%x1f%an%x1f%ae%x1f%D%x1f%s%x1f%(trailers:key={SavedFrom},valueonly)%x1e";
 
   private static DeckVersion Version(int number, string record, string email)
   {
@@ -217,7 +221,8 @@ public static class Revisions
       .Select(reference => reference["tag: ".Length..])
       .ToList();
     return new DeckVersion(number, fields[0], DateTimeOffset.Parse(fields[1], CultureInfo.InvariantCulture), fields[5],
-      fields[2], email.Length > 0 && string.Equals(fields[3], email, StringComparison.OrdinalIgnoreCase), tags);
+      fields[2], email.Length > 0 && string.Equals(fields[3], email, StringComparison.OrdinalIgnoreCase), tags,
+      fields[6].Trim().Length > 0);
   }
 
   /// <summary>The full hash a revision names, so a moving name such as <c>HEAD</c> finds a new extraction once it

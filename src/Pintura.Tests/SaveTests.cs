@@ -197,6 +197,30 @@ public class SaveTests
   }
 
   [Fact]
+  public void A_version_saved_from_the_page_is_marked_as_saved_by_hand_and_an_agent_s_commit_is_not()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: An agent's");
+    Git(deck.Folder.Root, "commit", "-q", "-am", "Retitle the cover\n\nCo-Authored-By: An agent <agent@example.com>");
+    Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
+
+    // Act
+    DeckVersion saved = Saves.Save(root, "Retitled slide 2");
+    List<DeckVersion> versions = Revisions.Versions(root);
+
+    // Assert
+    saved.ByHand.ShouldBeTrue();
+    saved.Subject.ShouldBe("Retitled slide 2");
+    versions.Select(version => version.ByHand).ShouldBe([true, false, false]);
+    Revisions.Describe(root, versions[1].Commit).ByHand.ShouldBeFalse();
+  }
+
+  [Fact]
   public void Saving_commits_the_comments_with_the_presentation()
   {
     // Arrange

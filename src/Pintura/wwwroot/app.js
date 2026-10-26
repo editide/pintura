@@ -1236,9 +1236,10 @@ async function renderVersions(menu) {
   following.setAttribute('role', 'menuitemradio');
   following.setAttribute('aria-checked', String(!chosen));
   following.dataset.commit = '';
-  element('span', 'version-subject', following).textContent = state.saving?.unsaved ? 'Unsaved changes'
-    : `Changes in v${versions[0].number}`;
-  element('span', 'version-when', following).textContent = 'Latest';
+  const newest = versions[0].number;
+  element('span', 'version-subject', following).textContent = 'Latest changes';
+  element('span', 'version-when', following).textContent = state.saving?.unsaved ? `v${newest} → unsaved`
+    : `v${newest - 1} → v${newest}`;
   element('div', 'versions-rule', menu);
   let day = null;
   versions.forEach((version, index) => {
@@ -1258,6 +1259,11 @@ async function renderVersions(menu) {
     subject.textContent = version.subject;
     for (const tag of version.tags) {
       element('span', 'version-tag', button).textContent = tag;
+    }
+    if (version.byHand) {
+      const mark = element('span', 'version-by-hand', button);
+      mark.textContent = 'by hand';
+      mark.title = 'Saved with the Save button';
     }
     element('span', 'version-when', button).textContent = version.mine ? versionTime(date)
       : `${version.author} · ${versionTime(date)}`;
@@ -1376,10 +1382,14 @@ function renderSaving() {
   document.getElementById('versions-label').textContent = rangeName();
   const later = state.compare?.head || state.compare?.lastSave;
   versions.title = !comparing() ? 'Choose a version to show the changes since'
-    : `Showing the changes from ${namedBase()}, ${state.compare.version.subject}, to ${namedHead()}` +
-      (later ? `, ${later.subject}` : '') + (state.compare.head ? '; edits wait for the latest changes' : '');
+    : `Showing the changes from ${namedBase()}, ${versionSubject(state.compare.version)}, to ${namedHead()}` +
+      (later ? `, ${versionSubject(later)}` : '') + (state.compare.head ? '; edits wait for the latest changes' : '');
   document.getElementById('slide-history').hidden = versions.hidden || state.view !== 'slide' || Boolean(state.layout);
   document.getElementById('history-newer').disabled = !state.compare?.head;
+}
+
+function versionSubject(version) {
+  return version.byHand ? `${version.subject} (saved by hand)` : version.subject;
 }
 
 // Steps the comparison to the version before or after the one shown that changed the slide on screen, each version
