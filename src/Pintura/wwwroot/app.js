@@ -142,7 +142,6 @@ function renderSidebar() {
   }
   renderRemoved();
   renderStrayComments();
-  renderCommentSummary();
 }
 
 function renderToolbar() {

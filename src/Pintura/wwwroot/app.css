@@ -456,18 +456,6 @@ body.reordering * {
   flex-direction: column;
 }
 
-.layout.strip .comment-summary {
-  flex: none;
-  flex-direction: column;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  justify-content: center;
-  max-width: 120px;
-  padding: 8px;
-  border-right: 1px solid var(--rule);
-  border-bottom: 0;
-}
-
 .layout.strip .sidebar-scroll {
   display: flex;
   gap: 10px;
@@ -3646,18 +3634,6 @@ kbd {
 
 .comment-note.skipped {
   border-left-color: var(--muted);
-}
-
-.comment-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 8px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 8px 4px 16px;
-  border-bottom: 1px solid var(--rule);
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .comment-foot {

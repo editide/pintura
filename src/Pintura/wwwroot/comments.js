@@ -146,21 +146,6 @@ function markComments(frame, id) {
   }
 }
 
-// Above the slides, once an agent has marked comments: how many are open, done, and skipped. Each is resolved from
-// its own pin, since how the reviewer ends a thread is what comments-resolved.yaml records.
-function renderCommentSummary() {
-  const container = document.getElementById('comment-summary');
-  container.replaceChildren();
-  const comments = state.deck.comments || [];
-  const counts = commentCounts(comments);
-  container.hidden = counts.done + counts.skipped === 0;
-  if (container.hidden) {
-    return;
-  }
-  element('span', null, container).textContent = Object.keys(counts).filter((kind) => counts[kind] > 0)
-    .map((kind) => `${counts[kind]} ${kind}`).join(' · ');
-}
-
 function renderStrayComments() {
   const container = document.getElementById('stray-comments');
   container.replaceChildren();
