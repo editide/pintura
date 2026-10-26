@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { formatNumber, axisTicks, stackSeries, layoutChart, spellDate, dateAxis, dateLabels } =
+const { formatNumber, axisTicks, stackSeries, layoutChart, wrap, spellDate, dateAxis, dateLabels } =
   require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'charts.js'));
 
 const billions = { scale: 0.001, decimals: 1, separator: true, prefix: '$', suffix: 'B', negative: 'parentheses' };
@@ -37,6 +37,17 @@ function measure(text) {
 function texts(primitives) {
   return primitives.filter((primitive) => primitive.kind === 'text');
 }
+
+test('a label breaks at each line feed, then wraps each line to the width', () => {
+  // Arrange
+  const measure = (text) => text.length;
+
+  // Act
+  const lines = wrap("Jul '26–\nJun '28", 12, measure);
+
+  // Assert
+  assert.deepEqual(lines, ["Jul '26–", "Jun '28"]);
+});
 
 test('a format scales, rounds, and wraps a negative in parentheses around its prefix and suffix', () => {
   // Act

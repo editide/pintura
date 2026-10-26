@@ -102,15 +102,19 @@ function colorAt(chart, index) {
   return chart.colors.length === 0 ? null : chart.colors[index % chart.colors.length];
 }
 
-// Words greedily onto lines no wider than `width`; a word wider than that keeps a line to itself.
+// Words greedily onto lines no wider than `width`; a word wider than that keeps a line to itself, and a line feed
+// always starts a new line, as in a PowerPoint category label.
 function wrap(text, width, measure) {
   const lines = [];
-  for (const word of text.split(/\s+/).filter(Boolean)) {
-    const last = lines.length - 1;
-    if (last >= 0 && measure(`${lines[last]} ${word}`) <= width) {
-      lines[last] = `${lines[last]} ${word}`;
-    } else {
-      lines.push(word);
+  for (const paragraph of text.split('\n')) {
+    const start = lines.length;
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const last = lines.length - 1;
+      if (last >= start && measure(`${lines[last]} ${word}`) <= width) {
+        lines[last] = `${lines[last]} ${word}`;
+      } else {
+        lines.push(word);
+      }
     }
   }
   return lines.length === 0 ? [''] : lines;

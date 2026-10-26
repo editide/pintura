@@ -34,7 +34,7 @@ A number with no format shows as written, and percents (a percent stacked axis, 
 An axis's `min`, `max`, or `step` nobody fixes comes from its data: the axis reaches zero and every stack's end, less totals, 5% past each end, its step is 1, 2, or 5 times a power of ten giving five to ten steps, and its ends round out to whole steps, so a stack of 830, 24.5, and 66 runs from 0 to 1000 by 100.
 A percent stack runs to 100% exactly.
 `pintura --element` shows the scale an axis gets, and the export fixes it in PowerPoint, so the deck draws the same axis.
-Category labels sit at the plot's edge, clear of negative bars.
+Category labels sit at the plot's edge, clear of negative bars, and wrap to their category's width; a line feed in a label, written `\n` in a quoted string, always starts a new line.
 
 Keys layer from the theme's `chart` base through the named style to the chart, the last one winning; the base and styles take every key but `type`, `data`, and `series_in`.
 Maps merge key by key, so a chart writing `data_labels: { format: billions_of_dollars }` keeps its style's `show: value`.
