@@ -104,7 +104,8 @@ In the one-slide view, the mouse moves, resizes, and rewords what the slide owns
 - Shift- or Ctrl-click an element to add it to the selection or take it out; Ctrl-click on a number linked to Libreta still opens it there.
 - Several selected elements drag, nudge, and delete together, snapping by the box around them all, as one edit that one Ctrl+Z undoes; they have no handles.
 - Delete or Backspace removes the selected elements from the slide's file; the title and placeholders come from the layout and stay.
-- Double-click text, or click it once it's selected, to reword it in place, then click away or press Escape to write it, and Ctrl+Z to take it back.
+- Click text to reword it in place, then click away or press Escape to write it, and Ctrl+Z to take it back.
+  Dragging text moves its element instead.
 - While rewording, Enter breaks the line in the title or a placeholder, and elsewhere starts a paragraph at the caret, at the level and in the style of the one it splits; Backspace at a paragraph's start, or Delete at its end, joins it to its neighbour.
   Fields such as `${date}` stay as written, and an edit that would cross formatting, such as the edge of a bold run, is refused.
   Typing inside `${section}` renames the section in `presentation.yaml`, and inside a field `fields` defines rewrites its value there, so every slide showing it changes; `${slide}` and numbers from a book take no typing.

@@ -2,7 +2,7 @@
 
 // Mouse edits on the slide view: handles on the selected item, dragging, resizing, and arrow-key nudges that snap to
 // the slide, its areas and placeholders, and other items, a box dragged across the slide that selects several items
-// to move or delete together, rewording text in place on a double click or a click on the selected item, deleting
+// to move or delete together, rewording text in place on a click on it or on the selected item, deleting
 // an element, and reordering slides by dragging them in the sidebar. An edit goes to the
 // server as the values it writes and the source each replaces; the server patches the file, and the page redraws
 // from it, so nothing lives only in the page. The server answers each edit with the edit that writes it back, which
