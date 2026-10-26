@@ -184,6 +184,28 @@ public class ExporterTests
   }
 
   [Fact]
+  public void A_contained_jpeg_is_exported_at_its_own_aspect_ratio()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    folder.Write("photo.jpg", "");
+    File.WriteAllBytes(folder.PathTo("photo.jpg"), Images.Jpeg(200, 100));
+    Exporter exporter = NewExporter();
+    JsonNode item = Json($$"""
+      { "kind": "picture", "properties": { "picture": {{JsonValue.Create(folder.PathTo("photo.jpg")).ToJsonString()}},
+        "frame": [0, 0, 100, 100], "fit": "contain" } }
+      """);
+
+    // Act
+    JsonObject picture = exporter.Picture(item);
+
+    // Assert
+    ShouldMatch(picture["position"], """{ "left": 0, "top": 25 }""");
+    ShouldMatch(picture["size"], """{ "width": 100, "height": 50 }""");
+    picture["lock_aspect_ratio"]!.GetValue<bool>().ShouldBeTrue();
+  }
+
+  [Fact]
   public void A_pictures_stroke_goes_as_its_border()
   {
     // Arrange

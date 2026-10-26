@@ -36,7 +36,7 @@ A `brace` or `bracket` points in its `direction`: `direction: right` opens to th
 | --- | --- |
 | `picture` | A path to a PNG, JPEG, GIF, WebP, or SVG, relative to the file naming it, inside the presentation, its theme, the folder holding the presentation, or the git repository holding it. |
 | `fit` | `contain`, `cover`, or `stretch`; the theme's `picture` base sets the default. |
-| `crop` | `[left, top, right, bottom]` in the image's pixels, trimmed before fitting. |
+| `crop` | `[left, top, right, bottom]`, the pixels trimmed from each of the image's edges before fitting, not the corners of the part kept. |
 | `alt` | Alternative text. |
 | `fill` | An SVG's one color: every fill and stroke in it but `none` takes it, as for an icon. |
 | `stroke` | An outline around the image, `{ color, width, dash }`; the picture's style sets the default. |

@@ -494,8 +494,43 @@ public class LoaderTests
         deck.Write("deck/notes.txt", "secret");
         deck.Write("deck/slides/two.yaml", "layout: content\nelements:\n  - id: leak\n    picture: ../notes.txt\n" +
           "    frame: [40, 100, 40, 40]");
-      }, "isn't a picture" }
+      }, "isn't a picture" },
+    { "a crop wider than its PNG", deck => Cropped(deck, "png", Images.Png(600, 400), "[300, 0, 400, 0]"),
+      "crop trims 700 of photo.png's 600 pixels across" },
+    { "a crop taller than its JPEG", deck => Cropped(deck, "jpg", Images.Jpeg(600, 400), "[0, 100, 0, 300]"),
+      "crop trims 400 of photo.jpg's 400 pixels down" },
+    { "a crop wider than its GIF", deck => Cropped(deck, "gif", Images.Gif(600, 400), "[600, 0, 0, 0]"),
+      "of photo.gif's 600 pixels across" },
+    { "a crop wider than its WebP", deck => Cropped(deck, "webp", Images.WebP(600, 400), "[0, 0, 601, 0]"),
+      "of photo.webp's 600 pixels across" },
+    { "a crop taller than its SVG", deck => Cropped(deck, "svg",
+      "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 60 40\"/>"u8.ToArray(), "[0, 20, 0, 20]"),
+      "of photo.svg's 40 pixels down" },
+    { "a negative crop", deck => Cropped(deck, "png", Images.Png(600, 400), "[-10, 0, 0, 0]"),
+      "crop trims [left, top, right, bottom] pixels from the image's edges, each 0 or more" }
   };
+
+  [Fact]
+  public void A_crop_trimming_part_of_each_edge_loads()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Cropped(deck, "png", Images.Png(600, 400), "[100, 50, 100, 50]");
+
+    // Act
+    Presentation presentation = deck.Load();
+
+    // Assert
+    presentation.Slides.ShouldAllBe(slide => slide.Error == null);
+  }
+
+  private static void Cropped(DeckFixture deck, string extension, byte[] image, string crop)
+  {
+    deck.Write($"deck/media/photo.{extension}", "");
+    File.WriteAllBytes(deck.Folder.PathTo($"deck/media/photo.{extension}"), image);
+    deck.Write("deck/slides/two.yaml", $"layout: content\nelements:\n  - id: photo\n    picture: ../media/photo.{extension}" +
+      $"\n    crop: {crop}\n    frame: [40, 100, 300, 200]");
+  }
 
   [Fact]
   public void A_picture_can_come_from_a_folder_shared_beside_the_presentation()
