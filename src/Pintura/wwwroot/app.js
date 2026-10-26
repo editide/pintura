@@ -853,8 +853,8 @@ document.getElementById('slide-view').addEventListener('click', (event) => {
     selectItem(null);
     return;
   }
-  // Clicking the selected item again rewords its text, as a double click does on any item.
-  const again = selectedNode() === node;
+  // Clicking an item's text rewords it, as PowerPoint does, and so does clicking the selected item again anywhere.
+  const reword = selectedNode() === node || Boolean(event.target.closest('.rewordable .text-flow'));
   const cell = event.target.closest('td');
   const paragraph = cell ? null : event.target.closest('.paragraph');
   const point = event.target.closest('[data-point]');
@@ -867,7 +867,7 @@ document.getElementById('slide-view').addEventListener('click', (event) => {
     cell: cell ? { row: Number(cell.dataset.row), column: Number(cell.dataset.column) } : null,
     point: point ? { series: Number(point.dataset.series), point: Number(point.dataset.point) } : null
   });
-  if (again) {
+  if (reword) {
     startText(event);
   }
 });

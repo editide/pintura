@@ -1249,8 +1249,8 @@ body.ctrl-held #slide-frame [data-trace]:hover {
   cursor: default;
 }
 
-/* Clicking a selected element's text again rewords it. */
-#slide-frame:not(.reviewing) .item.selected.rewordable .text-flow {
+/* Clicking an element's text rewords it; dragging it still moves the element. */
+#slide-frame:not(.reviewing) .item.rewordable .text-flow {
   cursor: text;
 }
 
