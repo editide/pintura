@@ -175,7 +175,7 @@ function sendComment(change, slide, kind = 'edit') {
 // A right-click on the slide opens an editor for a new comment there.
 function startComment(event) {
   const stage = event.target.closest('#slide-frame .stage');
-  if (!stage || state.view !== 'slide' || state.presenting || reviewing() || editingActive()) {
+  if (!stage || state.view !== 'slide' || state.presenting || !commentable() || editingActive()) {
     return;
   }
   event.preventDefault();
