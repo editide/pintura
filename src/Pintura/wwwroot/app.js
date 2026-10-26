@@ -245,7 +245,7 @@ function renderSlide() {
     renderComments(shown, frame, deck.size);
   }
   const drawn = shown || slide;
-  const revision = namedBase() ? `as of ${namedBase()}` : 'before the changes';
+  const revision = `as of ${state.before || removedSlide(slide.id) ? namedBase() : namedHead()}`;
   const caption = [`${drawn.number} of ${deck.slides.length}`, reviewing(slide) && revision,
     state.zoom !== 1 && `${Math.round(state.zoom * 100)}%`];
   document.getElementById('slide-caption').textContent = caption.filter(Boolean).join(' · ');
@@ -815,7 +815,7 @@ async function loadOnce() {
   if (deck.slides.length === 0 && state.deck) {
     return;
   }
-  state.deck = deck;
+  state.deck = compare.after || deck;
   if (!state.current) {
     state.current = decodeURIComponent(location.hash.slice(1)) || null;
   }
@@ -1011,6 +1011,9 @@ document.addEventListener('keydown', (event) => {
     b: () => changesToShow() && flipBefore(),
     c: () => changesToShow() && toggle('changes'),
     d: () => !document.getElementById('status').disabled && toggleChangedOnly(),
+    '[': () => !document.getElementById('slide-history').hidden && stepSlideChanges(-1),
+    ']': () => !document.getElementById('history-newer').disabled &&
+      !document.getElementById('slide-history').hidden && stepSlideChanges(1),
     p: () => !state.presenting && startPresenting(),
     x: () => state.view === 'slide' && toggleDrawing(),
     F5: () => !state.presenting && startPresenting(),
@@ -1370,13 +1373,45 @@ function renderSaving() {
   const versions = document.getElementById('versions-button');
   // A version that failed to compare still shows its picker, to choose another.
   versions.hidden = !comparing() && !compareBase();
-  const lastSave = comparing() ? state.compare.lastSave : null;
-  const name = comparing() ? `v${state.compare.version.number}` : compareBase()?.slice(0, 7);
-  document.getElementById('versions-label').textContent = lastSave ? `Changes in v${lastSave.number}` : `Since ${name}`;
-  versions.title = lastSave ? `Showing the changes saved in v${lastSave.number}: ${lastSave.subject}`
-    : comparing() ? `Showing the changes since ${name}: ${state.compare.version.subject}`
-    : 'Choose a version to show the changes since';
+  document.getElementById('versions-label').textContent = rangeName();
+  const later = state.compare?.head || state.compare?.lastSave;
+  versions.title = !comparing() ? 'Choose a version to show the changes since'
+    : `Showing the changes from ${namedBase()}, ${state.compare.version.subject}, to ${namedHead()}` +
+      (later ? `, ${later.subject}` : '') + (state.compare.head ? '; edits wait for the latest changes' : '');
+  document.getElementById('slide-history').hidden = versions.hidden || state.view !== 'slide' || Boolean(state.layout);
+  document.getElementById('history-newer').disabled = !state.compare?.head;
 }
+
+// Steps the comparison to the version before or after the one shown that changed the slide on screen, each version
+// beside the one before it, so a round of an agent's changes shows apart from the nudges that followed it. Stepping
+// past the newest returns to the latest changes, where edits write.
+async function stepSlideChanges(direction) {
+  const slide = currentSlide()?.id;
+  const from = direction < 0 ? state.compare?.commit || compareBase() : state.compare?.head?.commit;
+  if (!slide || !from) {
+    return;
+  }
+  const query = new URLSearchParams({ slide, [direction < 0 ? 'before' : 'after']: from });
+  const response = await fetch(`api/history?${query}`, { cache: 'no-store' }).catch(() => null);
+  const found = response?.ok ? await response.json() : null;
+  if (!found && direction < 0) {
+    notice(response ? 'No earlier version changed this slide' : "Can't reach the server to step through versions");
+    return;
+  }
+  const newest = found && state.saving && found.head.number === state.saving.next - 1 && !state.saving.unsaved;
+  if (!found || newest) {
+    chooseBase(null);
+  } else {
+    chooseBase(found.base.commit, found.head.commit);
+  }
+  state.before = false;
+  document.getElementById('versions-label').textContent = '…';
+  await load().catch((error) => showError(String(error)));
+  renderToolbar();
+}
+
+document.getElementById('history-older').addEventListener('click', () => stepSlideChanges(-1));
+document.getElementById('history-newer').addEventListener('click', () => stepSlideChanges(1));
 
 function openSave() {
   const menu = document.getElementById('save-menu');
@@ -1592,13 +1627,12 @@ function renderStatus() {
   const text = !state.live ? 'Reconnecting'
     : !comparing() ? 'Live'
     : changed === 0 ? 'No changes'
-    : `${changed} ${changed === 1 ? 'slide' : 'slides'} changed` +
-      (state.compare.lastSave ? ` in v${state.compare.lastSave.number}` : '');
+    : `${changed} ${changed === 1 ? 'slide' : 'slides'} changed`;
   document.getElementById('status-text').textContent = text;
   const button = document.getElementById('status');
   button.disabled = changed === 0;
   button.setAttribute('aria-pressed', String(filteringChanges()));
-  const since = comparing() && namedBase() ? ` since ${baseName()}` : '';
+  const since = comparing() ? sinceBase() : '';
   button.title = changed === 0 ? 'Redraws whenever a file is saved'
     : filteringChanges() ? `Showing only the slides changed${since}; click or press D to show every slide`
     : `Click or press D to show only the slides changed${since}`;

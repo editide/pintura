@@ -749,6 +749,18 @@ main {
   text-overflow: ellipsis;
 }
 
+.slide-history {
+  display: flex;
+}
+
+.slide-history[hidden] {
+  display: none;
+}
+
+.slide-history .tool {
+  padding: 0 2px;
+}
+
 .save-menu {
   position: fixed;
   inset: auto;

@@ -177,7 +177,9 @@ In a git repository, the page shows the latest changes: those since `HEAD`, or w
 The revision its address names pins it instead, as in `http://localhost:5180/?base=main#revenue`.
 The picker beside Save offers the latest changes above the versions of the presentation: the last 50 commits on the current branch that changed it, its theme, or its books, newest first, each numbered from the first as `v1`, `v2`, and on, with its subject and when it was made, under the day it was made.
 Choosing a version writes its commit into the address as `?base=`, and choosing the latest changes clears it.
-The picker names what the page shows, as `Since v12`, or `Changes in v12` for the last save's.
+The picker names both ends of what the page shows, as `v11 → v12`, or `v12 → unsaved` over changes not yet saved.
+In the slide view, the arrows beside it, or `[` and `]`, step through the versions that changed the slide on screen as drawn, each against the version before it, so a round of an agent's changes shows apart from the nudges either side of it.
+A version stepped to is written into the address as `?base=` and `?head=`, and drawn in the working tree's place, so the slide doesn't take edits until stepping past the newest returns to the latest changes.
 
 ## Save a version
 

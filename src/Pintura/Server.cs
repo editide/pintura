@@ -63,7 +63,9 @@ public static partial class PreviewServer
     app.MapPost("/api/comments", (CommentChange change) => Comment(store, change));
     app.MapPost("/api/trace", (TracePayload trace) => Trace(store, trace));
     var comparison = new Comparison(store);
-    app.MapGet("/api/compare", (string? @base) => comparison.Answer(@base));
+    app.MapGet("/api/compare", (string? @base, string? head) => comparison.Answer(@base, head));
+    app.MapGet("/api/history", (string slide, string? before, string? after) =>
+      comparison.Step(slide, before, after));
     app.MapPost("/api/revert", (RevertRequest request) => comparison.Revert(request));
     app.MapGet("/api/versions", () => Results.Json(Revisions.Versions(store.Root), PayloadJson.Options));
     app.MapGet("/api/save", () => Saving(() => Saves.Status(store.Root)));
@@ -748,9 +750,13 @@ public record EditRequest(string? Slide, List<ValueEdit> Edits);
 public record RevertRequest(string Base, string Slide, string? Id = null, string? Owner = null);
 
 /// <summary>The working tree against a revision; with <see cref="LastSave"/>, against the version before that save,
-/// since nothing drawn differs from the save itself.</summary>
+/// since nothing drawn differs from the save itself; with <see cref="Head"/>, that later version drawn as
+/// <see cref="After"/> in the working tree's place.</summary>
 public record ComparePayload(string Base, string Commit, DeckVersion Version, DeckPayload Before, DeckDiff Diff,
-  DeckVersion? LastSave = null);
+  DeckVersion? LastSave = null, DeckVersion? Head = null, DeckPayload? After = null);
+
+/// <summary>A version that changed a slide as drawn, and the version before it.</summary>
+public record SlideStep(DeckVersion Base, DeckVersion Head);
 
 /// <summary>Compares the working tree against a revision for the page. The last two revisions are loaded once per
 /// commit, and the diff again only when the commit or the working tree's model moves, which a line moving without the
@@ -760,7 +766,11 @@ public class Comparison
   private readonly PresentationStore store;
   private readonly object gate = new object();
   private Side[] sides = [];
-  private (string? Base, string Commit, Presentation After, string Json)? answer;
+  private (string? Base, string Commit, string? Head, Presentation After, string Json)? answer;
+  private readonly object historyGate = new object();
+  // The slides each version changed as drawn against the version before it, by the version's commit; commits never
+  // change, so neither do these.
+  private readonly Dictionary<string, HashSet<string>> changedSlides = new Dictionary<string, HashSet<string>>();
 
   public Comparison(PresentationStore store)
   {
@@ -768,36 +778,120 @@ public class Comparison
   }
 
   /// <summary>Without a revision, the changes since the last save, or the changes that save made when there are none,
-  /// so a page left open shows each round as it's saved.</summary>
-  public IResult Answer(string? revision)
+  /// so a page left open shows each round as it's saved. With a head, the changes between two versions.</summary>
+  public IResult Answer(string? revision, string? head = null)
   {
     try
     {
       string commit = Revisions.Commit(store.Root, revision ?? "HEAD");
+      string? headCommit = head is null ? null : Revisions.Commit(store.Root, head);
       lock (gate)
       {
         if (store.Presentation is not Presentation current || store.Deck.Error is not null)
         {
           return Refused("the presentation doesn't load; fix its error first");
         }
-        if (answer is { } last && last.Base == revision && last.Commit == commit && last.After == current)
+        if (answer is { } last && last.Base == revision && last.Commit == commit && last.Head == headCommit &&
+          last.After == current)
         {
           return Results.Text(last.Json, "application/json");
         }
-        ComparePayload payload = Compare(revision ?? "HEAD", commit, current);
-        if (revision is null && payload.Diff.Slides.Count == 0 &&
-          Revisions.Versions(store.Root, 2) is [DeckVersion saved, DeckVersion previous])
+        ComparePayload payload;
+        if (headCommit is not null)
         {
-          payload = Compare(previous.Commit, previous.Commit, current) with { LastSave = saved };
+          Side earlier = Before(revision!, commit);
+          Side later = Before(head!, headCommit);
+          payload = new ComparePayload(revision!, commit, earlier.Version, earlier.Deck,
+            Differ.Compare(earlier.Presentation, later.Presentation), Head: later.Version, After: later.Deck);
+        }
+        else
+        {
+          payload = Compare(revision ?? "HEAD", commit, current);
+          if (revision is null && payload.Diff.Slides.Count == 0 &&
+            Revisions.Versions(store.Root, 2) is [DeckVersion saved, DeckVersion previous])
+          {
+            payload = Compare(previous.Commit, previous.Commit, current) with { LastSave = saved };
+          }
         }
         string json = JsonSerializer.Serialize(payload, PayloadJson.Options);
-        answer = (revision, commit, current, json);
+        answer = (revision, commit, headCommit, current, json);
         return Results.Text(json, "application/json");
       }
     }
     catch (Exception exception) when (exception is InvalidDataException or LoadException)
     {
       return Refused(exception.Message);
+    }
+  }
+
+  /// <summary>The newest version no later than <paramref name="before"/> that changed a slide as drawn, or the oldest
+  /// later than <paramref name="after"/>, with the version before it; not found past either end of the versions.
+  /// </summary>
+  public IResult Step(string slide, string? before, string? after)
+  {
+    try
+    {
+      if ((before is null) == (after is null))
+      {
+        return Refused("name one of before or after", StatusCodes.Status400BadRequest);
+      }
+      string from = Revisions.Commit(store.Root, (before ?? after)!);
+      List<DeckVersion> versions = Revisions.Versions(store.Root);
+      int index = versions.FindIndex(version => version.Commit == from);
+      if (index < 0)
+      {
+        return Refused($"{(before ?? after)![..Math.Min(7, from.Length)]} isn't among the last {versions.Count} " +
+          "versions", StatusCodes.Status404NotFound);
+      }
+      // Newest first, so earlier versions lie at higher indexes, and each version's previous one at the next.
+      IEnumerable<int> candidates = before is not null
+        ? Enumerable.Range(index, versions.Count - 1 - index)
+        : Enumerable.Range(0, index).Reverse();
+      lock (historyGate)
+      {
+        var loaded = new Dictionary<string, Presentation>();
+        foreach (int candidate in candidates)
+        {
+          if (Changed(slide, versions[candidate], versions[candidate + 1], loaded))
+          {
+            return Results.Json(new SlideStep(versions[candidate + 1], versions[candidate]), PayloadJson.Options);
+          }
+        }
+      }
+      return Refused($"no {(before is not null ? "earlier" : "later")} version changed {slide}",
+        StatusCodes.Status404NotFound);
+    }
+    catch (Exception exception) when (exception is InvalidDataException or LoadException)
+    {
+      return Refused(exception.Message);
+    }
+  }
+
+  // Each slide's file draws only that slide, so a version that changed only other slides' files is passed over without
+  // loading it. Called under the history gate.
+  private bool Changed(string slide, DeckVersion version, DeckVersion previous, Dictionary<string, Presentation> loaded)
+  {
+    if (!changedSlides.TryGetValue(version.Commit, out HashSet<string>? changed))
+    {
+      VersionScope scope = Revisions.Scope(store.Root);
+      List<string> files = Revisions.ChangedFiles(scope, previous.Commit, version.Commit);
+      if (files.All(file => scope.Slide(file) is string touched && touched != slide))
+      {
+        return false;
+      }
+      changed = [.. Differ.Compare(Load(previous.Commit), Load(version.Commit)).Slides.Select(entry => entry.Id)];
+      changedSlides[version.Commit] = changed;
+    }
+    return changed.Contains(slide);
+
+    Presentation Load(string commit)
+    {
+      if (!loaded.TryGetValue(commit, out Presentation? presentation))
+      {
+        presentation = Revisions.Load(Revisions.Checkout(store.Root, commit, Directory.GetCurrentDirectory()));
+        loaded[commit] = presentation;
+      }
+      return presentation;
     }
   }
 
@@ -890,7 +984,8 @@ public class Comparison
     return new ComparePayload(revision, commit, side.Version, side.Deck, Differ.Compare(side.Presentation, current));
   }
 
-  // Two, since with nothing unsaved the page compares against the last save and then the version before it.
+  // Three: with nothing unsaved the page compares against the last save and then the version before it, and between
+  // two versions it keeps both.
   private Side Before(string revision, string commit)
   {
     if (sides.FirstOrDefault(side => side.Commit == commit) is Side kept)
@@ -901,7 +996,7 @@ public class Comparison
     Presentation presentation = Revisions.Load(checkout);
     var loaded = new Side(commit, Revisions.Describe(store.Root, commit), presentation,
       PayloadBuilder.Build(presentation, 0, PresentationStore.MediaUrl), PresentationStore.Media(presentation));
-    Volatile.Write(ref sides, [.. sides.TakeLast(1), loaded]);
+    Volatile.Write(ref sides, [.. sides.TakeLast(2), loaded]);
     return loaded;
   }
 
