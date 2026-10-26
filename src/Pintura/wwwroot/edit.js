@@ -1081,19 +1081,26 @@ function splitParagraph() {
   }
   range.deleteContents();
   dropSpaces(range);
+  const bullet = paragraph.querySelector(':scope > .bullet');
+  // A caret before the bullet, as Home leaves it, splits after it, so the bullet stays whole.
+  if (bullet && range.comparePoint(paragraph, [...paragraph.childNodes].indexOf(bullet) + 1) > 0) {
+    range.setStartAfter(bullet);
+    range.collapse(true);
+  }
   const tail = document.createRange();
   tail.setStart(range.startContainer, range.startOffset);
   tail.setEnd(paragraph, paragraph.childNodes.length);
   const moved = tail.extractContents();
   const next = paragraph.cloneNode(false);
-  const bullet = paragraph.querySelector(':scope > .bullet');
   if (bullet) {
     next.append(bullet.cloneNode(true));
   }
   next.append(moved);
+  // A half left empty keeps none of the runs split from the other, such as a bold one, since the file writes what is
+  // typed there in the paragraph's own style, and it would show it in theirs until then.
   for (const half of [paragraph, next]) {
     if (paragraphText(half).length === 0) {
-      half.append('\u200B');
+      half.replaceChildren(...[...half.children].filter((child) => child.classList.contains('bullet')), '\u200B');
     }
   }
   paragraph.after(next);
