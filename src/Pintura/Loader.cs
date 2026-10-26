@@ -1628,7 +1628,10 @@ public partial class PresentationLoader
         }
       }
       fit = Take("fit")?.AsChoice("contain", "cover", "stretch");
-      crop = Take("crop")?.AsNumbers(4, "[left, top, right, bottom] in the image's pixels");
+      if (Take("crop") is Node cropNode)
+      {
+        crop = Crop(cropNode, picture, picturePath);
+      }
       alt = Take("alt")?.AsString();
     }
 
@@ -1694,6 +1697,32 @@ public partial class PresentationLoader
       Origin = entry.Origin.At($"elements.{id}"),
       Origins = origins
     };
+  }
+
+  /// <summary>Reads a crop, refusing one that trims the whole image away, as reading the crop as the corners of the part
+  /// kept does.</summary>
+  private static double[] Crop(Node node, string picture, string path)
+  {
+    const string shape = "[left, top, right, bottom] pixels from the image's edges, each 0 or more";
+    double[] crop = node.AsNumbers(4, $"the {shape}");
+    if (crop.Any(side => side < 0))
+    {
+      throw node.Error($"crop trims {shape}");
+    }
+    if (Exporter.Intrinsic(path) is double[] size)
+    {
+      string name = Path.GetFileName(picture);
+      foreach ((int axis, string direction) in new[] { (0, "across"), (1, "down") })
+      {
+        double trimmed = crop[axis] + crop[axis + 2];
+        if (trimmed >= size[axis])
+        {
+          throw node.Error(string.Create(CultureInfo.InvariantCulture,
+            $"crop trims {trimmed} of {name}'s {size[axis]} pixels {direction}, leaving nothing; it trims {shape}"));
+        }
+      }
+    }
+    return crop;
   }
 
   /// <summary>Refuses data that isn't a CSV file, the only kind a chart or a table reads, judged by the file a link
