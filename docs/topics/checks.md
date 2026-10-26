@@ -11,7 +11,7 @@ It exits 1 when there are errors, and lists warnings without failing.
 | Text | Text running past its frame, or under `fit: shrink` past its insets even shrunk; table rows growing past the bottom of the table's frame. | error |
 | Text | Text shrunk below the theme's `checks: { shrink }` percent; fonts that aren't installed. | warning |
 | Geometry | Table columns wider than the table's frame. | error |
-| Geometry | Elements running off the slide; boxes partly overlapping, where a box wholly inside another is layering; text crossing a chart's axis, data, or legend labels, even inside the chart's frame; an edge within 3pt of the same side of another element or area without meeting it, unless the two share a centre line. None of these count an element marked `decorative: true`. | warning |
+| Geometry | Elements running off the slide; boxes partly overlapping, where a box wholly inside another is layering; text crossing a chart's axis, data, or legend labels, even inside the chart's frame; an edge within 3pt of the same side of another element or area without meeting it, unless the two share a centre line; a picture whose image has empty margins of more than 5% built in, unless it's an icon with a `fill`. Text with no fill or outline has only the edges it's aligned and anchored to, a straight line's ends count along it and its run only against other lines, and a picture's edges are where its image draws, not its frame. None of these count an element marked `decorative: true`. | warning |
 | Consistency | A title or placeholder moved from its layout's frame; text at another size on one slide than the rest of the presentation has for its style and level; the same one-off text properties on three or more slides. | warning |
 | Comments | A comment on a slide or element that no longer exists, or a comments file git doesn't track in a repository. | warning |
 | Export | With `--export`: picture crops, callout tails, text columns, and the other features the export can't reproduce. | warning |
@@ -38,5 +38,6 @@ checks: { shrink: 70 }      # warn when fit: shrink scales text below 70%
 
 - Fixing an overflow by shrinking one box's font: shorten the text, enlarge the box, or set `fit: shrink`.
 - Silencing a near-miss by moving the element a point further: align it exactly, or to an area.
+- Shrinking or nudging a picture's frame around an image's built-in margins: trim the file, so its frame meets what it draws everywhere it's used.
 - Marking content `decorative` to silence a finding: it is for decoration that bleeds or sits under content on purpose.
 - Repeating a one-off on each slide it applies to: name a style in `styles.yaml`, and write `style:` on the slides.

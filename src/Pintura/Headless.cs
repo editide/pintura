@@ -5,7 +5,8 @@ using Microsoft.Playwright;
 
 namespace Pintura;
 
-public record Measurement(List<FontMeasure> Fonts, List<BoxMeasure> Boxes, List<ChartMeasure>? Charts = null);
+public record Measurement(List<FontMeasure> Fonts, List<BoxMeasure> Boxes, List<ChartMeasure>? Charts = null,
+  List<PictureMeasure>? Pictures = null);
 
 public record FontMeasure(string Family, bool Available);
 
@@ -29,6 +30,11 @@ public record BoxMeasure(
 
 /// <summary>The text a chart draws, its axis, data, and legend labels, as the headless page drew it.</summary>
 public record ChartMeasure(string Slide, string Id, List<ChartLabel> Labels);
+
+/// <summary>A picture as the headless page drew it: the image's <c>[x, y, width, height]</c> on the slide, inside its
+/// frame under <c>fit: contain</c>, and the transparent margins built into the image, as fractions of its width and
+/// height, <c>[left, top, right, bottom]</c>; null for a cropped picture.</summary>
+public record PictureMeasure(string Slide, string Id, string Owner, double[] Drawn, double[]? Margins = null);
 
 /// <summary>A chart label's text and its <c>[x, y, width, height]</c> on the slide.</summary>
 public record ChartLabel(string Text, double[] Rect);

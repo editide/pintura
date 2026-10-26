@@ -15,7 +15,7 @@ elements:
     frame: [40, 14, 600, 22]
   - id: logo
     picture: ../media/logo.svg
-    frame: [856, 44, 64, 24]
+    frame: [856, 46, 64, 20]
   - id: rule
     line: { from: [40, 88], to: [920, 88] }
     stroke: { color: accent1, width: 1.5 }

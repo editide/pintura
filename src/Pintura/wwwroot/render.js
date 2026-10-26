@@ -354,6 +354,7 @@ function renderLine(item, parent) {
 
 function renderPicture(item, parent) {
   const node = element('div', 'item picture-item', parent);
+  node.picture = item;
   place(node, item.frame);
   transform(item, node);
   shade(item, node);
@@ -689,6 +690,64 @@ function measureText(stage) {
   return [...stage.querySelectorAll('.item')].map(measureBox).filter(Boolean);
 }
 
+// Where each picture on a drawn stage draws its image, and the transparent margins built into the image, for its
+// edges to be checked where they show. A crop is the margins' fix already, so a cropped picture has none measured.
+async function measurePictures(stage) {
+  return Promise.all([...stage.querySelectorAll('.item.picture-item')].map(async (node) => {
+    const { picture, frame, fit, crop } = node.picture;
+    const [x, y, width, height] = frame;
+    try {
+      const size = await imageSize(picture);
+      const shown = crop ? [size[0] - crop[0] - crop[2], size[1] - crop[1] - crop[3]] : size;
+      const [left, top, drawnWidth, drawnHeight] = fitted(fit, width, height, shown);
+      return {
+        id: node.dataset.id,
+        owner: node.dataset.owner,
+        drawn: [x + left, y + top, drawnWidth, drawnHeight].map((value) => Math.round(value * 10) / 10),
+        margins: crop ? null : await imageMargins(picture, size)
+      };
+    } catch {
+      return null;
+    }
+  })).then((pictures) => pictures.filter(Boolean));
+}
+
+// The image drawn at up to 512 pixels on its long side, enough to place its ink to a fraction of a percent.
+async function imageMargins(url, [width, height]) {
+  const image = new Image();
+  image.src = url;
+  await image.decode();
+  const scale = 512 / Math.max(width, height);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return inkMargins(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+}
+
+// The transparent margins around what an RGBA image draws, as fractions [left, top, right, bottom] of its width and
+// height, or null for a blank one. Near-transparent antialiasing doesn't count as ink.
+function inkMargins(data, width, height) {
+  let [left, top, right, bottom] = [width, height, -1, -1];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * 4 + 3] > 8) {
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+        top = Math.min(top, y);
+        bottom = Math.max(bottom, y);
+      }
+    }
+  }
+  if (right < 0) {
+    return null;
+  }
+  const round = (value) => Math.round(value * 1000) / 1000;
+  return [round(left / width), round(top / height), round((width - 1 - right) / width),
+    round((height - 1 - bottom) / height)];
+}
+
 // Every chart's labels on a drawn stage, for text laid over a chart to be checked against them.
 function measureCharts(stage) {
   return [...stage.querySelectorAll('.item.chart')].map((node) => ({
@@ -699,5 +758,5 @@ function measureCharts(stage) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { countLines, overflow, fitted, shadowFilter };
+  module.exports = { countLines, overflow, fitted, shadowFilter, inkMargins };
 }
