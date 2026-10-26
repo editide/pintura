@@ -241,7 +241,9 @@ function renderSlide() {
     layoutCaption();
     return;
   }
-  if (shown && !shown.error && !reviewing(slide)) {
+  // Comments stay on a version stepped to, so a round of changes reads against the comments that asked for it.
+  const stepped = comparing() && state.compare.head && !state.before && !removedSlide(slide.id);
+  if (shown && !shown.error && (!reviewing(slide) || stepped)) {
     renderComments(shown, frame, deck.size);
   }
   const drawn = shown || slide;
@@ -815,7 +817,7 @@ async function loadOnce() {
   if (deck.slides.length === 0 && state.deck) {
     return;
   }
-  state.deck = compare.after || deck;
+  state.deck = shownDeck(deck, compare.after);
   if (!state.current) {
     state.current = decodeURIComponent(location.hash.slice(1)) || null;
   }

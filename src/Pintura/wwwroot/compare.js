@@ -456,6 +456,12 @@ function reviewing(slide = currentSlide()) {
   return comparing() && (state.before || Boolean(state.compare.head) || Boolean(slide && removedSlide(slide.id)));
 }
 
+// The deck the page draws: a version stepped to in the working tree's place, under the working tree's comments, since
+// those are what's being reviewed against it.
+function shownDeck(deck, after) {
+  return after ? { ...after, comments: deck.comments } : deck;
+}
+
 // The slide as the side showing draws it; null for a slide added since the revision.
 function shownSlide(slide) {
   if (!comparing() || removedSlide(slide.id)) {
@@ -796,5 +802,6 @@ function renderSlideChanges(slide, panel) {
 // #endregion
 
 if (typeof module !== 'undefined') {
-  module.exports = { changeMarks, changedStep, chartParts, textChanges, textDiff, textMarks, versionDay, versionTime };
+  module.exports = { changeMarks, changedStep, chartParts, shownDeck, textChanges, textDiff, textMarks, versionDay,
+    versionTime };
 }

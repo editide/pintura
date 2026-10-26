@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { changeMarks, changedStep, chartParts, textChanges, textDiff, textMarks, versionDay, versionTime } =
+const { changeMarks, changedStep, chartParts, shownDeck, textChanges, textDiff, textMarks, versionDay, versionTime } =
   require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'compare.js'));
 
 function words(...paragraphs) {
@@ -289,4 +289,18 @@ test("a changed table is marked in the cells whose look changed rather than outl
   assert.deepEqual([filled.outline, filled.cells], [false, [{ row: 3, column: 3 }, { row: 4, column: 2 }]]);
   assert.deepEqual([reworded.outline, reworded.cells], [false, []]);
   assert.deepEqual([moved.outline, moved.cells], [true, null]);
+});
+
+test("a version stepped to keeps the working tree's comments, which an agent marks after its round", () => {
+  // Arrange
+  const deck = { slides: [{ id: 'now' }], comments: [{ id: 'c1', slide: 'now', done: 'reworded' }] };
+  const after = { slides: [{ id: 'then' }], comments: [{ id: 'c1', slide: 'now' }] };
+
+  // Act
+  const shown = shownDeck(deck, after);
+
+  // Assert
+  assert.deepEqual(shown.slides, after.slides);
+  assert.deepEqual(shown.comments, deck.comments);
+  assert.equal(shownDeck(deck, null), deck);
 });
