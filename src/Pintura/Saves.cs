@@ -263,7 +263,8 @@ public static class Saves
     List<string> paths = [.. files.Select(path => $":(literal){path}")];
     Check(Revisions.Run(scope.Top, ["add", "-A", "--", .. paths]));
     // Naming the paths commits them alone, leaving whatever else is staged staged.
-    Check(Revisions.Run(scope.Top, [.. Identity(scope.Top), "commit", "-q", "--only", "-m", subject, "--", .. paths]));
+    Check(Revisions.Run(scope.Top, [.. Identity(scope.Top), "commit", "-q", "--only", "-m", subject,
+      "--trailer", $"{Revisions.SavedFrom}: Pintura", "--", .. paths]));
     PageEdits.Forget(scope, root, files);
     return Revisions.Versions(root, 1)[0];
   }

@@ -934,6 +934,15 @@ main {
   font-size: 11.5px;
 }
 
+.version-by-hand {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 .version-when {
   flex: none;
   color: var(--muted);

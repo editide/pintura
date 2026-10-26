@@ -189,6 +189,7 @@ The server keeps the files the page wrote in the repository's git folder, so a r
 Git commits whole files, so a file the page wrote that something else changed too goes with your edits, and the box says so: `Also saves changes you didn't make to slide 5`.
 It shows while your edits differ from `HEAD`, leaving aside the comments, and hides once they don't.
 `Ctrl+S` or a click opens it on a description of your edits, such as `Rearranged slide 4`, which typing replaces and Enter saves as the commit's subject.
+The commit carries a `Saved-from: Pintura` trailer, since agents commit as the same person, and the picker marks those versions `by hand`.
 With edits in more than one place, the box lists each slide, `presentation.yaml`, and the theme, all ticked; untick one to leave its edits unsaved, and the description follows.
 A slide deleted or restored goes with `presentation.yaml`, since a version that lists a slide it lacks doesn't load.
 Outside a repository, or before its first commit, Save takes the whole presentation, leaving out of the files git doesn't have yet all but YAML and the pictures and CSVs the YAML names, so an export or a screenshot left in the folder stays out; outside a repository, it starts one in the presentation's folder.
