@@ -811,9 +811,6 @@ async function loadOnce() {
   }
   state.compare = compare;
   state.saving = saving;
-  if (!comparing()) {
-    state.before = false;
-  }
   showError(deck.error);
   // A presentation that failed to load keeps showing its last good slides beneath the error.
   if (deck.slides.length === 0 && state.deck) {
@@ -824,6 +821,7 @@ async function loadOnce() {
     state.current = decodeURIComponent(location.hash.slice(1)) || null;
   }
   reselect();
+  unflipUnchanged();
   renderSidebar();
   renderMain();
   loadDetail();
