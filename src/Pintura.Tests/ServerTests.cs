@@ -194,6 +194,22 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task A_version_stepped_to_names_the_slides_it_draws_as_the_working_tree_does()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    string[] commits = CommitVersions(deck, ("deck/slides/two.yaml", "Second"), ("deck/slides/one.yaml", "Third"));
+    await using Served served = await Served.Start(deck);
+
+    // Act
+    System.Text.Json.JsonElement compare = await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+      $"{served.Url}/api/compare?base={commits[0]}&head={commits[1]}");
+
+    // Assert
+    compare.GetProperty("latest").EnumerateArray().Select(id => id.GetString()).ShouldBe(["two"]);
+  }
+
+  [Fact]
   public async Task A_slide_s_history_counts_a_theme_change_that_restyles_it()
   {
     // Arrange

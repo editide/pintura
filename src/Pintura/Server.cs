@@ -752,8 +752,10 @@ public record RevertRequest(string Base, string Slide, string? Id = null, string
 /// <summary>The working tree against a revision; with <see cref="LastSave"/>, against the version before that save,
 /// since nothing drawn differs from the save itself; with <see cref="Head"/>, that later version drawn as
 /// <see cref="After"/> in the working tree's place.</summary>
+/// <summary>The changes since a version, or between two; <see cref="Latest"/> names the slides a later version draws as
+/// the working tree does, which take comments though the version shows in its place.</summary>
 public record ComparePayload(string Base, string Commit, DeckVersion Version, DeckPayload Before, DeckDiff Diff,
-  DeckVersion? LastSave = null, DeckVersion? Head = null, DeckPayload? After = null);
+  DeckVersion? LastSave = null, DeckVersion? Head = null, DeckPayload? After = null, List<string>? Latest = null);
 
 /// <summary>A version that changed a slide as drawn, and the version before it.</summary>
 public record SlideStep(DeckVersion Base, DeckVersion Head);
@@ -801,8 +803,11 @@ public class Comparison
         {
           Side earlier = Before(revision!, commit);
           Side later = Before(head!, headCommit);
+          HashSet<string> since = [.. Differ.Compare(later.Presentation, current).Slides
+            .Where(slide => slide.Status != "moved").Select(slide => slide.Id)];
           payload = new ComparePayload(revision!, commit, earlier.Version, earlier.Deck,
-            Differ.Compare(earlier.Presentation, later.Presentation), Head: later.Version, After: later.Deck);
+            Differ.Compare(earlier.Presentation, later.Presentation), Head: later.Version, After: later.Deck,
+            Latest: [.. later.Presentation.Slides.Select(slide => slide.Id).Where(id => !since.Contains(id))]);
         }
         else
         {

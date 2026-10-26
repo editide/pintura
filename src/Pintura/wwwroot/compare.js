@@ -456,6 +456,11 @@ function reviewing(slide = currentSlide()) {
   return comparing() && (state.before || Boolean(state.compare.head) || Boolean(slide && removedSlide(slide.id)));
 }
 
+// Whether the slide on screen takes comments: one a version shows only while the working tree draws it the same.
+function commentable(slide = currentSlide()) {
+  return !reviewing(slide) || Boolean(state.compare.head && !state.before && state.compare.latest?.includes(slide.id));
+}
+
 // The deck the page draws: a version stepped to in the working tree's place, under the working tree's comments, since
 // those are what's being reviewed against it.
 function shownDeck(deck, after) {
