@@ -33,6 +33,9 @@ public static class Checks
   private const double OverflowTolerance = 0.5;
   // Edges this close meet, since the mouse rounds to whole points.
   private const double Meets = 0.5;
+  /// <summary>Transparent margin, as a fraction of the image's side, beyond which a picture's frame visibly misses
+  /// what it draws.</summary>
+  private const double BuiltInMargin = 0.05;
   private const double NearMiss = 3;
   // Below this many other slides agreeing, there is no rest of the presentation for one slide to differ from.
   private const int Agreeing = 2;
@@ -253,16 +256,20 @@ public static class Checks
     Dictionary<(string, string), BoxMeasure> measured = (measurement?.Boxes ?? [])
       .GroupBy(box => (box.Slide, box.Id))
       .ToDictionary(group => group.Key, group => group.First());
+    Dictionary<(string, string), PictureMeasure> pictures = (measurement?.Pictures ?? [])
+      .GroupBy(picture => (picture.Slide, picture.Id))
+      .ToDictionary(group => group.Key, group => group.First());
     var candidates = new List<Candidate>();
     foreach (Slide slide in presentation.Slides.Where(slide => slide.Error is null))
     {
-      List<Placed> items = Place(presentation, slide, measured);
+      List<Placed> items = Place(presentation, slide, measured, pictures);
       List<Placed> areas = Areas(presentation.Theme, slide);
       candidates.AddRange(WideTables(presentation, slide));
       candidates.AddRange(OffSlide(presentation, slide, items));
       candidates.AddRange(Overlaps(slide, items));
       candidates.AddRange(ChartLabels(slide, items, measurement));
       candidates.AddRange(NearMisses(slide, items, areas));
+      candidates.AddRange(Margins(presentation, slide, items, pictures));
     }
     return Collapse(candidates);
   }
@@ -428,6 +435,39 @@ public static class Checks
     }
   }
 
+  /// <summary>Pictures whose image has transparent margins built in, so their frame, and anything aligned to it,
+  /// misses what they draw. An icon, an SVG given a fill, keeps the padding its set draws every icon with.</summary>
+  private static IEnumerable<Candidate> Margins(Presentation presentation, Slide slide, List<Placed> items,
+    Dictionary<(string, string), PictureMeasure> pictures)
+  {
+    foreach (SceneItem item in SceneBuilder.Build(presentation, slide).Items
+      .Where(item => item.Kind == "picture" && !item.Properties.ContainsKey("fill")))
+    {
+      if (pictures.GetValueOrDefault((slide.Id, item.Id))?.Margins is not [double left, double top, double right,
+        double bottom] || items.FirstOrDefault(placed => placed.Id == item.Id) is not { } placed)
+      {
+        continue;
+      }
+      static IEnumerable<string> Sides(string dimension, (double Margin, string Side)[] sides)
+      {
+        return sides.Where(side => side.Margin > BuiltInMargin)
+          .Select((side, index) => $"{Math.Round(side.Margin * 100)}%{(index == 0 ? $" of its {dimension}" : "")} " +
+            side.Side);
+      }
+      List<string> parts = [
+        .. Sides("width", [(left, "on the left"), (right, "on the right")]),
+        .. Sides("height", [(top, "at the top"), (bottom, "at the bottom")])
+      ];
+      if (parts.Count > 0)
+      {
+        string sides = parts.Count == 1 ? parts[0] : $"{string.Join(", ", parts.SkipLast(1))} and {parts[^1]}";
+        object file = item.Properties["picture"].Value;
+        yield return placed.Report(slide, $"margins/{file}", "geometry",
+          $"{file} has empty margins built in, {sides}, so its frame doesn't meet what it draws; trim the file");
+      }
+    }
+  }
+
   /// <summary>The smallest item an item is layered inside, such as a chart under a highlight. Its edges follow what
   /// it sits on, so it only lines up with that item and others layered on it.</summary>
   private static Placed? Container(Placed item, List<Placed> items)
@@ -438,7 +478,7 @@ public static class Checks
   }
 
   private static List<Placed> Place(Presentation presentation, Slide slide,
-    Dictionary<(string, string), BoxMeasure> measured)
+    Dictionary<(string, string), BoxMeasure> measured, Dictionary<(string, string), PictureMeasure> pictures)
   {
     Layout layout = presentation.Theme.Layouts[slide.Layout];
     var placed = new List<Placed>();
@@ -468,7 +508,7 @@ public static class Checks
       {
         continue;
       }
-      double[] rect = [.. ((Frame)frame.Value).Rect];
+      double[] rect = [.. pictures.GetValueOrDefault((slide.Id, item.Id))?.Drawn ?? ((Frame)frame.Value).Rect];
       if (measured.GetValueOrDefault((slide.Id, item.Id))?.Height is double grown)
       {
         rect[3] = grown;
@@ -478,10 +518,41 @@ public static class Checks
       {
         Rotate = rotate % 360,
         Grown = measured.GetValueOrDefault((slide.Id, item.Id))?.Height is not null,
+        Sides = AnchoredSides(item),
         Tail = item.Properties.TryGetValue("tail", out Resolved? tail) ? (double[])tail.Value : null
       });
     }
     return placed;
+  }
+
+  /// <summary>The sides of a text box with no fill or outline that its text lines up on: the side its paragraphs
+  /// align to and the one it's anchored to, since the frame's other edges are invisible and its text ragged against
+  /// them. Null for a box that draws, whose every edge shows.</summary>
+  private static HashSet<string>? AnchoredSides(SceneItem item)
+  {
+    bool painted = item.Properties.TryGetValue("fill", out Resolved? fill) && fill.Value is Color { IsNone: false };
+    bool outlined = item.Properties.ContainsKey("stroke.color") && item.Properties.ContainsKey("stroke.width");
+    if (item.Paragraphs is null || item.Kind == "table" || painted || outlined)
+    {
+      return null;
+    }
+    var sides = new HashSet<string>();
+    foreach (SceneParagraph paragraph in item.Paragraphs)
+    {
+      string align = paragraph.Properties.TryGetValue("align", out Resolved? value) ? (string)value.Value : "left";
+      sides.UnionWith(align switch
+      {
+        "center" => [],
+        "justify" => ["left", "right"],
+        _ => [align]
+      });
+    }
+    string valign = item.Properties.TryGetValue("valign", out Resolved? anchor) ? (string)anchor.Value : "top";
+    if (valign != "middle")
+    {
+      sides.Add(valign);
+    }
+    return sides;
   }
 
   private static List<Placed> Areas(Theme theme, Slide slide)
@@ -886,12 +957,22 @@ public static class Checks
     return $"[{string.Join(", ", numbers.Select(Points))}]";
   }
 
-  /// <summary>A line's endpoint is every side at once, since it can align with any of them.</summary>
+  /// <summary>A side of a box, or where a line is: <c>point</c> for an end along the line, which meets anything, and
+  /// <c>across</c> for the height of a horizontal line or the x of a vertical one, which only lines up with other
+  /// lines, since it is the line's centre rather than an edge.</summary>
   private record Edge(string Name, bool Vertical, double At, string Side)
   {
     public bool Matches(Edge other)
     {
-      return Vertical == other.Vertical && (Side == other.Side || Side == "point" || other.Side == "point");
+      if (Vertical != other.Vertical)
+      {
+        return false;
+      }
+      if (Side == "across" || other.Side == "across")
+      {
+        return Side is "across" or "point" && other.Side is "across" or "point";
+      }
+      return Side == other.Side || Side == "point" || other.Side == "point";
     }
   }
 
@@ -903,8 +984,11 @@ public static class Checks
     public double Rotate { get; init; }
     /// <summary>A <c>grow</c> box's bottom follows its text rather than a number anyone wrote.</summary>
     public bool Grown { get; init; }
+    /// <summary>The only sides whose edges show, for text with nothing drawn around it; null for all four.</summary>
+    public HashSet<string>? Sides { get; init; }
 
     public bool IsLine => Line is not null;
+    private bool Shows(string side) => Sides?.Contains(side) != false;
     public bool Rotated => Rotate != 0;
     public double Left => Math.Min(Rect[0], Rect[0] + Rect[2]);
     public double Top => Math.Min(Rect[1], Rect[1] + Rect[3]);
@@ -949,16 +1033,27 @@ public static class Checks
     {
       if (Line is [double[] start, double[] end])
       {
-        yield return new Edge("start", true, start[0], "point");
-        yield return new Edge("start", false, start[1], "point");
-        yield return new Edge("end", true, end[0], "point");
-        yield return new Edge("end", false, end[1], "point");
+        string x = start[0] == end[0] ? "across" : "point";
+        string y = start[1] == end[1] ? "across" : "point";
+        yield return new Edge("start", true, start[0], x);
+        yield return new Edge("start", false, start[1], y);
+        yield return new Edge("end", true, end[0], x);
+        yield return new Edge("end", false, end[1], y);
         yield break;
       }
-      yield return new Edge("left edge", true, Left, "left");
-      yield return new Edge("right edge", true, Right, "right");
-      yield return new Edge("top edge", false, Top, "top");
-      if (!Grown)
+      if (Shows("left"))
+      {
+        yield return new Edge("left edge", true, Left, "left");
+      }
+      if (Shows("right"))
+      {
+        yield return new Edge("right edge", true, Right, "right");
+      }
+      if (Shows("top"))
+      {
+        yield return new Edge("top edge", false, Top, "top");
+      }
+      if (!Grown && Shows("bottom"))
       {
         yield return new Edge("bottom edge", false, Bottom, "bottom");
       }

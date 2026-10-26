@@ -444,6 +444,215 @@ public class CheckTests
   }
 
   [Fact]
+  public void Text_edges_its_alignment_leaves_ragged_are_not_near_misses()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: head
+          text: A centred head
+          align: center
+          valign: middle
+          frame: [50, 140, 240, 20]
+        - id: badge
+          shape: ellipse
+          frame: [52, 170, 30, 30]
+        - id: label
+          text: Left-aligned label
+          frame: [400, 140, 238, 40]
+        - id: note
+          text: Another left-aligned note
+          frame: [400, 200, 240, 42]
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    findings.ShouldBeEmpty();
+  }
+
+  [Fact]
+  public void Text_edges_its_alignment_anchors_are_still_near_misses()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: badge
+          shape: ellipse
+          frame: [400, 100, 30, 30]
+        - id: label
+          text: Left-aligned label
+          frame: [402, 140, 238, 40]
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Where.ShouldBe("two/label");
+    finding.Message.ShouldBe("left edge at x 402 is 2pt from badge's left edge at x 400");
+  }
+
+  [Fact]
+  public void Text_in_a_box_it_draws_keeps_every_edge()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: badge
+          shape: ellipse
+          frame: [52, 100, 30, 30]
+        - id: band
+          text: A filled band
+          align: center
+          fill: light2
+          frame: [50, 140, 240, 20]
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    findings.Select(finding => finding.Where).ShouldBe(["two/band"]);
+  }
+
+  [Fact]
+  public void A_straight_lines_run_is_compared_only_with_other_lines()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: box
+          shape: rectangle
+          frame: [365, 256, 200, 60]
+        - id: arrow
+          line: { from: [300, 254], to: [365, 254] }
+        - id: label
+          shape: rectangle
+          text: Beside the arrow
+          frame: [600, 140, 120, 20]
+        - id: other_arrow
+          line: { from: [600, 162], to: [700, 162] }
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    findings.ShouldBeEmpty();
+  }
+
+  [Fact]
+  public void A_straight_line_ending_short_of_a_box_or_off_another_line_is_a_near_miss()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: box
+          shape: rectangle
+          frame: [400, 300, 200, 60]
+        - id: down
+          line: { from: [500, 200], to: [500, 298] }
+        - id: across
+          line: { from: [100, 150], to: [300, 150] }
+        - id: below
+          line: { from: [320, 152], to: [380, 152] }
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    findings.Select(finding => $"{finding.Where}: {finding.Message}").ShouldBe([
+      "two/down: end at y 298 is 2pt from box's top edge at y 300",
+      "two/below: start at y 152 is 2pt from across's start at y 150; end at y 152 is 2pt from across's start at y 150"
+    ]);
+  }
+
+  [Fact]
+  public void A_contained_picture_is_placed_where_its_image_draws_rather_than_by_its_frame()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/media/logo.svg", """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 41"/>""");
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: logo
+          picture: ../media/logo.svg
+          frame: [371.5, 224, 217, 41]
+        - id: framed
+          shape: rectangle
+          frame: [373, 300, 140, 30]
+        - id: drawn
+          shape: rectangle
+          frame: [390, 360, 100, 30]
+      """);
+    var measurement = new Measurement([], [], Pictures: [new PictureMeasure("two", "logo", "slide", [392, 224, 176, 41])]);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load(), measurement);
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Where.ShouldBe("two/drawn");
+    finding.Message.ShouldBe("left edge at x 390 is 2pt from logo's left edge at x 392");
+  }
+
+  [Fact]
+  public void A_picture_whose_image_has_empty_margins_built_in_wants_trimming()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/media/logo.svg", """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40"/>""");
+    deck.Write("deck/media/icon.svg", """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>""");
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: logo
+          picture: ../media/logo.svg
+          frame: [40, 100, 100, 40]
+        - id: icon
+          picture: ../media/icon.svg
+          fill: accent1
+          frame: [40, 200, 24, 24]
+      """);
+    var measurement = new Measurement([], [], Pictures:
+    [
+      new PictureMeasure("two", "logo", "slide", [40, 100, 100, 40], [0.037, 0.193, 0.038, 0.253]),
+      new PictureMeasure("two", "icon", "slide", [40, 200, 24, 24], [0.1, 0.1, 0.1, 0.1])
+    ]);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load(), measurement);
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Where.ShouldBe("two/logo");
+    finding.Message.ShouldBe("../media/logo.svg has empty margins built in, 19% of its height at the top and 25% at " +
+      "the bottom, so its frame doesn't meet what it draws; trim the file");
+  }
+
+  [Fact]
   public void Text_inside_a_charts_frame_is_reported_where_its_lines_cross_the_charts_labels()
   {
     // Arrange

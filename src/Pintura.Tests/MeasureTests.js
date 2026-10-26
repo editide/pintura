@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { countLines, overflow, fitted, shadowFilter } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
+const { countLines, overflow, fitted, shadowFilter, inkMargins } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
 
 test('runs side by side on one line count once', () => {
   // Arrange
@@ -159,4 +159,49 @@ test('a shadow falls toward its angle on the slide, however its item is rotated'
   // Assert
   assert.equal(upright, 'drop-shadow(0px 3px 4px rgba(27, 27, 27, 0.4))');
   assert.equal(rotated, 'drop-shadow(3px 0px 4px rgba(27, 27, 27, 0.4))');
+});
+
+// An RGBA image of the given size, opaque inside [left, top, right, bottom) and transparent around it.
+function image(width, height, [left, top, right, bottom]) {
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = top; y < bottom; y++) {
+    for (let x = left; x < right; x++) {
+      data[(y * width + x) * 4 + 3] = 255;
+    }
+  }
+  return data;
+}
+
+test("an image's transparent margins are fractions of its width and height", () => {
+  // Arrange
+  const data = image(100, 40, [4, 8, 96, 30]);
+
+  // Act
+  const margins = inkMargins(data, 100, 40);
+
+  // Assert
+  assert.deepEqual(margins, [0.04, 0.2, 0.04, 0.25]);
+});
+
+test("faint antialiasing at an image's edge is not ink", () => {
+  // Arrange
+  const data = image(10, 10, [2, 2, 8, 8]);
+  data[3] = 4;
+
+  // Act
+  const margins = inkMargins(data, 10, 10);
+
+  // Assert
+  assert.deepEqual(margins, [0.2, 0.2, 0.2, 0.2]);
+});
+
+test('a blank image has no margins to report', () => {
+  // Arrange
+  const data = new Uint8ClampedArray(10 * 10 * 4);
+
+  // Act
+  const margins = inkMargins(data, 10, 10);
+
+  // Assert
+  assert.equal(margins, null);
 });

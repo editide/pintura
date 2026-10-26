@@ -92,7 +92,9 @@ async function measure(ids) {
   return {
     fonts: families(deck).map((family) => ({ family, available: fontAvailable(family) })),
     boxes: stages.flatMap(([slide, stage]) => measureText(stage).map((box) => ({ slide, ...box }))),
-    charts: stages.flatMap(([slide, stage]) => measureCharts(stage).map((chart) => ({ slide, ...chart })))
+    charts: stages.flatMap(([slide, stage]) => measureCharts(stage).map((chart) => ({ slide, ...chart }))),
+    pictures: (await Promise.all(stages.map(async ([slide, stage]) =>
+      (await measurePictures(stage)).map((picture) => ({ slide, ...picture }))))).flat()
   };
 }
 

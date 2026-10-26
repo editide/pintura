@@ -10,7 +10,7 @@ placeholders:
 elements:
   - id: logo
     picture: ../media/logo-white.svg
-    frame: [60, 60, 120, 40]
+    frame: [60, 63.3, 106.7, 33.3]
   - id: bar
     shape: rectangle
     frame: [60, 140, 80, 4]

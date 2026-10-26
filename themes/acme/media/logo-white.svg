@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 24" preserveAspectRatio="xMinYMid meet">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 2 64 20" preserveAspectRatio="xMinYMid meet">
   <path d="M0 22 L9 2 L18 22 Z" fill="#FFFFFF"/>
   <path d="M6 22 L9 15 L12 22 Z" fill="#F2A541"/>
   <text x="22" y="18" font-family="Arial" font-weight="700" font-size="14" fill="#FFFFFF">ACME</text>
