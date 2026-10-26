@@ -1028,10 +1028,32 @@ function textKey(event) {
     }
   } else if ((event.key === 'Backspace' || event.key === 'Delete') && joinParagraphs(event.key === 'Delete')) {
     event.preventDefault();
+  } else if (locked && (event.key === 'Backspace' || event.key === 'Delete') &&
+    !leaveField(locked, event.key === 'Delete')) {
+    event.preventDefault();
+    notice(lockedField(locked));
   } else if (event.key === 'Escape') {
     event.preventDefault();
     finishText(true);
   }
+}
+
+// A caret at the start of a field taking no typing, before Backspace, or at its end, before Delete, moves out past the
+// character holding the caret there, so the key takes the text beside the field, which the browser won't from inside
+// it. True when it moved.
+function leaveField(span, forward) {
+  const selection = getSelection();
+  const at = selection.isCollapsed ? fieldOffset(span, selection.anchorNode, selection.anchorOffset, true) : null;
+  if (at !== (forward ? fieldText(span).length : 0)) {
+    return false;
+  }
+  const holder = forward ? span.nextSibling : span.previousSibling;
+  if (holder?.nodeType !== Node.TEXT_NODE) {
+    return false;
+  }
+  const held = forward ? holder.data.startsWith('​') : holder.data.endsWith('​');
+  selection.collapse(holder, forward ? Number(held) : holder.length - Number(held));
+  return true;
 }
 
 function breakLine() {
