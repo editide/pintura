@@ -13,7 +13,8 @@ public record FontMeasure(string Family, bool Available);
 /// <summary>A text box or table as the headless page drew it. Overflow is in points past the frame; scale is the
 /// shrink applied under <c>fit: shrink</c>, and height the grown height under <c>fit: grow</c> or a table's height.
 /// A table's paragraphs are its cells' line counts, row by row, and its rows their heights. A text box's ink is each
-/// line of its text as drawn, <c>[x, y, width, height]</c> on the slide.</summary>
+/// line of its text as drawn, <c>[x, y, width, height]</c> on the slide. Tight is how far unfitted wrapped text that fits
+/// would run past the frame were it set 1% narrower, as another renderer's rounding may set it.</summary>
 public record BoxMeasure(
   string Slide,
   string Id,
@@ -26,7 +27,8 @@ public record BoxMeasure(
   double? Height,
   string Kind = "text",
   double[]? Rows = null,
-  double[][]? Ink = null);
+  double[][]? Ink = null,
+  double? Tight = null);
 
 /// <summary>The text a chart draws, its axis, data, and legend labels, as the headless page drew it.</summary>
 public record ChartMeasure(string Slide, string Id, List<ChartLabel> Labels);

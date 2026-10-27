@@ -221,6 +221,12 @@ public static class Checks
             $"{(box.Lines == 1 ? "line" : "lines")}";
         candidates.Add(BoxCandidate(box, "error", "overflow", message, box.Overflow));
       }
+      else if (box.Tight > OverflowTolerance)
+      {
+        candidates.Add(BoxCandidate(box, "warning", "tight", "text barely fits its frame's width: set 1% wider, as " +
+          $"another browser or PowerPoint may, it wraps {{up to }}{Points(box.Tight.Value)}pt past the frame",
+          box.Tight.Value));
+      }
       else if (shrinkLimit is double limit && box.Scale is double scale && scale * 100 < limit - 0.05)
       {
         candidates.Add(BoxCandidate(box, "warning", "shrink",

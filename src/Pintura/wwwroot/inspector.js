@@ -871,6 +871,9 @@ function fillMeter(node, box, card) {
   bar.style.width = `${share}%`;
   fact(`Text fills ${share}% of the box`, label);
   fact(`${Math.max(0, Math.round(use.room - use.text))} pt spare`, label);
+  if (box.tight > 0.5) {
+    fact(`Barely fits across: 1% wider wraps ${box.tight} pt past the box`, label).classList.add('problem');
+  }
 }
 
 // The text's height and the room inside the box's insets, in points.

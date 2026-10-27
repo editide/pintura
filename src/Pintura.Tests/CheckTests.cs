@@ -61,6 +61,36 @@ public class CheckTests
   }
 
   [Fact]
+  public void Text_that_would_wrap_past_its_frame_set_a_hair_wider_is_a_warning()
+  {
+    // Arrange
+    var measurement = new Measurement([], [Box("none", 0) with { Lines = 1, Paragraphs = [1], Tight = 5.4 }]);
+
+    // Act
+    List<Finding> findings = Checks.Text(measurement, new FontSetting(false, false));
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Level.ShouldBe("warning");
+    finding.Where.ShouldBe("revenue/takeaway");
+    finding.Message.ShouldBe("text barely fits its frame's width: set 1% wider, as another browser or PowerPoint " +
+      "may, it wraps 5.4pt past the frame");
+  }
+
+  [Fact]
+  public void Text_with_room_to_spare_across_is_not_tight()
+  {
+    // Arrange
+    var measurement = new Measurement([], [Box("none", 0) with { Tight = 0.3 }]);
+
+    // Act
+    List<Finding> findings = Checks.Text(measurement, new FontSetting(false, false));
+
+    // Assert
+    findings.ShouldBeEmpty();
+  }
+
+  [Fact]
   public void Shrunk_text_that_still_overflows_names_its_scale()
   {
     // Arrange
