@@ -673,24 +673,45 @@ function measureBox(node) {
   const style = getComputedStyle(box);
   const frame = { top: 0, bottom: box.clientHeight };
   const content = { top: parseFloat(style.paddingTop), bottom: box.clientHeight - parseFloat(style.paddingBottom) };
-  const flow = box.firstChild.getBoundingClientRect();
-  const top = (flow.top - box.getBoundingClientRect().top) / scale;
-  const text = { top, bottom: top + flow.height / scale };
+  const text = textExtent(box, scale);
+  const fit = box.dataset.fit;
+  const past = overflow(fit, text, frame, content);
   const paragraphs = [...box.querySelectorAll('.paragraph')].map((paragraph) => countLines(textRects(paragraph)));
   const ink = [...box.querySelectorAll('.paragraph')].flatMap(textRects).filter((rect) => rect.width > 0)
     .map((rect) => onSlide(rect, stage));
-  const fit = box.dataset.fit;
   return {
     id: node.dataset.id,
     owner: node.dataset.owner,
     fit,
     lines: paragraphs.reduce((sum, lines) => sum + lines, 0),
     paragraphs,
-    overflow: overflow(fit, text, frame, content),
+    overflow: past,
     scale: fit === 'shrink' ? parseFloat(box.style.getPropertyValue('--fit')) : undefined,
     height: fit === 'grow' ? Math.round(node.getBoundingClientRect().height / scale * 10) / 10 : undefined,
-    ink
+    ink,
+    tight: fit === 'none' && !box.classList.contains('unwrapped') && past === 0
+      ? narrowed(box, scale, (text) => overflow(fit, text, frame, content)) : undefined
   };
+}
+
+// The top and bottom of a box's text, in points from the top of its box.
+function textExtent(box, scale) {
+  const flow = box.firstChild.getBoundingClientRect();
+  const top = (flow.top - box.getBoundingClientRect().top) / scale;
+  return { top, bottom: top + flow.height / scale };
+}
+
+// How far the text would run past its frame set 1% narrower. Browsers and PowerPoint round glyph advances
+// differently, so text that fits by less than that wraps on some of them.
+function narrowed(box, scale, past) {
+  const style = getComputedStyle(box);
+  const right = parseFloat(style.paddingRight);
+  const room = box.clientWidth - parseFloat(style.paddingLeft) - right;
+  const inline = box.style.paddingRight;
+  box.style.paddingRight = `${right + room * 0.01}px`;
+  const result = past(textExtent(box, scale));
+  box.style.paddingRight = inline;
+  return result;
 }
 
 // A drawn rectangle as [x, y, width, height] in points on the slide.
