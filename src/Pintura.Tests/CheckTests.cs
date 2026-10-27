@@ -91,6 +91,36 @@ public class CheckTests
   }
 
   [Fact]
+  public void A_paragraph_wrapping_onto_a_line_of_one_or_two_words_is_a_warning_quoting_it()
+  {
+    // Arrange
+    var measurement = new Measurement([], [Box("none", 0) with { Runts = [new Runt(1, "by Europe")] }]);
+
+    // Act
+    List<Finding> findings = Checks.Text(measurement, new FontSetting(false, false));
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Level.ShouldBe("warning");
+    finding.Where.ShouldBe("revenue/takeaway");
+    finding.Message.ShouldBe("paragraph 2 wraps onto a last line of two words, \"by Europe\"");
+  }
+
+  [Fact]
+  public void A_box_of_one_paragraph_wrapping_onto_one_word_names_no_paragraph()
+  {
+    // Arrange
+    var measurement = new Measurement([],
+      [Box("none", 0) with { Paragraphs = [2], Runts = [new Runt(0, "Europe")] }]);
+
+    // Act
+    List<Finding> findings = Checks.Text(measurement, new FontSetting(false, false));
+
+    // Assert
+    findings.ShouldHaveSingleItem().Message.ShouldBe("text wraps onto a last line of one word, \"Europe\"");
+  }
+
+  [Fact]
   public void Shrunk_text_that_still_overflows_names_its_scale()
   {
     // Arrange

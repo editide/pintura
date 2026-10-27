@@ -14,7 +14,8 @@ public record FontMeasure(string Family, bool Available);
 /// shrink applied under <c>fit: shrink</c>, and height the grown height under <c>fit: grow</c> or a table's height.
 /// A table's paragraphs are its cells' line counts, row by row, and its rows their heights. A text box's ink is each
 /// line of its text as drawn, <c>[x, y, width, height]</c> on the slide. Tight is how far unfitted wrapped text that fits
-/// would run past the frame were it set 1% narrower, as another renderer's rounding may set it.</summary>
+/// would run past the frame were it set 1% narrower, as another renderer's rounding may set it. Runts are the
+/// paragraphs whose wrapping leaves a last line of two words or fewer.</summary>
 public record BoxMeasure(
   string Slide,
   string Id,
@@ -28,7 +29,11 @@ public record BoxMeasure(
   string Kind = "text",
   double[]? Rows = null,
   double[][]? Ink = null,
-  double? Tight = null);
+  double? Tight = null,
+  List<Runt>? Runts = null);
+
+/// <summary>A paragraph's short last line: its index in the box and its text.</summary>
+public record Runt(int Paragraph, string Text);
 
 /// <summary>The text a chart draws, its axis, data, and legend labels, as the headless page drew it.</summary>
 public record ChartMeasure(string Slide, string Id, List<ChartLabel> Labels);

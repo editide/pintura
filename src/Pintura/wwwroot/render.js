@@ -690,8 +690,69 @@ function measureBox(node) {
     height: fit === 'grow' ? Math.round(node.getBoundingClientRect().height / scale * 10) / 10 : undefined,
     ink,
     tight: fit === 'none' && !box.classList.contains('unwrapped') && past === 0
-      ? narrowed(box, scale, (text) => overflow(fit, text, frame, content)) : undefined
+      ? narrowed(box, scale, (text) => overflow(fit, text, frame, content)) : undefined,
+    runts: [...box.querySelectorAll('.paragraph')].map(runt).filter(Boolean)
   };
+}
+
+// A paragraph's last line when wrapping leaves it two words or fewer.
+function runt(paragraph) {
+  const characters = [];
+  const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (node) => node.classList?.contains('bullet') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+  });
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeName === 'BR') {
+      characters.push({ character: '\n' });
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+      let offset = 0;
+      for (const character of node.data) {
+        if (character !== '\u200B') {
+          characters.push({ character, node, offset });
+        }
+        offset += character.length;
+      }
+    }
+  }
+  const text = characters.map((entry) => entry.character).join('');
+  const range = document.createRange();
+  const rect = (index) => {
+    range.setStart(characters[index].node, characters[index].offset);
+    range.setEnd(characters[index].node, characters[index].offset + characters[index].character.length);
+    return range.getBoundingClientRect();
+  };
+  const end = text.replace(/[ \t\n]+$/, '').length;
+  if (end === 0) {
+    return null;
+  }
+  const last = rect(end - 1);
+  const start = shortLastLine(text, (index) => {
+    const at = rect(index);
+    return Math.min(at.bottom, last.bottom) - Math.max(at.top, last.top) >= Math.min(at.height, last.height) / 2;
+  });
+  return start === null ? null : { paragraph: Number(paragraph.dataset.paragraph), text: text.slice(start, end) };
+}
+
+// Where a wrapped paragraph's last line starts when it holds two words or fewer, given whether the character at an
+// index is on that line; null for a longer line, a paragraph on one line, or a line a typed line break starts.
+function shortLastLine(text, onLastLine) {
+  const end = text.replace(/[ \t\n]+$/, '').length;
+  let start = null;
+  for (let index = end - 1; index >= 0; index--) {
+    const opens = !/[ \t\n]/.test(text[index]) && (index === 0 || /[ \t\n\-\u2010-\u2014]/.test(text[index - 1]));
+    if (!opens) {
+      continue;
+    }
+    if (!onLastLine(index)) {
+      break;
+    }
+    if (index === 0 || text.slice(index, end).split(/[ \t]+/).length > 2) {
+      return null;
+    }
+    start = index;
+  }
+  return start === null || text[start - 1] === '\n' ? null : start;
 }
 
 // The top and bottom of a box's text, in points from the top of its box.
@@ -807,5 +868,5 @@ function measureCharts(stage) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { countLines, overflow, fitted, shadowFilter, inkMargins };
+  module.exports = { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine };
 }

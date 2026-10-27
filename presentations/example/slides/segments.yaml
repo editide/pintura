@@ -9,7 +9,7 @@ elements:
     frame: left
     text: |
       {.lead}
-      [$4.4B]{.positive} operating income in 2025, from $0.5B in 2023
+      [$4.4B]{.positive} operating income in 2025, up from just $0.5B in 2023
       - Revenue up from $3.9B to $11.4B
       - Adjusted EBITDA margin of 63%
         - 62% in the first half of 2026
@@ -20,7 +20,7 @@ elements:
       {.lead}
       [($6.4B)]{.negative} operating loss in 2025
       1. Capital expenditures of $12.7B, 61% of the company's
-      2. Research and development of $5.1B, from $0.2B in 2023
+      2. R&D of $5.1B, up from $0.2B in 2023
       3. Adjusted EBITDA turned positive in the first half of 2026, at $0.5B
   - id: source
     text: "Source: Acme S-1/A and Q2 2026 10-Q, reportable segments"

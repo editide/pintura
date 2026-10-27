@@ -79,7 +79,7 @@ elements:
     fill: light1
     stroke: { color: accent3, width: 1.5 }
     style: callout
-    text: AI capital spending rose from $3.3B in the first half of 2025.
+    text: AI capital spending rose sevenfold from $3.3B in the first half of 2025.
   - id: source
     text: "Source: Acme Q2 2026 10-Q, reportable segments"
     style: source

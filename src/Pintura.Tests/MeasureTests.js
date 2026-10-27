@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { countLines, overflow, fitted, shadowFilter, inkMargins } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
+const { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
 
 test('runs side by side on one line count once', () => {
   // Arrange
@@ -204,4 +204,75 @@ test('a blank image has no margins to report', () => {
 
   // Assert
   assert.equal(margins, null);
+});
+
+test('a wrapped paragraph ending on two words starts its last line at the first of them', () => {
+  // Arrange
+  const text = 'Revenue grew in every region, led by Europe';
+  const start = text.indexOf('by');
+
+  // Act
+  const line = shortLastLine(text, (index) => index >= start);
+
+  // Assert
+  assert.equal(line, start);
+});
+
+test('a last line of three words is not short', () => {
+  // Arrange
+  const text = 'Revenue grew in every region, led by Europe';
+  const start = text.indexOf('led');
+
+  // Act
+  const line = shortLastLine(text, (index) => index >= start);
+
+  // Assert
+  assert.equal(line, null);
+});
+
+test('a paragraph on one line has no short last line', () => {
+  // Arrange
+  const text = 'Revenue grew';
+
+  // Act
+  const line = shortLastLine(text, () => true);
+
+  // Assert
+  assert.equal(line, null);
+});
+
+test('a line break the writer typed is not a wrap', () => {
+  // Arrange
+  const text = 'Revenue grew in every region\nEurope';
+  const start = text.indexOf('Europe');
+
+  // Act
+  const line = shortLastLine(text, (index) => index >= start);
+
+  // Assert
+  assert.equal(line, null);
+});
+
+test('a word wrapped at its hyphen leaves its last part as the last line', () => {
+  // Arrange
+  const text = 'Margins improved year-over-year';
+  const start = text.lastIndexOf('year');
+
+  // Act
+  const line = shortLastLine(text, (index) => index >= start);
+
+  // Assert
+  assert.equal(line, start);
+});
+
+test('spaces trailing a paragraph are not a word', () => {
+  // Arrange
+  const text = 'Revenue grew in every region, led by Europe  ';
+  const start = text.indexOf('Europe');
+
+  // Act
+  const line = shortLastLine(text, (index) => index >= start && index < text.length - 2);
+
+  // Assert
+  assert.equal(line, start);
 });
