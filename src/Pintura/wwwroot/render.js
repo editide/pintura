@@ -659,7 +659,8 @@ function measureTable(node) {
 }
 
 // A drawn item's text: its lines per paragraph, how far it runs past the frame, and what fitting made of it, in
-// points. Null for an item without text.
+// points, measured with the item unrotated, since a turned box's bounds are those of its turned lines. Its ink is
+// measured as drawn on the slide. Null for an item without text.
 function measureBox(node) {
   if (node.classList.contains('table')) {
     return measureTable(node);
@@ -670,6 +671,8 @@ function measureBox(node) {
   }
   const stage = node.closest('.stage');
   const scale = stage.getBoundingClientRect().width / stage.offsetWidth;
+  const turned = node.style.transform;
+  node.style.transform = '';
   const style = getComputedStyle(box);
   const frame = { top: 0, bottom: box.clientHeight };
   const content = { top: parseFloat(style.paddingTop), bottom: box.clientHeight - parseFloat(style.paddingBottom) };
@@ -677,9 +680,7 @@ function measureBox(node) {
   const fit = box.dataset.fit;
   const past = overflow(fit, text, frame, content);
   const paragraphs = [...box.querySelectorAll('.paragraph')].map((paragraph) => countLines(textRects(paragraph)));
-  const ink = [...box.querySelectorAll('.paragraph')].flatMap(textRects).filter((rect) => rect.width > 0)
-    .map((rect) => onSlide(rect, stage));
-  return {
+  const measure = {
     id: node.dataset.id,
     owner: node.dataset.owner,
     fit,
@@ -688,11 +689,14 @@ function measureBox(node) {
     overflow: past,
     scale: fit === 'shrink' ? parseFloat(box.style.getPropertyValue('--fit')) : undefined,
     height: fit === 'grow' ? Math.round(node.getBoundingClientRect().height / scale * 10) / 10 : undefined,
-    ink,
     tight: fit === 'none' && !box.classList.contains('unwrapped') && past === 0
       ? narrowed(box, scale, (text) => overflow(fit, text, frame, content)) : undefined,
     runts: [...box.querySelectorAll('.paragraph')].map(runt).filter(Boolean)
   };
+  node.style.transform = turned;
+  measure.ink = [...box.querySelectorAll('.paragraph')].flatMap(textRects).filter((rect) => rect.width > 0)
+    .map((rect) => onSlide(rect, stage));
+  return measure;
 }
 
 // A paragraph's last line when wrapping leaves it two words or fewer.
