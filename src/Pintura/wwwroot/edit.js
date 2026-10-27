@@ -1005,6 +1005,10 @@ function beginText(node, place) {
 
 function textKey(event) {
   event.stopPropagation();
+  if (zoomKey(event)) {
+    event.preventDefault();
+    return;
+  }
   const marks = { b: 'bold', i: 'italic', u: 'underline' };
   const mark = (event.ctrlKey || event.metaKey) && !event.altKey && marks[event.key.toLowerCase()];
   const locked = caretField('false');

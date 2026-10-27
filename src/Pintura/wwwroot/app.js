@@ -214,10 +214,7 @@ function renderSlide() {
   }
   const view = document.getElementById('slide-view');
   view.classList.toggle('zoomed', state.zoom > 1);
-  // Below the strip's slide, the caption shares a row with the status pill floating above the strip.
-  const height = view.clientHeight - (state.strip && state.nav ? 96 : 48);
-  const available = state.zoom * Math.max(200,
-    Math.min(view.clientWidth - 48, height * deck.size[0] / deck.size[1]));
+  const available = slideWidth(view);
   const shown = shownSlide(slide);
   const frame = document.getElementById('slide-frame');
   frame.classList.toggle('reviewing', reviewing(slide));
@@ -246,11 +243,43 @@ function renderSlide() {
   if (shown && !shown.error && (!reviewing(slide) || stepped)) {
     renderComments(shown, frame, deck.size);
   }
-  const drawn = shown || slide;
+  slideCaption(shown || slide);
+}
+
+// The slide's width on screen at the current zoom.
+function slideWidth(view) {
+  const size = state.deck.size;
+  // Below the strip's slide, the caption shares a row with the status pill floating above the strip.
+  const height = view.clientHeight - (state.strip && state.nav ? 96 : 48);
+  return state.zoom * Math.max(200, Math.min(view.clientWidth - 48, height * size[0] / size[1]));
+}
+
+function slideCaption(drawn) {
+  const slide = currentSlide();
   const revision = `as of ${state.before || removedSlide(slide.id) ? namedBase() : namedHead()}`;
-  const caption = [`${drawn.number} of ${deck.slides.length}`, reviewing(slide) && revision,
+  const caption = [`${drawn.number} of ${state.deck.slides.length}`, reviewing(slide) && revision,
     state.zoom !== 1 && `${Math.round(state.zoom * 100)}%`];
   document.getElementById('slide-caption').textContent = caption.filter(Boolean).join(' · ');
+}
+
+// Resizes the slide drawn without drawing it again, which would end the rewording of its text.
+function scaleSlide() {
+  const view = document.getElementById('slide-view');
+  view.classList.toggle('zoomed', state.zoom > 1);
+  const frame = document.getElementById('slide-frame');
+  const stage = slideStage();
+  const size = state.deck.size;
+  const width = slideWidth(view);
+  const scale = width / size[0];
+  frame.style.width = `${width}px`;
+  frame.style.height = `${size[1] * scale}px`;
+  stage.style.transform = `scale(${scale})`;
+  stage.style.setProperty('--scale', scale);
+  const shown = shownSlide(currentSlide());
+  if (frame.querySelector(':scope > .comments')) {
+    renderComments(shown, frame, size);
+  }
+  slideCaption(shown);
 }
 
 // The layout's stage names the layout, how many slides it moves, and the way back to the theme.
@@ -411,7 +440,7 @@ function zoomable() {
 
 // Zooms the slide, or the grid's thumbnails, about a point on screen, the middle of the view unless given.
 function zoomTo(zoom, pointer) {
-  if (!zoomable() || editing.text || editing.gesture || zoom === currentZoom()) {
+  if (!zoomable() || editing.gesture || zoom === currentZoom()) {
     return;
   }
   const grid = state.view === 'grid';
@@ -428,7 +457,11 @@ function zoomTo(zoom, pointer) {
     renderGrid();
   } else {
     state.zoom = zoom;
-    renderSlide();
+    if (editing.text) {
+      scaleSlide();
+    } else {
+      renderSlide();
+    }
   }
   const after = grid ? view.querySelector(`.grid-cell[data-slide="${CSS.escape(id ?? '')}"] .grid-frame`) : frame;
   if (!before || !after) {
@@ -438,6 +471,9 @@ function zoomTo(zoom, pointer) {
     after.getBoundingClientRect());
   view.scrollLeft = scroll.left;
   view.scrollTop = scroll.top;
+  if (editing.text) {
+    showFormatBar(editing.text.node);
+  }
 }
 
 function nearestFrame(view, point) {
