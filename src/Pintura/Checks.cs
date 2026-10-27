@@ -233,6 +233,17 @@ public static class Checks
           $"text shrunk to {{as little as }}{Percent(scale)}, below the theme's {Points(limit)}%", -scale));
       }
     }
+    foreach (BoxMeasure box in measurement.Boxes.Where(box => box.Runts is { Count: > 0 }))
+    {
+      IEnumerable<string> lines = box.Runts!.Select(runt =>
+      {
+        string words = runt.Text.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries).Length == 1
+          ? "one word" : "two words";
+        string what = box.Paragraphs.Length == 1 ? "text" : $"paragraph {runt.Paragraph + 1}";
+        return $"{what} wraps onto a last line of {words}, \"{runt.Text}\"";
+      });
+      candidates.Add(BoxCandidate(box, "warning", "runt", string.Join("; ", lines), box.Runts!.Count));
+    }
     List<Finding> findings = Collapse(candidates);
     foreach (FontMeasure font in measurement.Fonts.Where(font => !font.Available))
     {

@@ -11,9 +11,9 @@ elements:
     frame: right
     text: |
       {.heading}
-      $28.5B of capital expenditures against $4.7B of adjusted EBITDA
+      $28.5B of capital expenditures, against only $4.7B of adjusted EBITDA
       - AI took $23.6B, up from $3.3B in the first half of 2025
-      - Connectivity's $4.7B of adjusted EBITDA covered its own $2.7B
+      - Connectivity's $4.7B of adjusted EBITDA covered its $2.7B of spending
       - Space spent $2.2B on a loss of $0.6B
   - id: source
     text: "Source: Acme Q2 2026 10-Q, reportable segments"

@@ -847,7 +847,7 @@ public class PowerPointImportTests
 
     // Assert
     string slide = File.ReadAllText(output.PathTo("imported/slides/connectivity-funds-the-build-out.yaml"));
-    slide.ShouldContain("2. Research and development of $5.1B, from $0.2B in 2023");
+    slide.ShouldContain("2. R&D of $5.1B, up from $0.2B in 2023");
     File.ReadAllText(output.PathTo("imported/theme/styles.yaml"))
       .ShouldContain("levels: { 1: { bullet: –, indent: 36, hanging: 18 } }");
   }
