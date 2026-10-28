@@ -1088,6 +1088,35 @@ function textKey(event) {
   } else if (event.key === 'Escape') {
     event.preventDefault();
     finishText(true);
+  } else if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.ctrlKey && !event.metaKey &&
+    !event.altKey && (event.shiftKey || getSelection().isCollapsed)) {
+    event.preventDefault();
+    stepCaret(event.key === 'ArrowLeft' ? 'backward' : 'forward', event.shiftKey);
+  }
+}
+
+// The zero-width spaces holding the caret beside a field draw nothing, so an arrow steps over them as well as the
+// character it would otherwise seem to skip.
+function stepCaret(direction, extend) {
+  const selection = getSelection();
+  for (let steps = 0; steps < 4; steps++) {
+    const node = selection.focusNode;
+    const offset = selection.focusOffset;
+    selection.modify(extend ? 'extend' : 'move', direction, 'character');
+    const crossed = document.createRange();
+    crossed.setStart(node, offset);
+    crossed.setEnd(selection.focusNode, selection.focusOffset);
+    if (crossed.collapsed) {
+      crossed.setStart(selection.focusNode, selection.focusOffset);
+      crossed.setEnd(node, offset);
+    }
+    const text = crossed.toString();
+    if (text === '' && node === selection.focusNode && offset === selection.focusOffset) {
+      return;
+    }
+    if (text.replace(/​/g, '') !== '') {
+      return;
+    }
   }
 }
 
