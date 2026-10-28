@@ -220,13 +220,16 @@ test('a blank image has no margins to report', () => {
   assert.equal(margins, null);
 });
 
+// Whether two characters share a line, for a paragraph wrapped once, at start.
+const sameLineFrom = (start) => (first, second) => (first >= start) === (second >= start);
+
 test('a wrapped paragraph ending on two words starts its last line at the first of them', () => {
   // Arrange
   const text = 'Revenue grew in every region, led by Europe';
   const start = text.indexOf('by');
 
   // Act
-  const line = shortLastLine(text, (index) => index >= start);
+  const line = shortLastLine(text, sameLineFrom(start));
 
   // Assert
   assert.equal(line, start);
@@ -238,7 +241,7 @@ test('a last line of three words is not short', () => {
   const start = text.indexOf('led');
 
   // Act
-  const line = shortLastLine(text, (index) => index >= start);
+  const line = shortLastLine(text, sameLineFrom(start));
 
   // Assert
   assert.equal(line, null);
@@ -261,7 +264,7 @@ test('a line break the writer typed is not a wrap', () => {
   const start = text.indexOf('Europe');
 
   // Act
-  const line = shortLastLine(text, (index) => index >= start);
+  const line = shortLastLine(text, sameLineFrom(start));
 
   // Assert
   assert.equal(line, null);
@@ -273,7 +276,7 @@ test('a word wrapped at its hyphen leaves its last part as the last line', () =>
   const start = text.lastIndexOf('year');
 
   // Act
-  const line = shortLastLine(text, (index) => index >= start);
+  const line = shortLastLine(text, sameLineFrom(start));
 
   // Assert
   assert.equal(line, start);
@@ -285,7 +288,43 @@ test('spaces trailing a paragraph are not a word', () => {
   const start = text.indexOf('Europe');
 
   // Act
-  const line = shortLastLine(text, (index) => index >= start && index < text.length - 2);
+  const line = shortLastLine(text, sameLineFrom(start));
+
+  // Assert
+  assert.equal(line, start);
+});
+
+test('a label wrapped a word to a line has no short last line', () => {
+  // Arrange
+  const text = 'Equipment purchases';
+  const start = text.indexOf('purchases');
+
+  // Act
+  const line = shortLastLine(text, sameLineFrom(start));
+
+  // Assert
+  assert.equal(line, null);
+});
+
+test('a last line holding as many words as the line above it is not short', () => {
+  // Arrange
+  const text = 'Operating cash flow';
+  const start = text.indexOf('cash');
+
+  // Act
+  const line = shortLastLine(text, sameLineFrom(start));
+
+  // Assert
+  assert.equal(line, null);
+});
+
+test('a word wrapped at its hyphen counts as one word on its line', () => {
+  // Arrange
+  const text = 'Margins improved in every region by year-over-year';
+  const start = text.indexOf('by');
+
+  // Act
+  const line = shortLastLine(text, sameLineFrom(start));
 
   // Assert
   assert.equal(line, start);

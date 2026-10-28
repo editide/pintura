@@ -766,7 +766,7 @@ function measureBox(node) {
   return measure;
 }
 
-// A paragraph's last line when wrapping leaves it two words or fewer.
+// A paragraph's last line when wrapping leaves it two words or fewer, and fewer than a line above it.
 function runt(paragraph) {
   const characters = [];
   const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
@@ -797,33 +797,31 @@ function runt(paragraph) {
   if (end === 0) {
     return null;
   }
-  const last = rect(end - 1);
-  const start = shortLastLine(text, (index) => {
-    const at = rect(index);
-    return Math.min(at.bottom, last.bottom) - Math.max(at.top, last.top) >= Math.min(at.height, last.height) / 2;
+  const start = shortLastLine(text, (first, second) => {
+    const [a, b] = [rect(first), rect(second)];
+    return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) >= Math.min(a.height, b.height) / 2;
   });
   return start === null ? null : { paragraph: Number(paragraph.dataset.paragraph), text: text.slice(start, end) };
 }
 
-// Where a wrapped paragraph's last line starts when it holds two words or fewer, given whether the character at an
-// index is on that line; null for a longer line, a paragraph on one line, or a line a typed line break starts.
-function shortLastLine(text, onLastLine) {
+// Where a wrapped paragraph's last line starts when it holds two words or fewer, given whether the characters at two
+// indices share a line; null for a longer line, a paragraph on one line, a line a typed line break starts, or one
+// holding as many words as each line above it, as a label set a word to a line does, since rewording can't even it.
+function shortLastLine(text, sameLine) {
   const end = text.replace(/[ \t\n]+$/, '').length;
-  let start = null;
-  for (let index = end - 1; index >= 0; index--) {
+  const starts = [];
+  for (let index = 0; index < end; index++) {
     const opens = !/[ \t\n]/.test(text[index]) && (index === 0 || /[ \t\n\-\u2010-\u2014]/.test(text[index - 1]));
-    if (!opens) {
-      continue;
+    if (opens && (starts.length === 0 || text[index - 1] === '\n' || !sameLine(starts.at(-1), index))) {
+      starts.push(index);
     }
-    if (!onLastLine(index)) {
-      break;
-    }
-    if (index === 0 || text.slice(index, end).split(/[ \t]+/).length > 2) {
-      return null;
-    }
-    start = index;
   }
-  return start === null || text[start - 1] === '\n' ? null : start;
+  const words = starts.map((start, line) => text.slice(start, starts[line + 1] ?? end).trim().split(/[ \t\n]+/).length);
+  const last = words.at(-1);
+  if (starts.length < 2 || last > 2 || text[starts.at(-1) - 1] === '\n') {
+    return null;
+  }
+  return words.slice(0, -1).some((count) => count > last) ? starts.at(-1) : null;
 }
 
 // The top and bottom of a box's text, in points from the top of its box.
