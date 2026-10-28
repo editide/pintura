@@ -589,9 +589,12 @@ function pointMarker(markers, color, x, y) {
 
 function lineLabel(labels, context, raw, x, y, trace) {
   const { size, out } = context;
-  const offset = size * 0.4 + size * 0.6;
+  const gap = size * 0.4;
+  const offset = gap + size * 0.6;
   const along = { above: y - offset, below: y + offset }[labels.position] ?? y;
-  out.push(trace({ kind: 'text', part: 'label', x, y: along, text: formatNumber(raw, labels.format), anchor: 'middle',
+  const across = { left: x - gap, right: x + gap }[labels.position] ?? x;
+  const anchor = { left: 'end', right: 'start' }[labels.position] ?? 'middle';
+  out.push(trace({ kind: 'text', part: 'label', x: across, y: along, text: formatNumber(raw, labels.format), anchor,
     color: labelColor(labels, raw), bold: labels.bold }));
 }
 

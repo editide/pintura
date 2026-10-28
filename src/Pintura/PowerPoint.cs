@@ -50,7 +50,8 @@ public partial class PowerPointMapping
   private static readonly Dictionary<string, string> LabelPositions = new Dictionary<string, string>
   {
     ["outside_end"] = "outside", ["center"] = "center", ["inside_end"] = "inside", ["inside_base"] = "inside_base",
-    ["top"] = "above", ["above"] = "above", ["below"] = "below", ["bottom"] = "below"
+    ["top"] = "above", ["above"] = "above", ["below"] = "below", ["bottom"] = "below",
+    ["left"] = "left", ["right"] = "right"
   };
   private static readonly string[] Accents = ["accent1", "accent2", "accent3", "accent4", "accent5", "accent6"];
 

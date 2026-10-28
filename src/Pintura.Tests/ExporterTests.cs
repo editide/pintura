@@ -572,6 +572,26 @@ public class ExporterTests
       """);
   }
 
+  [Theory]
+  [InlineData("left")]
+  [InlineData("right")]
+  public void A_lines_labels_left_or_right_of_its_points_dock_there(string position)
+  {
+    // Arrange
+    JsonNode item = Json($$"""
+      { "properties": { "frame": [40, 100, 430, 380], "type": "line", "categories": ["2024"],
+        "series": [{ "name": "Close", "values": [4], "type": "line", "secondary": false,
+          "labels": { "data_labels.show": "value", "data_labels.position": "{{position}}" } }],
+        "series_colors": [{ "theme": "accent1" }] } }
+      """);
+
+    // Act
+    JsonArray series = NewExporter().Chart(item)["series_list"]!.AsArray();
+
+    // Assert
+    ShouldMatch(series[0]!["default_data_label"]!["dock"], $"\"{position}\"");
+  }
+
   [Fact]
   public void A_line_over_columns_goes_on_the_secondary_axis_and_a_total_as_a_line_in_no_color_labelled_above()
   {

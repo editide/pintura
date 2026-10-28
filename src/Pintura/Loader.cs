@@ -1767,7 +1767,7 @@ public partial class PresentationLoader
   {
     ["clustered"] = ["center", "inside", "inside_base", "outside"],
     ["stacked"] = ["center", "inside", "inside_base"],
-    ["line"] = ["above", "below", "center"],
+    ["line"] = ["above", "below", "left", "right", "center"],
     ["pie"] = ["center", "inside", "outside"],
     ["doughnut"] = []
   };

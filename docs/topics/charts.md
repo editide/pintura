@@ -23,7 +23,7 @@ A chart is a file in `charts/`, placed on a slide with `chart: <stem>`, and its 
 | `markers` | `{ shape, size, fill }` on each point of the chart's lines; `shape` is `circle`, `square`, `diamond`, `triangle`, or `none`, the default; `size` is whole points across, from 2 to 72, 5 by default; `fill` defaults to the line's color. |
 | `text` | `{ size, color, font }` for every label on the chart; what it leaves out comes from the base `text`. |
 
-`position` is `center`, `inside`, or `inside_base` on any column or bar chart, `outside` on clustered ones and pies (past the bar's end, which for a negative value is below or to the left), and `above`, `below`, or `center` on lines.
+`position` is `center`, `inside`, or `inside_base` on any column or bar chart, `outside` on clustered ones and pies (past the bar's end, which for a negative value is below or to the left), and `above`, `below`, `left`, `right`, or `center` on lines.
 A doughnut's labels sit on its ring and take no position.
 
 What nothing sets is PowerPoint's default, which `--element` shows as such: `gap_width: 150`, `overlap: 0`, both axes visible, series colors `accent1` to `accent6`, and labels `outside` on clustered charts, `center` on stacked ones, `above` on lines, and `inside` on pies.

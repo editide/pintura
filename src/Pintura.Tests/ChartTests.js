@@ -532,6 +532,27 @@ test('a line\'s first and last labels and its axis\'s end dates draw inside the 
   assert.deepEqual(drawn.filter((text) => text.clipped).map((text) => text.text), ["Mar '25", "Sep '26"]);
 });
 
+test('a line\'s label left or right of its point sits level with it, its near end a gap from the point', () => {
+  // Arrange
+  const drawn = (position) => {
+    const series = [{ name: 'Close', values: [100, 150, 200], type: 'line',
+      labels: { show: 'value', position, format: null } }];
+    return layoutChart(chart({ type: 'line', family: 'line', grouping: 'standard', series,
+      valueAxis: { visible: false, gridlines: false, min: 0, max: 200, step: 50 } }), 400, 200, measure);
+  };
+  const middle = (primitives) => primitives.filter((primitive) => primitive.part === 'label')[1];
+
+  // Act
+  const above = middle(drawn('above'));
+  const right = middle(drawn('right'));
+  const left = middle(drawn('left'));
+
+  // Assert
+  const gap = 10 * 0.4;
+  assert.deepEqual([right.anchor, right.x, right.y], ['start', above.x + gap, above.y + 10]);
+  assert.deepEqual([left.anchor, left.x, left.y], ['end', above.x - gap, above.y + 10]);
+});
+
 test('a plot\'s insets make room around it and its axis labels, which data labels may take', () => {
   // Arrange
   const series = [{ name: 'Close', values: [100, 200], type: 'line',

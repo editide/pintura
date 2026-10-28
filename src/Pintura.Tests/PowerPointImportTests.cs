@@ -761,6 +761,25 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_line_labelled_right_of_its_points_keeps_that_position()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = JsonNode.Parse(File.ReadAllText(Fixture("example.reads.json")))!.AsObject();
+    JsonObject series = reads["slides"]![3]!["read"]!["chart_elements"]![0]!["series_list"]![2]!.AsObject();
+    series["chart_type"] = "line";
+    series["default_data_label"]!["dock"] = "right";
+
+    // Act
+    PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
+
+    // Assert
+    JsonNode chart = mapped.Deck["slides"]![3]!["items"]!.AsArray().First(item => (string?)item!["kind"] == "chart")!;
+    chart.ToJsonString().ShouldContain("\"data_labels.position\":\"right\"");
+    mapped.Findings.ShouldNotContain(finding => finding.Contains("take its default position"));
+  }
+
+  [Fact]
   public void A_total_series_labelled_outside_its_stacked_column_takes_no_finding_about_its_position()
   {
     // Arrange
