@@ -399,6 +399,96 @@ public class CheckTests
   }
 
   [Fact]
+  public void A_line_running_through_a_box_between_the_two_it_joins_is_reported_on_the_line()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: first
+          shape: rectangle
+          frame: [100, 200, 100, 50]
+        - id: middle
+          shape: rectangle
+          frame: [270, 210, 60, 50]
+        - id: last
+          shape: rectangle
+          frame: [400, 200, 100, 50]
+        - id: link
+          line: { from: [200, 225], to: [400, 225] }
+          end: triangle
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    Finding finding = findings.Where(finding => finding.Message.StartsWith("runs through")).ShouldHaveSingleItem();
+    finding.Where.ShouldBe("two/link");
+    finding.Message.ShouldBe("runs through middle");
+  }
+
+  [Fact]
+  public void An_arc_running_through_a_box_is_reported_but_not_one_ending_inside_a_box_it_points_into()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: start
+          shape: rectangle
+          frame: [70, 280, 60, 40]
+        - id: crossed
+          shape: rectangle
+          frame: [220, 185, 60, 40]
+        - id: loop
+          arc: { from: 180, to: 359 }
+          frame: [100, 200, 300, 200]
+          end: triangle
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    findings.Where(finding => finding.Message.StartsWith("runs through")).Select(finding => finding.Message)
+      .ShouldBe(["runs through crossed"]);
+  }
+
+  [Fact]
+  public void A_line_crossing_a_text_box_with_nothing_drawn_around_it_counts_only_where_its_text_is()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: note
+          text: A short note
+          frame: [200, 200, 300, 100]
+        - id: under
+          line: { from: [150, 280], to: [550, 280] }
+        - id: through
+          line: { from: [150, 210], to: [550, 210] }
+      """);
+    var measurement = new Measurement([],
+      [new BoxMeasure("two", "note", "slide", "none", 1, [1], 0, null, null, Ink: [[200, 200, 120, 20]])]);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load(), measurement);
+
+    // Assert
+    Finding finding = findings.Where(finding => finding.Message.StartsWith("runs through")).ShouldHaveSingleItem();
+    finding.Where.ShouldBe("two/through");
+    finding.Message.ShouldBe("runs through note's text");
+  }
+
+  [Fact]
   public void Facing_edges_a_few_points_apart_are_spacing_rather_than_a_near_miss()
   {
     // Arrange

@@ -285,6 +285,7 @@ public static class Checks
       candidates.AddRange(OffSlide(presentation, slide, items));
       candidates.AddRange(Overlaps(slide, items));
       candidates.AddRange(ChartLabels(slide, items, measurement));
+      candidates.AddRange(Crossings(slide, items));
       candidates.AddRange(NearMisses(slide, items, areas));
       candidates.AddRange(Margins(presentation, slide, items, pictures));
     }
@@ -359,6 +360,29 @@ public static class Checks
         }
         yield return top.Report(slide, $"overlap/{under.Id}", "geometry",
           $"overlaps {under.Name} by {Points(width)} × {Points(height)}pt", other: under);
+      }
+    }
+  }
+
+  /// <summary>A line or arc running through something between its ends, as a connector routed through a box it
+  /// doesn't join does. One ending inside a box points into it, as a callout's line points at a chart. Text with
+  /// nothing drawn around it is crossed only where its lines of text are.</summary>
+  private static IEnumerable<Candidate> Crossings(Slide slide, List<Placed> items)
+  {
+    foreach (Placed line in items.Where(item => item.Path is not null))
+    {
+      foreach (Placed other in items.Where(other => !other.IsLine && !other.Rotated))
+      {
+        bool inked = other.Sides is not null && other.Ink is not null;
+        double[][] rects = inked ? other.Ink! : [[other.Left, other.Top, other.Right - other.Left,
+          other.Bottom - other.Top]];
+        bool Inside(double[] point) => rects.Any(rect => point[0] > rect[0] + Meets &&
+          point[0] < rect[0] + rect[2] - Meets && point[1] > rect[1] + Meets && point[1] < rect[1] + rect[3] - Meets);
+        if (!Inside(line.Path![0]) && !Inside(line.Path[^1]) && line.Path.Any(Inside))
+        {
+          yield return line.Report(slide, $"through/{other.Id}", "geometry",
+            $"runs through {other.Name}{(inked ? "'s text" : "")}", other: other);
+        }
       }
     }
   }
@@ -515,9 +539,14 @@ public static class Checks
       {
         double[] start = (double[])from.Value;
         double[] end = (double[])item.Properties["to"].Value;
+        int steps = Math.Max(2, (int)Math.Ceiling(double.Hypot(end[0] - start[0], end[1] - start[1])));
         placed.Add(new Placed(item.Id, name, owner, [start[0], start[1], end[0] - start[0], end[1] - start[1]])
         {
-          Line = [start, end]
+          Line = [start, end],
+          Path = [.. Enumerable.Range(0, steps + 1).Select(step => new[]
+          {
+            start[0] + (end[0] - start[0]) * step / steps, start[1] + (end[1] - start[1]) * step / steps
+          })]
         });
         continue;
       }
@@ -527,10 +556,14 @@ public static class Checks
       }
       if (item.Kind == "arc")
       {
-        placed.Add(new Placed(item.Id, name, owner, ArcBounds(((Frame)frame.Value).Rect,
-          Convert.ToDouble(item.Properties["arc.from"].Value), Convert.ToDouble(item.Properties["arc.to"].Value)))
+        double[][] path = ArcPoints(((Frame)frame.Value).Rect, Convert.ToDouble(item.Properties["arc.from"].Value),
+          Convert.ToDouble(item.Properties["arc.to"].Value));
+        (double left, double top) = (path.Min(point => point[0]), path.Min(point => point[1]));
+        placed.Add(new Placed(item.Id, name, owner,
+          [left, top, path.Max(point => point[0]) - left, path.Max(point => point[1]) - top])
         {
-          Curve = true
+          Curve = true,
+          Path = path
         });
         continue;
       }
@@ -545,28 +578,25 @@ public static class Checks
         Rotate = rotate % 360,
         Grown = measured.GetValueOrDefault((slide.Id, item.Id))?.Height is not null,
         Sides = AnchoredSides(item),
+        Ink = measured.GetValueOrDefault((slide.Id, item.Id))?.Ink,
         Tail = item.Properties.TryGetValue("tail", out Resolved? tail) ? (double[])tail.Value : null
       });
     }
     return placed;
   }
 
-  /// <summary>The rectangle an arc's curve sweeps through, which its frame, the whole ellipse, can far exceed.
-  /// </summary>
-  private static double[] ArcBounds(double[] frame, double from, double to)
+  /// <summary>Points along an arc's curve, a degree of its sweep apart, which its frame, the whole ellipse, can far
+  /// exceed.</summary>
+  private static double[][] ArcPoints(double[] frame, double from, double to)
   {
     (double a, double b) = (frame[2] / 2, frame[3] / 2);
     double sweep = ((to - from) % 360 + 360) % 360;
-    (double left, double top, double right, double bottom) = (double.MaxValue, double.MaxValue, double.MinValue,
-      double.MinValue);
-    for (int step = 0; step <= 360; step++)
+    return [.. Enumerable.Range(0, 361).Select(step =>
     {
       double angle = (from + sweep * step / 360) * Math.PI / 180;
       double radius = a * b / Math.Sqrt(Math.Pow(b * Math.Cos(angle), 2) + Math.Pow(a * Math.Sin(angle), 2));
-      (double x, double y) = (frame[0] + a + radius * Math.Cos(angle), frame[1] + b + radius * Math.Sin(angle));
-      (left, top, right, bottom) = (Math.Min(left, x), Math.Min(top, y), Math.Max(right, x), Math.Max(bottom, y));
-    }
-    return [left, top, right - left, bottom - top];
+      return new[] { frame[0] + a + radius * Math.Cos(angle), frame[1] + b + radius * Math.Sin(angle) };
+    })];
   }
 
   /// <summary>The sides of a text box with no fill or outline that its text lines up on: the side its paragraphs
@@ -1044,6 +1074,10 @@ public static class Checks
     public double[][]? Line { get; init; }
     /// <summary>An arc, placed by the rectangle its curve sweeps, with no edges to align.</summary>
     public bool Curve { get; init; }
+    /// <summary>Points along a line or arc, a point or so apart, for what it runs through.</summary>
+    public double[][]? Path { get; init; }
+    /// <summary>A text box's lines of text as measured, each <c>[x, y, w, h]</c>.</summary>
+    public double[][]? Ink { get; init; }
     public double[]? Tail { get; init; }
     public double Rotate { get; init; }
     /// <summary>A <c>grow</c> box's bottom follows its text rather than a number anyone wrote.</summary>
