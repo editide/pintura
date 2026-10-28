@@ -368,7 +368,7 @@ public class ExporterTests
   }
 
   [Fact]
-  public void A_date_axis_goes_as_a_timeline_with_its_pattern_as_an_Excel_code_and_a_fixed_step_as_its_units()
+  public void A_date_axis_goes_as_a_timeline_with_its_pattern_as_its_number_format_and_a_fixed_step_as_its_units()
   {
     // Arrange
     JsonNode item = Json("""
@@ -385,9 +385,9 @@ public class ExporterTests
 
     // Assert
     ShouldMatch(result["category_axis_type"], "\"timeline\"");
-    ShouldMatch(result["category_date_format_code"], "\"mmm\\\\-d\\\\-\\\\'yy\"");
     ShouldMatch(result["primary_category_axis"], """
-      { "labels_text_style": {}, "label_position": "low", "units": 7, "major_time_unit": "days" }
+      { "labels_text_style": {}, "label_position": "low", "number_format": "mmm\\-d\\-\\'yy", "units": 7,
+        "major_time_unit": "days" }
       """);
     ShouldMatch(result["primary_value_axis"]!["units"], "5");
     result["primary_value_axis"]!.AsObject().ContainsKey("is_units_auto").ShouldBeFalse();
@@ -449,14 +449,14 @@ public class ExporterTests
   }
 
   [Fact]
-  public void A_points_label_on_a_series_without_labels_shows_alone()
+  public void A_points_label_on_a_series_without_labels_shows_alone_in_the_charts_text()
   {
     // Arrange
     JsonNode item = Json("""
       { "properties": { "frame": [40, 100, 430, 380], "type": "line", "categories": ["2024", "2025"],
         "series": [{ "name": "S", "values": [1, 4], "labels": { "data_labels.show": "none" },
           "points": { "points.2025.data_labels.show": "value", "points.2025.data_labels.position": "above" } }],
-        "text.color": { "theme": "dark1" } } }
+        "text.font": { "theme": "body" }, "text.size": 10, "text.color": { "theme": "dark1" } } }
       """);
 
     // Act
@@ -467,7 +467,8 @@ public class ExporterTests
     ShouldMatch(series["delete_all_data_labels"], "true");
     ShouldMatch(series["data_labels"], """
       [{ "index": 1, "show_value": true, "dock": "above", "text_component": { "paragraph_list": [{ "index": 0,
-          "runs": [{ "index": 0, "text_style": { "font_color": { "scheme": "dk1" }, "is_bold": false } }] }] } }]
+          "runs": [{ "index": 0, "text_style": { "font_family": "+mn-lt", "font_size": 10,
+            "font_color": { "scheme": "dk1" }, "is_bold": false } }] }] } }]
       """);
   }
 

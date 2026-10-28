@@ -1598,11 +1598,9 @@ public partial class Exporter
           {
             label["number_format"] = format.DeepClone();
           }
-          var style = new JsonObject
-          {
-            ["font_color"] = own["default_text_style_for_all_runs"]?["font_color"]?.DeepClone(),
-            ["is_bold"] = Truthy(Get(labelled, $"{prefix}bold"))
-          };
+          // A series without labels gives a point's label no style to inherit, so it carries the chart's text whole.
+          JsonObject style = own["default_text_style_for_all_runs"]!.DeepClone().AsObject();
+          style["is_bold"] = Truthy(Get(labelled, $"{prefix}bold"));
           label["text_component"] = new JsonObject
           {
             ["paragraph_list"] = new JsonArray(new JsonObject
@@ -1745,7 +1743,7 @@ public partial class Exporter
       if (Text(Get(properties, "category_axis.format")) is string { Length: > 0 } dates)
       {
         element["category_axis_type"] = "timeline";
-        element["category_date_format_code"] = Code(dates);
+        categoryAxis["number_format"] = Code(dates);
         if (Text(Get(properties, "category_axis.step")) is string { Length: > 0 } step)
         {
           string[] parts = step.Split(' ');
