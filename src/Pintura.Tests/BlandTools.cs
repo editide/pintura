@@ -22,10 +22,14 @@ public sealed class BlandTools : IToolHost
 
   public string Version => "bland";
 
-  public int? MostPictures => 25;
+  public int? MostPictures { get; init; } = 25;
+
+  /// <summary>The pictures each session attached, a list a session, in the order they were opened.</summary>
+  public List<List<string>> Attached { get; } = new List<List<string>>();
 
   public IToolSession Open(string deck)
   {
+    Attached.Add(new List<string>());
     return new Session(this, File.ReadAllBytes(deck));
   }
 
@@ -62,6 +66,7 @@ public sealed class BlandTools : IToolHost
     public string Attach(string picture)
     {
       tools.Calls.Add("attach");
+      tools.Attached[^1].Add(Path.GetFileName(picture));
       return Path.GetFileName(picture);
     }
 

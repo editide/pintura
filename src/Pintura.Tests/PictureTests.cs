@@ -20,7 +20,7 @@ public class PictureTests
   }
 
   [Fact]
-  public void An_export_with_more_pictures_than_the_tools_take_is_refused_before_it_starts()
+  public void A_slide_with_more_pictures_than_the_tools_take_is_refused_before_the_export_starts()
   {
     // Arrange
     using var deck = new DeckFixture();
@@ -39,7 +39,97 @@ public class PictureTests
       Exporter.Write(deck.Load(), deck.Folder.PathTo("out/deck.pptx"), new FewPictures()));
 
     // Assert
-    refusal.Message.ShouldBe("the presentation uses 2 different pictures, and an export takes at most 1");
+    refusal.Message.ShouldBe("slide two uses 2 different pictures, and an export takes at most 1");
+  }
+
+  [Fact]
+  public void A_deck_with_more_pictures_than_the_tools_take_exports_in_passes_into_one_deck()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Pictured(deck);
+    var tools = new BlandTools { MostPictures = 2 };
+    string output = deck.Folder.PathTo("out/deck.pptx");
+
+    // Act
+    ExportReport report = Exporter.Write(deck.Load(), output, tools);
+
+    // Assert
+    tools.Attached.ShouldBe([["a.png", "b.png"], ["c.png"]]);
+    tools.Calls.Count(call => call == "add_slide").ShouldBe(4);
+    tools.Calls.Count(call => call == "create_layout").ShouldBe(2);
+    report.Billed.ShouldBe(new ExportBilling(4, 2, 1));
+    report.Reused.ShouldBe(0);
+    ExportManifest.Read(output)!.Slides.Select(slide => slide.Id).ShouldBe(["one", "two", "three", "four"]);
+  }
+
+  [Fact]
+  public void A_deck_exported_in_passes_exports_again_only_its_changed_slides()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Pictured(deck);
+    string output = deck.Folder.PathTo("out/deck.pptx");
+    Exporter.Write(deck.Load(), output, new BlandTools { MostPictures = 2 });
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Changed
+      elements:
+        - { id: a, picture: ../media/a.png, frame: [0, 0, 10, 10] }
+        - { id: b, picture: ../media/b.png, frame: [20, 0, 10, 10] }
+      """);
+    deck.Write("deck/slides/four.yaml", """
+      layout: content
+      title: Changed too
+      elements:
+        - { id: c, picture: ../media/c.png, frame: [0, 0, 10, 10] }
+      """);
+    var tools = new BlandTools { MostPictures = 2 };
+
+    // Act
+    ExportReport report = Exporter.Write(deck.Load(), output, tools);
+
+    // Assert
+    tools.Attached.ShouldBe([["a.png", "b.png"], ["c.png"]]);
+    tools.Calls.ShouldNotContain("create_layout");
+    report.Billed.ShouldBe(new ExportBilling(2, 0, 0));
+    report.Reused.ShouldBe(2);
+    ExportManifest.Read(output)!.Slides.Select(slide => slide.Id).ShouldBe(["one", "two", "three", "four"]);
+  }
+
+  /// <summary>Four slides: the cover, two pictures on two, one on three, and a third on four.</summary>
+  private static void Pictured(DeckFixture deck)
+  {
+    deck.Write("deck/media/a.png", "a");
+    deck.Write("deck/media/b.png", "b");
+    deck.Write("deck/media/c.png", "c");
+    deck.Write("deck/presentation.yaml", """
+      name: Test deck
+      theme: ../theme
+      fields:
+        footer: Confidential
+      slides:
+        - one
+        - two
+        - three
+        - four
+      """);
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      elements:
+        - { id: a, picture: ../media/a.png, frame: [0, 0, 10, 10] }
+        - { id: b, picture: ../media/b.png, frame: [20, 0, 10, 10] }
+      """);
+    deck.Write("deck/slides/three.yaml", """
+      layout: content
+      elements:
+        - { id: a, picture: ../media/a.png, frame: [0, 0, 10, 10] }
+      """);
+    deck.Write("deck/slides/four.yaml", """
+      layout: content
+      elements:
+        - { id: c, picture: ../media/c.png, frame: [0, 0, 10, 10] }
+      """);
   }
 
   [Fact]
@@ -83,7 +173,7 @@ public class PictureTests
       Exporter.Write(deck.Load(), deck.Folder.PathTo("out/deck.pptx"), new FewPictures()));
 
     // Assert
-    refusal.Message.ShouldBe("the presentation uses 2 different pictures, and an export takes at most 1");
+    refusal.Message.ShouldBe("slide two uses 2 different pictures, and an export takes at most 1");
   }
 
   [Fact]
