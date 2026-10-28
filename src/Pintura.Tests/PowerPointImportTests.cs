@@ -810,6 +810,48 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_waterfall_comes_back_with_its_totals_its_connector_lines_and_a_color_for_each_kind_of_bar()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = Reads();
+    JsonArray charts = reads["slides"]![3]!["read"]!["chart_elements"]!.AsArray();
+    JsonObject waterfall = JsonNode.Parse("""
+      { "chart_data": { "0:Revenue": { "0:Value": 500 }, "1:COGS": { "0:Value": -200 },
+          "2:Gross Profit": { "0:Value": 300 }, "3:Rebate": { "0:Value": 20 }, "4:Net": { "0:Value": 320 } },
+        "primary_category_axis": { "label_position": "next_to", "major_tick_mark": "none", "minor_tick_mark": "none" },
+        "primary_value_axis": { "is_max_auto": true, "is_min_auto": true, "is_units_auto": true,
+          "label_position": "next_to", "major_tick_mark": "none", "minor_tick_mark": "none" },
+        "series_list": [{ "index": 0, "chart_type": "waterfall", "name": "Value", "order": 0,
+          "default_data_label": { "dock": "outside_end", "show_value": true },
+          "data_point_list": [{ "index": 1, "fill": { "scheme": "accent2" } },
+            { "index": 3, "fill": { "scheme": "accent5" } }],
+          "subtotal_indices": [0, 2, 4] }],
+        "gap_width": 50, "connector_lines": false }
+      """)!.AsObject();
+    foreach (string key in new[] { "id", "position", "size" })
+    {
+      waterfall[key] = charts[0]![key]!.DeepClone();
+    }
+    charts[0] = waterfall;
+
+    // Act
+    PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
+    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Presentation imported = PresentationLoader.Load(output.PathTo("imported"));
+
+    // Assert
+    mapped.Findings.ShouldNotContain(finding => finding.Contains("waterfall"));
+    Chart chart = imported.Charts.Values.Single(candidate => candidate.Type == "waterfall");
+    chart.Totals.ShouldBe(["Revenue", "Gross Profit", "Net"]);
+    chart.Bars().ShouldBe([(0, 500), (500, 300), (0, 300), (300, 320), (0, 320)]);
+    chart.Properties.ConnectorLines.ShouldBe(false);
+    chart.Properties.SeriesColors!.Select(color => color.Theme).ShouldBe(["accent5", "accent2", "accent3"]);
+    chart.Properties.GapWidth.ShouldBe(50);
+    chart.SeriesOptions.ShouldBeEmpty();
+  }
+
+  [Fact]
   public void A_point_labelled_where_its_chart_cant_place_it_takes_the_charts_default_rather_than_its_series()
   {
     // Arrange

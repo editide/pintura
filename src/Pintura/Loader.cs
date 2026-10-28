@@ -1847,6 +1847,12 @@ public partial class PresentationLoader
       seriesIn = seriesInNode.AsChoice("rows", "columns");
       origins["series_in"] = seriesInNode.Origin;
     }
+    var totals = new List<string>();
+    if (map.Take("totals") is Node totalsNode)
+    {
+      totals = totalsNode.AsList().Select(entry => entry.AsString()).ToList();
+      origins["totals"] = totalsNode.Origin;
+    }
 
     var seriesOptions = new Dictionary<string, ChartSeriesOptions>(StringComparer.Ordinal);
     if (map.Take("series") is Node seriesNode)
@@ -1896,6 +1902,7 @@ public partial class PresentationLoader
       Categories = categories,
       Series = series,
       SeriesOptions = seriesOptions,
+      Totals = totals,
       Origin = document.Origin,
       Origins = origins
     };
@@ -1966,11 +1973,44 @@ public partial class PresentationLoader
       throw new LoadException($"markers sit on a line's points, and a {chart.Type} draws no line; give a series " +
         "type: line", chart.Properties.Origins[chartMarker], "charts");
     }
+    ValidateWaterfall(chart, dataNode, Effective("category_axis.format")?.Origin);
     ValidateSeriesOptions(chart);
     if (chart.Type == "pie" && chart.Series.Count > 1)
     {
       throw dataNode.Error($"a pie draws one series, and {chart.Source} has {chart.Series.Count}; use series_in to " +
         "turn it, or a doughnut for a ring per series");
+    }
+  }
+
+  private static void ValidateWaterfall(Chart chart, Node dataNode, Origin? dateFormat)
+  {
+    if (chart.Type != "waterfall")
+    {
+      if (chart.Origins.TryGetValue("totals", out Origin? totals))
+      {
+        throw new LoadException("totals are a waterfall's; a stack's total is a series with type: total", totals,
+          "charts");
+      }
+      return;
+    }
+    if (chart.Series.Count != 1)
+    {
+      throw dataNode.Error($"a waterfall draws one series, and {chart.Source} has {chart.Series.Count}");
+    }
+    if (chart.SeriesOptions.Values.FirstOrDefault(options => options.Type is not null) is ChartSeriesOptions typed)
+    {
+      throw new LoadException("a waterfall draws its one series as steps and totals, so it takes no type",
+        typed.Origins["type"], "charts");
+    }
+    if (dateFormat is not null)
+    {
+      throw new LoadException("a waterfall's categories are its steps, not a time line, so its axis takes no date " +
+        "format", dateFormat, "charts");
+    }
+    if (chart.Totals.FirstOrDefault(total => !chart.Categories.Contains(total)) is string unknown)
+    {
+      throw new LoadException($"no category {unknown} in {chart.Source}; its categories are " +
+        string.Join(", ", chart.Categories), chart.Origins["totals"], "charts");
     }
   }
 
@@ -2517,6 +2557,11 @@ public partial class PresentationLoader
         ? value
         : throw overlap.Error("overlap is a percent of a bar's width, from -100 to 100");
       Set("overlap", overlap);
+    }
+    if (map.Take("connector_lines") is Node connectors)
+    {
+      target.ConnectorLines = connectors.AsBoolean();
+      Set("connector_lines", connectors);
     }
     if (map.Take("plot") is Node plotNode)
     {

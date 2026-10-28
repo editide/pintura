@@ -813,5 +813,183 @@ public class ChartTests
       .ShouldBe(["Total is 8.5 in 2023, where its stack adds up to 8.4, in revenue.csv"]);
   }
 
+  private const string Bridge = "step,Revenue,COGS,Gross Profit,Opex,EBITDA\nValue,500,-200,300,-160,140";
+
+  [Fact]
+  public void A_waterfall_reads_the_categories_it_draws_as_totals()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: waterfall
+      data: revenue.csv
+      totals: [Revenue, Gross Profit, EBITDA]
+      """, Bridge);
+
+    // Act
+    Chart chart = deck.Load().Charts["revenue"];
+
+    // Assert
+    chart.Totals.ShouldBe(["Revenue", "Gross Profit", "EBITDA"]);
+    chart.Bars().ShouldBe([(0, 500), (500, 300), (0, 300), (300, 140), (0, 140)]);
+  }
+
+  [Fact]
+  public void A_waterfalls_bars_run_on_from_the_last_total_and_step_over_an_empty_cell()
+  {
+    // Arrange
+    var chart = new Chart
+    {
+      Type = "waterfall",
+      Categories = ["Start", "Up", "Gap", "Subtotal", "Down"],
+      Series = [new ChartSeries { Name = "Value", Values = [100, 20, null, 150, -30] }],
+      Totals = ["Subtotal"]
+    };
+
+    // Act
+    List<(double From, double To)?> bars = chart.Bars();
+
+    // Assert
+    bars.ShouldBe([(0, 100), (100, 120), null, (0, 150), (150, 120)]);
+  }
+
+  [Fact]
+  public void Totals_are_a_waterfalls_and_a_stack_takes_a_total_series_instead()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: stacked_column
+      data: revenue.csv
+      totals: ["2025"]
+      """);
+
+    // Act
+    LoadException error = deck.Error("chart");
+
+    // Assert
+    error.Problem.ShouldBe("totals are a waterfall's; a stack's total is a series with type: total");
+    error.Origin.Line.ShouldBe(3);
+  }
+
+  [Fact]
+  public void A_waterfall_total_names_a_category_in_its_data()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: waterfall
+      data: revenue.csv
+      totals: [Revenue, Net income]
+      """, Bridge);
+
+    // Act
+    LoadException error = deck.Error("chart");
+
+    // Assert
+    error.Problem.ShouldBe("no category Net income in revenue.csv; its categories are Revenue, COGS, Gross Profit, " +
+      "Opex, EBITDA");
+  }
+
+  [Fact]
+  public void A_waterfall_draws_one_series()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: waterfall
+      data: revenue.csv
+      """);
+
+    // Act
+    LoadException error = deck.Error("chart");
+
+    // Assert
+    error.Problem.ShouldBe("a waterfall draws one series, and revenue.csv has 2");
+  }
+
+  [Fact]
+  public void A_waterfalls_series_is_drawn_as_its_steps_and_takes_no_type()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: waterfall
+      data: revenue.csv
+      series: { Value: { type: line } }
+      """, Bridge);
+
+    // Act
+    LoadException error = deck.Error("chart");
+
+    // Assert
+    error.Problem.ShouldBe("a waterfall draws its one series as steps and totals, so it takes no type");
+  }
+
+  [Fact]
+  public void A_waterfalls_categories_are_steps_and_take_no_date_format()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("theme/styles.yaml", DeckFixture.Styles.Replace("formats:\n",
+      "formats:\n  day: { date: \"MMM-D-'YY\" }\n"));
+    deck.Chart("""
+      type: waterfall
+      data: revenue.csv
+      category_axis: { format: day }
+      """, "step,2026-01-01,2026-02-01\nValue,100,20");
+
+    // Act
+    LoadException error = deck.Error("chart");
+
+    // Assert
+    error.Problem.ShouldBe("a waterfall's categories are its steps, not a time line, so its axis takes no date format");
+  }
+
+  [Fact]
+  public void A_waterfall_total_off_the_bars_before_it_is_a_warning_and_the_first_is_checked_only_after_steps()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: waterfall
+      data: revenue.csv
+      totals: [Revenue, Gross Profit, EBITDA]
+      """, "step,Revenue,COGS,Gross Profit,Opex,EBITDA\nValue,500,-200,310,-160,140");
+
+    // Act
+    List<Finding> findings = Checks.Consistency(deck.Load());
+
+    // Assert
+    findings.Select(finding => finding.Message)
+      .ShouldBe(["Gross Profit is 310, where the bars before it come to 300, and 1 more like it, in revenue.csv"]);
+  }
+
+  [Fact]
+  public void A_waterfall_resolves_its_labels_outside_and_its_connector_lines_on_and_takes_no_overlap()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: waterfall
+      data: revenue.csv
+      totals: [Revenue]
+      data_labels: { show: value }
+      overlap: 20
+      """, Bridge);
+    Presentation presentation = deck.Load();
+
+    // Act
+    SceneItem item = SceneBuilder.Build(presentation, presentation.Slides.Single(slide => slide.Id == "chart"))
+      .Items.Single(candidate => candidate.Chart is not null);
+
+    // Assert
+    item.Properties["data_labels.position"].Value.ShouldBe("outside");
+    item.Properties["connector_lines"].Value.ShouldBe(true);
+    item.Properties["totals"].Value.ShouldBe(new List<string> { "Revenue" });
+    item.Properties.ShouldNotContainKey("overlap");
+  }
+
+
 
 }

@@ -60,6 +60,9 @@ function seriesType(chart, series) {
 // size. A line over columns stands alone, and a total sits at the end of its stack, where its label goes. A gap is
 // null.
 function stackSeries(chart) {
+  if (chart.type === 'waterfall') {
+    return chart.series.map((series) => waterfallBars(chart, series));
+  }
   const percent = chart.grouping === 'percent_stacked';
   const stacks = chart.series.map((series) =>
     chart.grouping !== 'clustered' && seriesType(chart, series) === chart.family);
@@ -98,6 +101,35 @@ function stackSeries(chart) {
     }));
 }
 
+// A waterfall's total runs from zero to its value, and any other value on from where the bar before it ended, the
+// first from zero; a gap moves nothing. As Chart.Bars in the model.
+function waterfallBars(chart, series) {
+  let level = 0;
+  return series.values.map((raw, point) => {
+    if (raw === null || raw === undefined) {
+      return null;
+    }
+    if (isTotal(chart, point)) {
+      level = raw;
+      return [0, raw];
+    }
+    const from = level;
+    level += raw;
+    return [from, level];
+  });
+}
+
+function isTotal(chart, point) {
+  return (chart.totals ?? []).includes(chart.categories[point]);
+}
+
+// A waterfall's colors go to its increases, decreases, and totals in that order, as PowerPoint's legend names them.
+const WATERFALL_KINDS = ['Increase', 'Decrease', 'Total'];
+
+function waterfallKind(chart, series, point) {
+  return isTotal(chart, point) ? 2 : series.values[point] < 0 ? 1 : 0;
+}
+
 function colorAt(chart, index) {
   return chart.colors.length === 0 ? null : chart.colors[index % chart.colors.length];
 }
@@ -122,6 +154,10 @@ function wrap(text, width, measure) {
 
 // A series or slice drawn in no color has no entry, and nor has a total, which draws only its labels.
 function legendEntries(chart) {
+  if (chart.type === 'waterfall') {
+    return WATERFALL_KINDS.map((name, kind) => ({ name, index: 0, color: colorAt(chart, kind), line: false }))
+      .filter((entry) => entry.color !== null);
+  }
   const pie = chart.family === 'pie';
   const names = pie ? chart.categories : chart.series.map((series) => series.name);
   const entries = names.map((name, index) => ({ name, index, color: colorAt(chart, index),
@@ -470,9 +506,11 @@ function layoutPlot(chart, box, context) {
   const overlap = (chart.overlap ?? 0) / 100;
   const gapWidth = (chart.gapWidth ?? 150) / 100;
   const thickness = slot / (places - (places - 1) * overlap + gapWidth);
+  const waterfall = chart.type === 'waterfall';
   bars.forEach((index, place) => {
     const series = chart.series[index];
     const color = colorAt(chart, index);
+    let previous = null;
     extents[index].forEach((extent, point) => {
       if (!extent) {
         return;
@@ -482,7 +520,13 @@ function layoutPlot(chart, box, context) {
       const to = position(extent[1]);
       const low = Math.min(from, to);
       const length = Math.abs(to - from);
-      const fill = series.colors?.[point] || color;
+      const fill = series.colors?.[point] || (waterfall ? colorAt(chart, waterfallKind(chart, series, point)) : color);
+      // A connector runs level from where the bar before ended across to this one.
+      if (waterfall && chart.connectorLines && previous) {
+        out.push({ kind: 'line', part: 'connector', x1: previous.end, y1: previous.at, x2: start, y2: previous.at,
+          stroke: chart.gridColor, width: RULE_WIDTH });
+      }
+      previous = { end: start + thickness, at: to };
       out.push(traced(horizontal
         ? { kind: 'rect', part: 'bar', x: low, y: start, width: length, height: thickness, fill }
         : { kind: 'rect', part: 'bar', x: start, y: low, width: thickness, height: length, fill }, series, index,

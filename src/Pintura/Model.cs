@@ -512,7 +512,7 @@ public class Chart
   public static readonly string[] Types =
   [
     "clustered_column", "stacked_column", "percent_stacked_column", "clustered_bar", "stacked_bar",
-    "percent_stacked_bar", "line", "stacked_line", "percent_stacked_line", "pie", "doughnut"
+    "percent_stacked_bar", "line", "stacked_line", "percent_stacked_line", "pie", "doughnut", "waterfall"
   ];
 
   public string Id { get; init; } = "";
@@ -534,6 +534,9 @@ public class Chart
   /// <summary>What the chart file sets for single series, by their names in the CSV.</summary>
   public Dictionary<string, ChartSeriesOptions> SeriesOptions { get; init; } =
     new Dictionary<string, ChartSeriesOptions>(StringComparer.Ordinal);
+  /// <summary>A waterfall's categories drawn from zero to their value, which the bars after them run on from.
+  /// </summary>
+  public List<string> Totals { get; init; } = new List<string>();
   [JsonIgnore] public Origin Origin { get; init; } = new Origin("", 0, 0);
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
 
@@ -560,6 +563,30 @@ public class Chart
     ? "percent_stacked"
     : type.StartsWith("stacked", StringComparison.Ordinal) ? "stacked"
     : "clustered";
+
+  /// <summary>Where each of a waterfall's bars runs, by category: a total from zero to its value, and any other value
+  /// on from where the bar before it ended, the first from zero. An empty cell draws nothing and moves nothing.
+  /// </summary>
+  public List<(double From, double To)?> Bars()
+  {
+    var bars = new List<(double From, double To)?>();
+    double level = 0;
+    List<double?> values = Series.Count > 0 ? Series[0].Values : [];
+    for (int point = 0; point < values.Count; point++)
+    {
+      if (values[point] is not double value)
+      {
+        bars.Add(null);
+        continue;
+      }
+      bool total = point < Categories.Count && Totals.Contains(Categories[point]);
+      bars.Add(total ? (0, value) : (level, level + value));
+      level = total ? value : level + value;
+    }
+    return bars;
+  }
+
+
 }
 
 /// <summary>A series and its values in category order; a null is an empty cell, drawn as a gap.</summary>
@@ -596,7 +623,7 @@ public class ChartProperties
     "value_axis.format", "value_axis.gridlines", "value_axis.reverse", "secondary_axis.visible", "secondary_axis.min",
     "secondary_axis.max", "secondary_axis.step", "secondary_axis.format", "secondary_axis.reverse",
     "category_axis.visible", "category_axis.labels", "category_axis.format", "category_axis.step", "series_colors",
-    "gap_width", "overlap", "markers.shape", "markers.size", "markers.fill", "plot.insets",
+    "gap_width", "overlap", "connector_lines", "markers.shape", "markers.size", "markers.fill", "plot.insets",
     "text.font", "text.size", "text.color"
   ];
 
@@ -611,6 +638,8 @@ public class ChartProperties
   public List<Color>? SeriesColors { get; set; }
   public double? GapWidth { get; set; }
   public double? Overlap { get; set; }
+  /// <summary>A waterfall's lines from each bar's end across to the next bar.</summary>
+  public bool? ConnectorLines { get; set; }
   /// <summary>What sits on each point of the chart's lines.</summary>
   public ChartMarkers Markers { get; init; } = new ChartMarkers();
   /// <summary>Room between the chart's frame and its plot and axis labels, <c>[left, top, right, bottom]</c>.</summary>
@@ -649,6 +678,7 @@ public class ChartProperties
       "series_colors" => SeriesColors,
       "gap_width" => GapWidth,
       "overlap" => Overlap,
+      "connector_lines" => ConnectorLines,
       "markers.shape" => Markers.Shape,
       "markers.size" => Markers.Size,
       "markers.fill" => Markers.Fill,

@@ -379,6 +379,7 @@ public static class HeadlessRunner
       Frame frame => (frame.Area is null ? "" : $"{frame.Area} ") + Numbers(frame.Rect),
       double[] numbers => Numbers(numbers),
       List<Color> colors => string.Join(", ", colors.Select(color => Display(key, color, theme))),
+      List<string> names => string.Join(", ", names),
       double number => Number(number),
       int number => number.ToString(CultureInfo.InvariantCulture),
       bool flag => flag ? "true" : "false",

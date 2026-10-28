@@ -207,6 +207,7 @@ public partial class Importer
     public required string Type { get; init; }
     public string? Style { get; init; }
     public bool SeriesInColumns { get; init; }
+    public List<string>? Totals { get; init; }
     public OrderedDictionary<string, JsonNode?> Own { get; } = new OrderedDictionary<string, JsonNode?>();
     /// <summary>Each series' own keys, by name, dotted as the JSON writes them.</summary>
     public OrderedDictionary<string, OrderedDictionary<string, JsonNode?>> Series { get; } =
@@ -707,6 +708,7 @@ public partial class Importer
       Type = type,
       Style = (string?)properties["style"],
       SeriesInColumns = columns,
+      Totals = properties["totals"]?.AsArray().Select(total => (string)total!).ToList(),
       Csv = text
     };
     foreach ((string key, OrderedDictionary<string, JsonNode?> value) in series)
@@ -2085,6 +2087,10 @@ public partial class Importer
     if (chart.SeriesInColumns)
     {
       map["series_in"] = "columns";
+    }
+    if (chart.Totals is { Count: > 0 })
+    {
+      map["totals"] = chart.Totals.Cast<object?>().ToList();
     }
     foreach ((string key, object? value) in Nest(chart.Own))
     {

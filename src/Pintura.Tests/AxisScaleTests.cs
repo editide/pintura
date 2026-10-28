@@ -123,5 +123,20 @@ public class AxisScaleTests
     scale.ShouldBe(new Scale(0, 1, 0.1));
   }
 
+  [Fact]
+  public void A_waterfall_scales_to_the_highest_and_lowest_level_its_bars_reach()
+  {
+    // Arrange
+    Chart chart = Chart("waterfall", ("Value", [100, 820, -1100, -150]));
+    chart.Totals.Add("3");
+
+    // Act
+    Scale scale = AxisScale.Of(chart, false, null, null, null);
+
+    // Assert
+    scale.ShouldBe(new Scale(-200, 1000, 200));
+  }
+
+
 
 }

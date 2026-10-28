@@ -1,0 +1,6 @@
+type: waterfall
+title: Adjusted EBITDA, 2024 to 2025
+data: ebitda-bridge.csv
+totals: ["2024", "2025"]
+value_axis: { format: billions_of_dollars }
+data_labels: { show: value, format: billions_of_dollars }
