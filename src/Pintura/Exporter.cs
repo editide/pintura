@@ -183,11 +183,8 @@ public partial class Exporter
       })
       .DistinctBy(picture => picture.Item3, StringComparer.Ordinal)
       .ToList();
-    if (pictures.Count > tools.MostPictures)
-    {
-      throw new InvalidOperationException($"the presentation uses {pictures.Count} different pictures, and an " +
-        $"export takes at most {tools.MostPictures}");
-    }
+    List<List<string>> passes = Passes(deck, incremental ? previous!.Slides : null, hashes, presentation.Root,
+      tools.MostPictures);
     Writable(file);
     bool edited = ExportManifest.Edited(file);
     DirectoryInfo scratch = Directory.CreateTempSubdirectory("pintura-export-");
@@ -217,56 +214,131 @@ public partial class Exporter
             "most an export takes");
         }
       }
-      using IToolSession session = tools.Open(start);
       // About five calls a slide, and twenty for the theme and layouts.
       double expected = (incremental ? 0 : 20) + 5 * deck["slides"]!.AsArray().Count;
-      var counting = new CountingTools(session, calls => progress?.Invoke(Math.Min(0.99, calls / expected)));
-      var attached = new Dictionary<string, string>(StringComparer.Ordinal);
-      var exporter = new Exporter(counting, (relative, fill) =>
+      HashSet<string> pending = [.. passes.SelectMany(pass => pass)];
+      IReadOnlyList<ExportedSlide>? held = incremental ? previous!.Slides : null;
+      IReadOnlyList<string> designGaps = previous?.DesignGaps ?? [];
+      var workarounds = new SortedSet<string>(StringComparer.Ordinal);
+      var billed = new ExportBilling(0, 0, 0);
+      int calls = 0;
+      int reused = 0;
+      Exporter exporter = null!;
+      string saved = start;
+      for (int index = 0; index < passes.Count; index++)
       {
-        string source = Path.GetFullPath(Path.Combine(presentation.Root, relative));
-        string key = Drawing(source, fill);
-        if (!attached.TryGetValue(key, out string? uri))
+        pending.ExceptWith(passes[index]);
+        JsonObject part = deck;
+        if (pending.Count > 0)
         {
-          uri = session.Attach(drawn.GetValueOrDefault(key, source));
-          attached[key] = uri;
+          part = (JsonObject)deck.DeepClone();
+          part["slides"] = new JsonArray(Items(deck["slides"])
+            .Where(slide => !pending.Contains(Text(Get(slide, "id"))!))
+            .Select(slide => slide!.DeepClone()).ToArray());
         }
-        return (uri, source);
-      })
-      {
-        Root = presentation.Root
-      };
-      if (incremental)
-      {
-        exporter.Update(deck, previous!.Slides, previous.DesignGaps, kept);
+        using IToolSession session = tools.Open(saved);
+        int before = calls;
+        var counting = new CountingTools(session,
+          made => progress?.Invoke(Math.Min(0.99, (before + made) / expected)));
+        var attached = new Dictionary<string, string>(StringComparer.Ordinal);
+        exporter = new Exporter(counting, (relative, fill) =>
+        {
+          string source = Path.GetFullPath(Path.Combine(presentation.Root, relative));
+          string key = Drawing(source, fill);
+          if (!attached.TryGetValue(key, out string? uri))
+          {
+            uri = session.Attach(drawn.GetValueOrDefault(key, source));
+            attached[key] = uri;
+          }
+          return (uri, source);
+        })
+        {
+          Root = presentation.Root
+        };
+        if (held is null)
+        {
+          exporter.Translate(part);
+        }
+        else
+        {
+          exporter.Update(part, held, designGaps, kept);
+        }
+        if (index == 0)
+        {
+          reused = exporter.Reused;
+        }
+        calls += counting.Calls;
+        workarounds.UnionWith(exporter.Workarounds);
+        billed = new ExportBilling(billed.Slides + exporter.Billed.Slides, billed.Layouts + exporter.Billed.Layouts,
+          billed.Masters + exporter.Billed.Masters);
+        // Saved beside the scratch copy first, so a failed download leaves the last export and its manifest whole.
+        saved = Path.Combine(scratch.FullName, $"pass {index + 1}", Path.GetFileName(file));
+        Directory.CreateDirectory(Path.GetDirectoryName(saved)!);
+        session.Save(saved);
+        held = Items(part["slides"]).OfType<JsonNode>()
+          .Select(slide => Text(Get(slide, "id"))!)
+          .Where(exporter.SlideGaps.ContainsKey)
+          .Select(id => new ExportedSlide(id, hashes[id], exporter.SlideGaps[id]))
+          .ToList();
+        designGaps = exporter.DesignGaps;
       }
-      else
-      {
-        exporter.Translate(deck);
-      }
-      // Saved beside the scratch copy first, so a failed download leaves the last export and its manifest whole.
-      string saved = Path.Combine(scratch.FullName, "saved", Path.GetFileName(file));
-      Directory.CreateDirectory(Path.GetDirectoryName(saved)!);
-      session.Save(saved);
-      List<ExportedSlide> slides = Items(deck["slides"]).OfType<JsonNode>()
-        .Select(slide => Text(Get(slide, "id"))!)
-        .Where(exporter.SlideGaps.ContainsKey)
-        .Select(id => new ExportedSlide(id, hashes[id], exporter.SlideGaps[id]))
-        .ToList();
-      new ExportManifest("", design, exporter.DesignGaps, slides).Write(saved);
+      new ExportManifest("", design, designGaps, held!).Write(saved);
       string? aside = edited ? Free(file, "edited in PowerPoint") : null;
       Place(saved, file, aside);
-      return new ExportReport(file, deck["slides"]!.AsArray().Count, counting.Calls, watch.Elapsed, exporter.Gaps,
-        exporter.Reused, exporter.Workarounds)
+      return new ExportReport(file, deck["slides"]!.AsArray().Count, calls, watch.Elapsed, exporter.Gaps, reused,
+        workarounds)
       {
         Edited = aside,
-        Billed = exporter.Billed
+        Billed = billed
       };
     }
     finally
     {
       scratch.Delete(true);
     }
+  }
+
+  /// <summary>The slides to write, in deck order, split into passes that each attach at most <paramref name="most"/>
+  /// different pictures, as many as the tools keep a deck. The first pass also attaches the theme's and layouts'
+  /// pictures, unless <paramref name="held"/>, the slides an earlier export on the same design left, means it writes
+  /// neither; slides held unchanged are left out. Refuses a slide that alone attaches more.</summary>
+  private static List<List<string>> Passes(JsonObject deck, IReadOnlyList<ExportedSlide>? held,
+    Dictionary<string, string> hashes, string root, int? most)
+  {
+    HashSet<string> Keys(JsonNode? node) => [.. PictureProperties(node).Select(properties => Drawing(
+      Path.GetFullPath(Path.Combine(root, Text(Get(properties, "picture"))!)), PictureFill(properties, deck)))];
+    HashSet<string> attached = held is null
+      ? [.. deck.Where(pair => pair.Key != "slides").SelectMany(pair => Keys(pair.Value))]
+      : [];
+    var passes = new List<List<string>> { new List<string>() };
+    foreach (JsonNode? slide in Items(deck["slides"]))
+    {
+      string id = Text(Get(slide, "id"))!;
+      if (held?.Any(earlier => earlier.Id == id && earlier.Hash == hashes[id]) == true)
+      {
+        continue;
+      }
+      HashSet<string> own = Keys(slide);
+      if (own.Count > most)
+      {
+        throw new InvalidOperationException($"slide {id} uses {own.Count} different pictures, and an export takes " +
+          $"at most {most}");
+      }
+      int together = attached.Union(own).Count();
+      if (together > most && passes[^1].Count == 0)
+      {
+        throw new InvalidOperationException($"the theme and layouts with slide {id} use {together} different " +
+          $"pictures, and an export takes at most {most}");
+      }
+      if (together > most)
+      {
+        passes.Add(new List<string>());
+        attached = [];
+      }
+      passes[^1].Add(id);
+      attached.UnionWith(own);
+    }
+    return passes;
   }
 
   /// <summary>Refuses before anything is billed when another program, such as PowerPoint on Windows, holds the deck
