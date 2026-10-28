@@ -11,7 +11,8 @@ public record Measurement(List<FontMeasure> Fonts, List<BoxMeasure> Boxes, List<
 public record FontMeasure(string Family, bool Available);
 
 /// <summary>A text box or table as the headless page drew it. Overflow is in points past the frame; scale is the
-/// shrink applied under <c>fit: shrink</c>, and height the grown height under <c>fit: grow</c> or a table's height.
+/// shrink applied under <c>fit: shrink</c>, and height the grown height under <c>fit: grow</c> or a table's height;
+/// left and width are where unwrapped text under <c>fit: grow</c> set the box's x and width.
 /// A table's paragraphs are its cells' line counts, row by row, and its rows their heights. A text box's ink is each
 /// line of its text as drawn, <c>[x, y, width, height]</c> on the slide. Tight is how far unfitted wrapped text that fits
 /// would run past the frame were it set 1% narrower, as another renderer's rounding may set it. Runts are the
@@ -30,7 +31,9 @@ public record BoxMeasure(
   double[]? Rows = null,
   double[][]? Ink = null,
   double? Tight = null,
-  List<Runt>? Runts = null);
+  List<Runt>? Runts = null,
+  double? Left = null,
+  double? Width = null);
 
 /// <summary>A paragraph's short last line: its index in the box and its text.</summary>
 public record Runt(int Paragraph, string Text);

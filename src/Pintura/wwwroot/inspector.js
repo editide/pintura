@@ -852,8 +852,8 @@ function fillMeter(node, box, card) {
   const label = element('div', 'meter-label', card);
   if (box.fit === 'shrink' || box.fit === 'grow') {
     bar.style.width = box.fit === 'shrink' ? `${Math.round(box.scale * 100)}%` : '100%';
-    fact(box.fit === 'shrink' ? `Shrunk to ${Math.round(box.scale * 100)}% to fit` : `Grown to ${box.height} pt tall`,
-      label);
+    fact(box.fit === 'shrink' ? `Shrunk to ${Math.round(box.scale * 100)}% to fit`
+      : box.width ? `Grown to ${box.width} by ${box.height} pt` : `Grown to ${box.height} pt tall`, label);
   }
   if (box.overflow > 0) {
     card.classList.add('over');
