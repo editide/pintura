@@ -836,6 +836,38 @@ public class CheckTests
   }
 
   [Fact]
+  public void Data_labels_with_no_room_past_the_plots_edge_are_reported_with_how_to_make_room()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("type: clustered_column\ndata: revenue.csv");
+    deck.Write("deck/slides/chart.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - { id: chart, chart: revenue, frame: [40, 100, 600, 300] }
+      """);
+    var measurement = new Measurement([], [],
+    [
+      new ChartMeasure("chart", "chart", [new ChartLabel("2024", [120, 380, 30, 12]),
+        new ChartLabel("$8.5B", [430, 110, 36, 12], Moved: "top"), new ChartLabel("$8.0B", [500, 110, 36, 12], Moved: "top"),
+        new ChartLabel("($1.2B)", [300, 360, 36, 12], Moved: "bottom")])
+    ]);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load(), measurement);
+
+    // Assert
+    findings.Select(finding => $"{finding.Where} {finding.Message}").ShouldBe(
+    [
+      "chart/chart its data labels $8.5B and $8.0B have no room past its top edge, so they're drawn over " +
+        "their data; raise its value axis's max",
+      "chart/chart its data label ($1.2B) has no room past its bottom edge, so it's drawn over its data; " +
+        "lower its value axis's min"
+    ], ignoreOrder: true);
+  }
+
+  [Fact]
   public void An_axis_label_the_plot_narrowed_for_is_an_export_warning_since_PowerPoint_cuts_it_off()
   {
     // Arrange

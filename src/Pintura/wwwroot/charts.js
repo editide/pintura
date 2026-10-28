@@ -217,7 +217,8 @@ function labelColor(labels, value) {
 
 // A bar's label, where `from` and `to` are the bar's base and end along the value direction, in points, and `across`
 // is its middle the other way. Outside runs past the end, so a negative bar's label sits below or to its left, but
-// never past the plot, where the axis labels are: PowerPoint keeps it inside, over the bar's end.
+// never past the plot's edge where the category labels are: PowerPoint keeps it inside, over the bar's end. One kept
+// inside that covers its bar's end is marked with that edge. Elsewhere it may run past the plot, up to the chart's edge.
 function barLabel(labels, context, raw, across, from, to, horizontal, trace = (primitive) => primitive) {
   const { size, measure, out, plot } = context;
   const text = formatNumber(raw, labels.format);
@@ -239,10 +240,14 @@ function barLabel(labels, context, raw, across, from, to, horizontal, trace = (p
     default:
       along = (from + to) / 2;
   }
-  const [low, high] = horizontal ? [plot.x, plot.x + plot.width] : [plot.y, plot.y + plot.height];
-  along = Math.min(high - extent / 2, Math.max(low + extent / 2, along));
+  const pushed = horizontal ? Math.max(0, plot.x + extent / 2 - along)
+    : Math.min(0, plot.y + plot.height - extent / 2 - along);
+  along += pushed;
   const label = { kind: 'text', part: 'label', text, anchor: 'middle', color: labelColor(labels, raw),
     bold: labels.bold };
+  if (Math.abs(pushed) > gap + 0.5) {
+    label.moved = horizontal ? 'left' : 'bottom';
+  }
   out.push(trace(horizontal ? { ...label, x: along, y: across } : { ...label, x: across, y: along }));
 }
 
@@ -375,8 +380,16 @@ function layoutCartesian(chart, box, context) {
     }
     if (primitive.kind === 'text' && primitive.part === 'label') {
       const [start, end] = span(primitive);
-      primitive.x += Math.max(0, box.x - start) - Math.max(0, end - (box.x + box.width));
-      primitive.y = Math.min(box.y + box.height - half, Math.max(box.y + half, primitive.y));
+      const dx = Math.max(0, box.x - start) - Math.max(0, end - (box.x + box.width));
+      const dy = Math.min(box.y + box.height - half, Math.max(box.y + half, primitive.y)) - primitive.y;
+      primitive.x += dx;
+      primitive.y += dy;
+      // Pushed along the value axis past the gap it keeps, a label covers its own bar or point; across, it only
+      // shifts aside.
+      const pushed = chart.family === 'bar' ? dx : -dy;
+      if (Math.abs(pushed) > size * 0.3 + 0.5) {
+        primitive.moved = chart.family === 'bar' ? (pushed > 0 ? 'left' : 'right') : (pushed > 0 ? 'bottom' : 'top');
+      }
     }
   }
   out.push(...drawn);
@@ -809,6 +822,9 @@ function drawChart(chart, width, height) {
     node.dataset.part = primitive.part;
     if (primitive.clipped) {
       node.dataset.clipped = '';
+    }
+    if (primitive.moved) {
+      node.dataset.moved = primitive.moved;
     }
     if (primitive.series !== undefined) {
       node.dataset.partSeries = primitive.series;

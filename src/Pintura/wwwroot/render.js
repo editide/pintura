@@ -902,7 +902,7 @@ function measureCharts(stage) {
     id: node.dataset.id,
     labels: [...node.querySelectorAll('text')].filter((text) => text.textContent)
       .map((text) => ({ text: text.textContent, rect: onSlide(text.getBoundingClientRect(), stage),
-        clipped: 'clipped' in text.dataset }))
+        clipped: 'clipped' in text.dataset, moved: text.dataset.moved ?? null }))
   }));
 }
 
