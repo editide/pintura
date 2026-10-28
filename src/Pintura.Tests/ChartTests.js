@@ -597,3 +597,39 @@ test('a plot\'s insets make room around it and its axis labels, which data label
   assert.equal(peak(plain).y, 11);
   assert.equal(peak(inset).y, 25);
 });
+
+test('an outside label runs past the plot into the plot\'s insets, as PowerPoint draws it above the plot area', () => {
+  // Arrange
+  const labels = { show: 'value', position: 'outside', format: null };
+  const drawn = (plotInsets) => texts(layoutChart(chart({ labels, series: [{ name: 'Rent', values: [800, 200] }],
+    valueAxis: { visible: false, gridlines: false, min: 0, max: 800, step: 200 }, plotInsets }), 400, 200, measure));
+
+  // Act
+  const inset = drawn([0, 30, 0, 0]);
+
+  // Assert
+  const peak = inset.find((text) => text.text === '800');
+  const axis = inset.find((text) => text.text === '2024');
+  assert.ok(peak.y + 6 <= 35, `${peak.y} sits over its bar, whose end is at 35`);
+  assert.equal(peak.moved, undefined);
+  assert.ok(axis);
+});
+
+test('an outside label with no room past its bar\'s end is marked with the edge that pushed it back', () => {
+  // Arrange
+  const labels = { show: 'value', position: 'outside', format: null };
+  const drawn = (max, overrides = {}) => texts(layoutChart(chart({ labels,
+    series: [{ name: 'Rent', values: [800, -200] }],
+    valueAxis: { visible: false, gridlines: false, min: -200, max, step: 200 }, ...overrides }), 400, 200, measure))
+    .filter((text) => text.part === 'label');
+
+  // Act
+  const columns = drawn(800);
+  const roomy = drawn(1000);
+  const bars = drawn(800, { type: 'clustered_bar', family: 'bar' });
+
+  // Assert
+  assert.deepEqual(columns.map((label) => [label.text, label.moved]), [['800', 'top'], ['-200', 'bottom']]);
+  assert.deepEqual(roomy.map((label) => label.moved), [undefined, 'bottom']);
+  assert.deepEqual(bars.map((label) => [label.text, label.moved]), [['800', 'right'], ['-200', 'left']]);
+});

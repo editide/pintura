@@ -44,8 +44,9 @@ public record ChartMeasure(string Slide, string Id, List<ChartLabel> Labels);
 public record PictureMeasure(string Slide, string Id, string Owner, double[] Drawn, double[]? Margins = null);
 
 /// <summary>A chart label's text and its <c>[x, y, width, height]</c> on the slide. Clipped is an axis label the plot
-/// narrowed to fit inside the chart, which PowerPoint, unable to narrow it, cuts off at the chart's edge.</summary>
-public record ChartLabel(string Text, double[] Rect, bool Clipped = false);
+/// narrowed to fit inside the chart, which PowerPoint, unable to narrow it, cuts off at the chart's edge. Moved is the
+/// edge, <c>top</c>, <c>bottom</c>, <c>left</c> or <c>right</c>, that pushed a data label back over its own data.</summary>
+public record ChartLabel(string Text, double[] Rect, bool Clipped = false, string? Moved = null);
 
 /// <summary>Headless Chromium on the server's own headless page, launched on the first request and kept until the
 /// server stops. Requests take turns, since they share one page.</summary>

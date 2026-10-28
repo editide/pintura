@@ -285,6 +285,7 @@ public static class Checks
       candidates.AddRange(OffSlide(presentation, slide, items));
       candidates.AddRange(Overlaps(slide, items));
       candidates.AddRange(ChartLabels(slide, items, measurement));
+      candidates.AddRange(PushedLabels(slide, items, measurement));
       candidates.AddRange(Crossings(slide, items));
       candidates.AddRange(NearMisses(slide, items, areas));
       candidates.AddRange(Margins(presentation, slide, items, pictures));
@@ -410,6 +411,31 @@ public static class Checks
           : $"labels {string.Join(", ", crossed.SkipLast(1))} and {crossed[^1]}";
         yield return item.Report(slide, $"chart-label/{chart.Id}", "geometry",
           $"its text crosses {under.Name}'s {labels}", other: under);
+      }
+    }
+  }
+
+  /// <summary>Data labels pushed back over their own bar or point, by the chart's edge or, for a bar's label, by the
+  /// category labels, since the axis ends too near them. PowerPoint pushes them the same way.</summary>
+  private static IEnumerable<Candidate> PushedLabels(Slide slide, List<Placed> items, Measurement? measurement)
+  {
+    foreach (ChartMeasure chart in (measurement?.Charts ?? []).Where(chart => chart.Slide == slide.Id))
+    {
+      Placed? item = items.FirstOrDefault(item => item.Id == chart.Id);
+      if (item is null)
+      {
+        continue;
+      }
+      foreach (IGrouping<string, ChartLabel> edge in chart.Labels.Where(label => label.Moved is not null)
+        .GroupBy(label => label.Moved!))
+      {
+        List<string> pushed = edge.Select(label => label.Text).Distinct().ToList();
+        string labels = pushed.Count == 1 ? $"data label {pushed[0]} has"
+          : $"data labels {string.Join(", ", pushed.SkipLast(1))} and {pushed[^1]} have";
+        string drawn = pushed.Count == 1 ? "it's drawn over its data" : "they're drawn over their data";
+        string fix = edge.Key is "top" or "right" ? "raise its value axis's max" : "lower its value axis's min";
+        yield return item.Report(slide, $"pushed-label/{edge.Key}", "geometry",
+          $"its {labels} no room past its {edge.Key} edge, so {drawn}; {fix}");
       }
     }
   }
