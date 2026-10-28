@@ -499,3 +499,35 @@ test('every primitive names the part of the chart it draws, and the series or po
   assert.deepEqual(parts('category_axis').map((primitive) => primitive.text ?? 'line'), ['line', '2024', '2025']);
   assert.equal(primitives.filter((primitive) => !primitive.part).length, 0);
 });
+
+
+test('a line\'s first and last labels and its axis\'s end dates draw inside the chart, as PowerPoint keeps them', () => {
+  // Arrange
+  const categories = Array.from({ length: 80 }, (_, week) =>
+    new Date(Date.UTC(2025, 2, 28 + week * 7)).toISOString().slice(0, 10));
+  const values = categories.map((_, week) => (week === 12 ? 200 : 40 + week));
+  const below = { show: 'value', position: 'below', format: { ...billions, scale: 1, decimals: 2, suffix: '' } };
+  const pointLabels = values.map((_, week) =>
+    (week === 0 || week === 79 ? below : week === 12 ? { ...below, position: 'above' } : null));
+  const series = [{ name: 'Close', values, type: 'line', pointLabels }];
+  const dates = { pattern: "MMM 'YY", stepCount: 3, stepUnit: 'months' };
+
+  // Act
+  const primitives = layoutChart(chart({ type: 'line', family: 'line', grouping: 'standard', categories, dates,
+    series, valueAxis: { visible: false, gridlines: false, min: 0, max: 200, step: 50 } }), 430, 132, measure);
+
+  // Assert
+  const drawn = texts(primitives);
+  const labels = drawn.filter((text) => text.part === 'label');
+  assert.deepEqual(labels.map((label) => label.text), ['$40.00', '$200.00', '$119.00']);
+  for (const text of drawn) {
+    const width = measure(text.text);
+    const left = { start: text.x, end: text.x - width }[text.anchor] ?? text.x - width / 2;
+    assert.ok(left >= 4.99 && left + width <= 425.01, `${text.text} runs from ${left} to ${left + width}`);
+    assert.ok(text.y - 6 >= 5 && text.y + 6 <= 127, `${text.text} sits at ${text.y}`);
+  }
+  const line = primitives.find((primitive) => primitive.kind === 'path' && primitive.fill === 'none');
+  const [, firstX] = line.d.match(/^M(\S+) /);
+  assert.ok(Math.abs(labels[0].x - Number(firstX)) < 0.5, 'the first label stays under its point');
+  assert.deepEqual(drawn.filter((text) => text.clipped).map((text) => text.text), ["Mar '25", "Sep '26"]);
+});

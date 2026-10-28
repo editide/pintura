@@ -35,6 +35,8 @@ An axis's `min`, `max`, or `step` nobody fixes comes from its data: the axis rea
 A percent stack runs to 100% exactly.
 `pintura --element` shows the scale an axis gets, and the export fixes it in PowerPoint, so the deck draws the same axis.
 Category labels sit at the plot's edge, clear of negative bars, and wrap to their category's width; a line feed in a label, written `\n` in a quoted string, always starts a new line.
+Everything stays inside the chart's frame: the plot narrows until its first and last axis labels fit, and a data label that would still run past the frame moves back inside it, off its point, as PowerPoint moves it.
+PowerPoint can't narrow the plot, so it cuts those axis labels off at the frame, which `--check --export` warns of.
 
 Keys layer from the theme's `chart` base through the named style to the chart, the last one winning; the base and styles take every key but `type`, `data`, and `series_in`.
 Maps merge key by key, so a chart writing `data_labels: { format: billions_of_dollars }` keeps its style's `show: value`.

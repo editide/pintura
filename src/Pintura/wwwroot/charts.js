@@ -330,8 +330,50 @@ function dateLabels(chart, axis, slot, apart) {
   return labels;
 }
 
-// Columns and bars first, lines over them, then every label; a secondary axis's ticks sit right of the plot.
+// The plot narrows until its axis labels fit the chart, and a data label still past its edge moves back in, as
+// PowerPoint moves it. PowerPoint can't narrow the plot, so an axis label the plot narrowed for is marked clipped.
 function layoutCartesian(chart, box, context) {
+  const { size, out } = context;
+  const span = (text) => {
+    const width = context.measure(text.text, text.bold);
+    const left = { start: text.x, end: text.x - width }[text.anchor] ?? text.x - width / 2;
+    return [left, left + width];
+  };
+  const outside = ([start, end]) => start < box.x - 0.01 || end > box.x + box.width + 0.01;
+  let inner = box;
+  let drawn;
+  let result;
+  let clipped = null;
+  for (let pass = 0; pass < 4; pass++) {
+    drawn = [];
+    result = layoutPlot(chart, inner, { ...context, out: drawn });
+    const texts = drawn.filter((primitive) => primitive.kind === 'text' && primitive.part !== 'label');
+    clipped ??= new Set(texts.filter((text) => outside(span(text))).map((text) => `${text.part}:${text.text}`));
+    const axes = texts.map(span);
+    const left = Math.max(0, box.x - Math.min(...axes.map(([start]) => start)));
+    const right = Math.max(0, Math.max(...axes.map(([, end]) => end)) - (box.x + box.width));
+    if (left + right < 0.01) {
+      break;
+    }
+    inner = { ...inner, x: inner.x + left, width: Math.max(1, inner.width - left - right) };
+  }
+  const half = size * 0.6;
+  for (const primitive of drawn) {
+    if (primitive.kind === 'text' && clipped.has(`${primitive.part}:${primitive.text}`)) {
+      primitive.clipped = true;
+    }
+    if (primitive.kind === 'text' && primitive.part === 'label') {
+      const [start, end] = span(primitive);
+      primitive.x += Math.max(0, box.x - start) - Math.max(0, end - (box.x + box.width));
+      primitive.y = Math.min(box.y + box.height - half, Math.max(box.y + half, primitive.y));
+    }
+  }
+  out.push(...drawn);
+  return result;
+}
+
+// Columns and bars first, lines over them, then every label; a secondary axis's ticks sit right of the plot.
+function layoutPlot(chart, box, context) {
   const { size, measure, out } = context;
   const horizontal = chart.family === 'bar';
   const lineHeight = size * 1.2;
@@ -645,7 +687,7 @@ function layoutPie(chart, box, context) {
 function layoutChart(chart, width, height, measure) {
   const size = chart.text.size;
   const out = [];
-  const context = { size, out, measure: (text) => measure(text, size, false) };
+  const context = { size, out, measure: (text, bold = false) => measure(text, size, bold) };
   const inset = size * 0.5;
   let box = { x: inset, y: inset, width: Math.max(1, width - inset * 2), height: Math.max(1, height - inset * 2) };
   if (chart.title) {
@@ -751,6 +793,9 @@ function drawChart(chart, width, height) {
         break;
     }
     node.dataset.part = primitive.part;
+    if (primitive.clipped) {
+      node.dataset.clipped = '';
+    }
     if (primitive.series !== undefined) {
       node.dataset.partSeries = primitive.series;
     }

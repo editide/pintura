@@ -867,7 +867,8 @@ function measureCharts(stage) {
   return [...stage.querySelectorAll('.item.chart')].map((node) => ({
     id: node.dataset.id,
     labels: [...node.querySelectorAll('text')].filter((text) => text.textContent)
-      .map((text) => ({ text: text.textContent, rect: onSlide(text.getBoundingClientRect(), stage) }))
+      .map((text) => ({ text: text.textContent, rect: onSlide(text.getBoundingClientRect(), stage),
+        clipped: 'clipped' in text.dataset }))
   }));
 }
 
