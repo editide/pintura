@@ -153,7 +153,7 @@ public class ChartTests
     LoadException error = deck.Error("chart");
 
     // Assert
-    error.Problem.ShouldBe("a line chart places labels above, below, or center, not outside");
+    error.Problem.ShouldBe("a line chart places labels above, below, left, right, or center, not outside");
     error.Origin.Line.ShouldBe(4);
   }
 
@@ -637,7 +637,7 @@ public class ChartTests
       "\"2025\": { data_labels: { position: center } } } } }");
 
     // Assert
-    line.Problem.ShouldBe("a line places labels above, below, or center, not inside");
+    line.Problem.ShouldBe("a line places labels above, below, left, right, or center, not inside");
     percent.Problem.ShouldBe("show: percent is for pie and doughnut charts; a point shows value or none");
     total.Problem.ShouldBe("a total's labels sit past the end of its stack, so it takes no position");
   }

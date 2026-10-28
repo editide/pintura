@@ -52,7 +52,7 @@ public partial class Exporter
   private static readonly Dictionary<string, string> Dock = new Dictionary<string, string>(StringComparer.Ordinal)
   {
     ["center"] = "center", ["inside"] = "inside_end", ["inside_base"] = "inside_base", ["outside"] = "outside_end",
-    ["above"] = "above", ["below"] = "below"
+    ["above"] = "above", ["below"] = "below", ["left"] = "left", ["right"] = "right"
   };
 
   private static readonly Dictionary<string, string> DateCodes = new Dictionary<string, string>(StringComparer.Ordinal)
