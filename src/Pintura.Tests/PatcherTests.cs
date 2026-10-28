@@ -301,6 +301,23 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Deleting_the_last_lines_words_drops_the_empty_paragraph_they_leave()
+  {
+    // Arrange
+    const string bubble = "elements:\n  - id: bubble\n    text: |-\n      +${date}\n      YoY\n    style: lead\n";
+    var cleared = new ValueEdit("elements.bubble.text", Patcher.SourceAt(bubble, "elements.bubble.text")!,
+      Paragraphs: ["+￼", ""]);
+
+    // Act
+    string patched = Apply(bubble, cleared);
+    string undone = Undo(bubble, cleared);
+
+    // Assert
+    patched.ShouldBe("elements:\n  - id: bubble\n    text: |-\n      +${date}\n    style: lead\n");
+    undone.ShouldBe(bubble);
+  }
+
+  [Fact]
   public void Splitting_a_bullet_writes_a_bullet_at_its_level_after_it()
   {
     // Arrange

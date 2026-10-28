@@ -829,7 +829,13 @@ public static partial class Patcher
     bool plain = edit.Path == "title" || edit.Path.StartsWith("title.", StringComparison.Ordinal) ||
       edit.Path.StartsWith("placeholders.", StringComparison.Ordinal);
     string value = scalar.Value ?? "";
-    string updated = Reword(value, edit.Paragraphs!, plain, context);
+    // Text can't end on an empty paragraph, so one left by deleting the last line's words goes with them.
+    List<string> paragraphs = edit.Paragraphs!.ToList();
+    while (paragraphs.Count > 1 && paragraphs[^1].Length == 0)
+    {
+      paragraphs.RemoveAt(paragraphs.Count - 1);
+    }
+    string updated = Reword(value, paragraphs, plain, context);
     if (edit.Format is TextFormat format)
     {
       updated = plain

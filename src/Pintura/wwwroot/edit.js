@@ -986,8 +986,12 @@ function paragraphText(node) {
   return text.replace(/​/g, '');
 }
 
+// A paragraph's last <br> draws no line; the browser leaves one to hold open a paragraph whose words are deleted.
 function paragraphTexts(flow) {
-  return [...flow.querySelectorAll('.paragraph')].map(paragraphText);
+  return [...flow.querySelectorAll('.paragraph')].map((paragraph) => {
+    const text = paragraphText(paragraph);
+    return paragraph.lastChild?.nodeName === 'BR' ? text.replace(/\n$/, '') : text;
+  });
 }
 
 function startText(event) {
