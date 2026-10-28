@@ -148,6 +148,28 @@ test('an outside label sits past the end of its bar, below a negative one', () =
   assert.ok(Math.abs(label.x - (negative.x + negative.width / 2)) < 0.01);
 });
 
+test('an outside label past the plot stays inside it, clear of the category labels, as PowerPoint keeps it', () => {
+  // Arrange
+  const labelled = chart({ series: [{ name: 'Margin', values: [0.3, -0.19] }],
+    valueAxis: { visible: true, gridlines: false, min: -0.2, max: 0.4, step: 0.1 },
+    labels: { show: 'value', position: 'outside', format: null } });
+  const bars = chart({ type: 'clustered_bar', family: 'bar', series: [{ name: 'Margin', values: [0.3, -0.19] }],
+    valueAxis: { visible: true, gridlines: false, min: -0.2, max: 0.4, step: 0.1 },
+    labels: { show: 'value', position: 'outside', format: null } });
+
+  // Act
+  const columnTexts = texts(layoutChart(labelled, 400, 300, measure));
+  const barTexts = texts(layoutChart(bars, 400, 300, measure));
+  const columnLabel = columnTexts.find((text) => text.text === '-0.19');
+  const category = columnTexts.find((text) => text.text === '2025');
+  const barLabel = barTexts.find((text) => text.text === '-0.19');
+  const barCategory = barTexts.find((text) => text.text === '2025');
+
+  // Assert
+  assert.ok(columnLabel.y + 6 <= category.y - 6, `${columnLabel.y} overlaps ${category.y}`);
+  assert.ok(barLabel.x - measure('-0.19') / 2 >= barCategory.x, `${barLabel.x} overlaps ${barCategory.x}`);
+});
+
 test('a negative label takes the color its format names', () => {
   // Arrange
   const labelled = chart({ labels: { show: 'value', position: 'center',
