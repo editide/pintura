@@ -16,7 +16,7 @@ public record FontMeasure(string Family, bool Available);
 /// A table's paragraphs are its cells' line counts, row by row, and its rows their heights. A text box's ink is each
 /// line of its text as drawn, <c>[x, y, width, height]</c> on the slide. Tight is how far unfitted wrapped text that fits
 /// would run past the frame were it set 1% narrower, as another renderer's rounding may set it. Runts are the
-/// paragraphs whose wrapping leaves a last line of two words or fewer.</summary>
+/// paragraphs whose wrapping leaves a last line of two words or fewer, and fewer than a line above it.</summary>
 public record BoxMeasure(
   string Slide,
   string Id,
