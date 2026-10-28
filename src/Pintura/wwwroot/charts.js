@@ -216,9 +216,10 @@ function labelColor(labels, value) {
 }
 
 // A bar's label, where `from` and `to` are the bar's base and end along the value direction, in points, and `across`
-// is its middle the other way. Outside runs past the end, so a negative bar's label sits below or to its left.
+// is its middle the other way. Outside runs past the end, so a negative bar's label sits below or to its left, but
+// never past the plot, where the axis labels are: PowerPoint keeps it inside, over the bar's end.
 function barLabel(labels, context, raw, across, from, to, horizontal, trace = (primitive) => primitive) {
-  const { size, measure, out } = context;
+  const { size, measure, out, plot } = context;
   const text = formatNumber(raw, labels.format);
   const lineHeight = size * 1.2;
   const gap = size * 0.3;
@@ -238,6 +239,8 @@ function barLabel(labels, context, raw, across, from, to, horizontal, trace = (p
     default:
       along = (from + to) / 2;
   }
+  const [low, high] = horizontal ? [plot.x, plot.x + plot.width] : [plot.y, plot.y + plot.height];
+  along = Math.min(high - extent / 2, Math.max(low + extent / 2, along));
   const label = { kind: 'text', part: 'label', text, anchor: 'middle', color: labelColor(labels, raw),
     bold: labels.bold };
   out.push(trace(horizontal ? { ...label, x: along, y: across } : { ...label, x: across, y: along }));
@@ -452,7 +455,7 @@ function layoutPlot(chart, box, context) {
   }
 
   const labels = [];
-  const labelContext = { ...context, out: labels };
+  const labelContext = { ...context, out: labels, plot };
   const types = chart.series.map((series) => seriesType(chart, series));
   const bars = types.map((type, index) => (type === 'column' || type === 'bar' ? index : -1))
     .filter((index) => index >= 0);
