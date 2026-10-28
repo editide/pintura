@@ -96,6 +96,7 @@ It only reads, but for a layout's Edit, which opens it on the slide view to move
 In the one-slide view, the mouse moves, resizes, and rewords what the slide owns, and each edit is written to the slide's file as a patch to one value, the same one-line diff an agent would make.
 
 - Drag an element to move it, or a handle to resize it; Shift keeps a drag horizontal or vertical and a corner's proportions, and Alt turns off snapping.
+- While its words are reworded, an element moves by a drag just outside its edges, or resizes by its handles, which first writes the words, as in PowerPoint; a drag inside selects words.
 - Edges and middles snap to the slide's, to areas and placeholders, and to other elements, with a pink line where they meet.
 - An element may be dragged past the slide's edges, where it is drawn faded and `--check` warns that it runs off the slide.
 - The arrow keys nudge the selected element a point, or ten with Shift, and write once they rest; with nothing selected they still move between slides.

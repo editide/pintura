@@ -329,8 +329,8 @@ function itemNode(index) {
 }
 
 // Handles on the selected item: eight on a box, one on each end of a line, none on a rotated box or on an item the
-// slide doesn't own. A group has no handles, only a box around it all, and a box drawn across the slide shows while
-// it picks one.
+// slide doesn't own, and grips along a box's edges while its words are reworded. A group has no handles, only a box
+// around it all, and a box drawn across the slide shows while it picks one.
 function drawSelection() {
   const stage = slideStage();
   stage?.querySelector(':scope > .selection')?.remove();
@@ -350,7 +350,7 @@ function drawSelection() {
     return;
   }
   const node = selectedNode();
-  if (!stage || !node || editing.text) {
+  if (!stage || !node) {
     return;
   }
   const item = currentSlide().items[state.selected.index];
@@ -370,7 +370,16 @@ function drawSelection() {
   const box = element('div', 'selection-box', layer);
   place(box, [node.offsetLeft, node.offsetTop, node.offsetWidth, node.offsetHeight]);
   box.style.transform = node.style.transform;
-  if (item.edit.locked || item.rotate) {
+  if (item.edit.locked) {
+    return;
+  }
+  // Inside the box a press selects words being reworded, so its edges take the press that moves it.
+  if (editing.text) {
+    for (const side of ['n', 'e', 's', 'w']) {
+      element('div', `grip ${side}`, box);
+    }
+  }
+  if (item.rotate) {
     return;
   }
   for (const name of HANDLES) {
@@ -510,8 +519,17 @@ async function post(url, request, entry, kind) {
 // A press on an item starts dragging it, or the whole group where it is one of a group's; on the slide's empty space
 // or the pasteboard around it, a box that picks what it touches, adding to the selection with Shift or Ctrl.
 function startGesture(event) {
+  // Every click follows a press, so what a press before it set no longer stands.
+  editing.suppressClick = false;
   flushNudge();
-  if (event.button !== 0 || editing.busy || editing.text || state.view !== 'slide' || reviewing()) {
+  if (event.button !== 0 || editing.busy || state.view !== 'slide' || reviewing()) {
+    return;
+  }
+  if (editing.text) {
+    const grip = event.target.closest('.selection .grip, .selection .handle');
+    if (grip) {
+      gripReworded(event, grip.dataset.handle || null);
+    }
     return;
   }
   const handle = event.target.closest('.handle');
@@ -548,29 +566,56 @@ function startGesture(event) {
     }
     return;
   }
+  editing.gesture = itemGesture(event, node, handle ? handle.dataset.handle || handle.dataset.end : null);
+}
+
+function itemGesture(press, node, handle) {
+  const slide = currentSlide();
   const index = Number(node.dataset.index);
   const indexes = selectedIndexes();
   const group = !handle && indexes.length > 1 && indexes.includes(index) ? indexes : null;
-  editing.gesture = {
+  return {
     slide: slide.id,
-    pointer: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
+    pointer: press.pointerId,
+    startX: press.clientX,
+    startY: press.clientY,
     index,
     item: slide.items[index],
     node,
-    handle: handle ? handle.dataset.handle || handle.dataset.end : null,
+    handle,
     started: false,
-    scale: stageScale(stage),
+    scale: stageScale(slideStage()),
     targets: snapTargets(slide, state.deck.size, group || [index]),
     change: null,
     group: group && { indexes: group, items: group.map((at) => slide.items[at]), nodes: group.map(itemNode) }
   };
 }
 
+// A press on a grip or handle of the box being reworded ends the rewording, as in PowerPoint, then moves or resizes
+// the box. The page redraws from the file once the words are written, so the gesture waits for that, and is dropped
+// if the press ends first.
+async function gripReworded(event, handle) {
+  event.preventDefault();
+  const press = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY };
+  const index = Number(editing.text.node.dataset.index);
+  const waiting = { pointer: press.pointerId, waiting: true };
+  editing.gesture = waiting;
+  // The release after a press that never drags clicks the slide, which mustn't take the selection away.
+  editing.suppressClick = true;
+  await finishText(true);
+  const node = itemNode(index);
+  if (editing.gesture !== waiting || !node || state.selected?.index !== index) {
+    if (editing.gesture === waiting) {
+      editing.gesture = null;
+    }
+    return;
+  }
+  editing.gesture = itemGesture(press, node, handle);
+}
+
 function moveGesture(event) {
   const gesture = editing.gesture;
-  if (!gesture || event.pointerId !== gesture.pointer) {
+  if (!gesture || event.pointerId !== gesture.pointer || gesture.waiting) {
     return;
   }
   if (gesture.draw) {
@@ -1293,8 +1338,7 @@ function finishText(commit) {
     edits.unshift({ path: editor.item.edit.text.path, source: editor.item.edit.text.source, paragraphs: after });
   }
   if (edits.length > 0) {
-    send(editor.slide, edits);
-    return;
+    return send(editor.slide, edits);
   }
   if (editing.reloadPending) {
     afterEditing();
