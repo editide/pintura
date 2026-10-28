@@ -1369,6 +1369,18 @@ body.moving * {
 .handle.sw { left: 0; top: 100%; cursor: nesw-resize; }
 .handle.w { left: 0; top: 50%; cursor: ew-resize; }
 
+.grip {
+  position: absolute;
+  --grip: calc(8px / var(--scale, 1));
+  pointer-events: auto;
+  cursor: move;
+}
+
+.grip.n { left: calc(-1 * var(--grip)); right: calc(-1 * var(--grip)); top: calc(-1 * var(--grip)); height: var(--grip); }
+.grip.s { left: calc(-1 * var(--grip)); right: calc(-1 * var(--grip)); bottom: calc(-1 * var(--grip)); height: var(--grip); }
+.grip.w { top: 0; bottom: 0; left: calc(-1 * var(--grip)); width: var(--grip); }
+.grip.e { top: 0; bottom: 0; right: calc(-1 * var(--grip)); width: var(--grip); }
+
 .handle.end {
   border-radius: 50%;
   cursor: crosshair;
