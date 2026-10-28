@@ -137,7 +137,7 @@ function propertyValue({ key, display }) {
     const [x, y, width, height] = numbers;
     return { text: `${x}, ${y} · ${width} × ${height} pt`, ...(area ? { note: `${words(area)} area` } : {}) };
   }
-  if (key === 'insets' && numbers?.length === 4) {
+  if ((key === 'insets' || key === 'plot.insets') && numbers?.length === 4) {
     const [left, top, right, bottom] = numbers;
     if (left === right && top === bottom) {
       return { text: left === top ? `${left} pt` : `${left} pt sides, ${top} pt top and bottom` };

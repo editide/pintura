@@ -150,6 +150,8 @@ public record ChartPayload
   public DateAxisPayload? Dates { get; init; }
   public double? GapWidth { get; init; }
   public double? Overlap { get; init; }
+  /// <summary><c>[left, top, right, bottom]</c> in points.</summary>
+  public double[]? PlotInsets { get; init; }
   public ChartTextPayload Text { get; init; } = new ChartTextPayload("", 0, "");
   public string GridColor { get; init; } = "";
   public string AxisColor { get; init; } = "";
@@ -636,6 +638,7 @@ public static class PayloadBuilder
         : null,
       GapWidth = Value("gap_width") as double?,
       Overlap = Value("overlap") as double?,
+      PlotInsets = Value("plot.insets") as double[],
       Text = new ChartTextPayload(Family((string)Value("text.font")!, theme), Convert.ToDouble(Value("text.size")),
         text),
       GridColor = ColorMath.Luminance(text, 0.15, 0.85),

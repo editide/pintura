@@ -2495,6 +2495,16 @@ public partial class PresentationLoader
         : throw overlap.Error("overlap is a percent of a bar's width, from -100 to 100");
       Set("overlap", overlap);
     }
+    if (map.Take("plot") is Node plotNode)
+    {
+      MapNode plot = plotNode.AsMap();
+      if (plot.Take("insets") is Node insets)
+      {
+        target.PlotInsets = insets.AsNumbers(4, "[left, top, right, bottom] in points");
+        Set("plot.insets", insets);
+      }
+      plot.Done();
+    }
     if (map.Take("markers") is Node markersNode)
     {
       ReadMarkers(markersNode, target.Markers, (key, node) => Set($"markers.{key}", node));
