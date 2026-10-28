@@ -850,7 +850,8 @@ public class CheckTests
     var measurement = new Measurement([], [],
     [
       new ChartMeasure("chart", "chart", [new ChartLabel("2024", [120, 380, 30, 12]),
-        new ChartLabel("$8.5B", [430, 110, 36, 12], Moved: "top"), new ChartLabel("$8.0B", [500, 110, 36, 12], Moved: "top"),
+        new ChartLabel("$8.5B", [430, 110, 36, 12], Moved: "top"),
+        new ChartLabel("$8.0B", [500, 110, 36, 12], Moved: "top"),
         new ChartLabel("($1.2B)", [300, 360, 36, 12], Moved: "bottom")])
     ]);
 
@@ -865,6 +866,35 @@ public class CheckTests
       "chart/chart its data label ($1.2B) has no room past its bottom edge, so it's drawn over its data; " +
         "lower its value axis's min"
     ], ignoreOrder: true);
+  }
+
+  [Fact]
+  public void A_data_label_drawn_over_its_charts_category_labels_is_reported()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("type: clustered_column\ndata: revenue.csv");
+    deck.Write("deck/slides/chart.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - { id: chart, chart: revenue, frame: [40, 100, 600, 300] }
+      """);
+    var measurement = new Measurement([], [],
+    [
+      new ChartMeasure("chart", "chart", [new ChartLabel("2024", [120, 380, 30, 12], Part: "category_axis"),
+        new ChartLabel("2025", [300, 380, 30, 12], Part: "category_axis"),
+        new ChartLabel("($49M)", [296, 374, 38, 12], Part: "label"),
+        new ChartLabel("$2.6B", [120, 200, 36, 12], Part: "label")])
+    ]);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load(), measurement);
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Where.ShouldBe("chart/chart");
+    finding.Message.ShouldBe("its data label ($49M) crosses its category label 2025; lower its value axis's min");
   }
 
   [Fact]

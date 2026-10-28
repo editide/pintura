@@ -286,6 +286,7 @@ public static class Checks
       candidates.AddRange(Overlaps(slide, items));
       candidates.AddRange(ChartLabels(slide, items, measurement));
       candidates.AddRange(PushedLabels(slide, items, measurement));
+      candidates.AddRange(LabelsOverAxes(slide, items, measurement));
       candidates.AddRange(Crossings(slide, items));
       candidates.AddRange(NearMisses(slide, items, areas));
       candidates.AddRange(Margins(presentation, slide, items, pictures));
@@ -415,8 +416,8 @@ public static class Checks
     }
   }
 
-  /// <summary>Data labels pushed back over their own bar or point, by the chart's edge or, for a bar's label, by the
-  /// category labels, since the axis ends too near them. PowerPoint pushes them the same way.</summary>
+  /// <summary>Data labels the chart's edge pushed back over their own bar or point, since the axis ends too near
+  /// them. PowerPoint pushes them the same way.</summary>
   private static IEnumerable<Candidate> PushedLabels(Slide slide, List<Placed> items, Measurement? measurement)
   {
     foreach (ChartMeasure chart in (measurement?.Charts ?? []).Where(chart => chart.Slide == slide.Id))
@@ -437,6 +438,38 @@ public static class Checks
         yield return item.Report(slide, $"pushed-label/{edge.Key}", "geometry",
           $"its {labels} no room past its {edge.Key} edge, so {drawn}; {fix}");
       }
+    }
+  }
+
+  /// <summary>Data labels drawn over the chart's own axis labels, as PowerPoint draws a negative bar's label at the
+  /// foot of its axis over the category labels.</summary>
+  private static IEnumerable<Candidate> LabelsOverAxes(Slide slide, List<Placed> items, Measurement? measurement)
+  {
+    string List(List<string> texts) =>
+      texts.Count == 1 ? texts[0] : $"{string.Join(", ", texts.SkipLast(1))} and {texts[^1]}";
+    foreach (ChartMeasure chart in (measurement?.Charts ?? []).Where(chart => chart.Slide == slide.Id))
+    {
+      Placed? item = items.FirstOrDefault(item => item.Id == chart.Id);
+      List<ChartLabel> axes = chart.Labels
+        .Where(label => label.Part is "category_axis" or "value_axis" or "secondary_axis")
+        .ToList();
+      List<(ChartLabel Data, ChartLabel Axis)> crossings = chart.Labels
+        .Where(label => label.Part == "label")
+        .SelectMany(data => axes.Where(axis => Crosses(data.Rect, axis.Rect)).Select(axis => (data, axis)))
+        .ToList();
+      if (item is null || crossings.Count == 0)
+      {
+        continue;
+      }
+      List<string> data = crossings.Select(crossing => crossing.Data.Text).Distinct().ToList();
+      List<string> crossed = crossings.Select(crossing => crossing.Axis.Text).Distinct().ToList();
+      bool categories = crossings.All(crossing => crossing.Axis.Part == "category_axis");
+      string kind = categories ? "category" : "axis";
+      string message = $"its data {(data.Count == 1 ? "label" : "labels")} {List(data)} " +
+        $"{(data.Count == 1 ? "crosses" : "cross")} its {kind} {(crossed.Count == 1 ? "label" : "labels")} " +
+        List(crossed);
+      yield return item.Report(slide, "label-over-axis", "geometry",
+        categories ? $"{message}; lower its value axis's min" : message);
     }
   }
 

@@ -45,8 +45,9 @@ public record PictureMeasure(string Slide, string Id, string Owner, double[] Dra
 
 /// <summary>A chart label's text and its <c>[x, y, width, height]</c> on the slide. Clipped is an axis label the plot
 /// narrowed to fit inside the chart, which PowerPoint, unable to narrow it, cuts off at the chart's edge. Moved is the
-/// edge, <c>top</c>, <c>bottom</c>, <c>left</c> or <c>right</c>, that pushed a data label back over its own data.</summary>
-public record ChartLabel(string Text, double[] Rect, bool Clipped = false, string? Moved = null);
+/// edge, <c>top</c>, <c>bottom</c>, <c>left</c> or <c>right</c>, that pushed a data label back over its own data. Part
+/// is what the label is, such as <c>label</c> for a data label or <c>category_axis</c>.</summary>
+public record ChartLabel(string Text, double[] Rect, bool Clipped = false, string? Moved = null, string? Part = null);
 
 /// <summary>Headless Chromium on the server's own headless page, launched on the first request and kept until the
 /// server stops. Requests take turns, since they share one page.</summary>

@@ -216,11 +216,10 @@ function labelColor(labels, value) {
 }
 
 // A bar's label, where `from` and `to` are the bar's base and end along the value direction, in points, and `across`
-// is its middle the other way. Outside runs past the end, so a negative bar's label sits below or to its left, but
-// never past the plot's edge where the category labels are: PowerPoint keeps it inside, over the bar's end. One kept
-// inside that covers its bar's end is marked with that edge. Elsewhere it may run past the plot, up to the chart's edge.
+// is its middle the other way. Outside runs past the end, so a negative bar's label sits below or to its left, past
+// the plot and over any axis labels there, as PowerPoint draws it.
 function barLabel(labels, context, raw, across, from, to, horizontal, trace = (primitive) => primitive) {
-  const { size, measure, out, plot } = context;
+  const { size, measure, out } = context;
   const text = formatNumber(raw, labels.format);
   const lineHeight = size * 1.2;
   const gap = size * 0.3;
@@ -240,14 +239,8 @@ function barLabel(labels, context, raw, across, from, to, horizontal, trace = (p
     default:
       along = (from + to) / 2;
   }
-  const pushed = horizontal ? Math.max(0, plot.x + extent / 2 - along)
-    : Math.min(0, plot.y + plot.height - extent / 2 - along);
-  along += pushed;
   const label = { kind: 'text', part: 'label', text, anchor: 'middle', color: labelColor(labels, raw),
     bold: labels.bold };
-  if (Math.abs(pushed) > gap + 0.5) {
-    label.moved = horizontal ? 'left' : 'bottom';
-  }
   out.push(trace(horizontal ? { ...label, x: along, y: across } : { ...label, x: across, y: along }));
 }
 
@@ -468,7 +461,7 @@ function layoutPlot(chart, box, context) {
   }
 
   const labels = [];
-  const labelContext = { ...context, out: labels, plot };
+  const labelContext = { ...context, out: labels };
   const types = chart.series.map((series) => seriesType(chart, series));
   const bars = types.map((type, index) => (type === 'column' || type === 'bar' ? index : -1))
     .filter((index) => index >= 0);
