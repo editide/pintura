@@ -1327,14 +1327,22 @@ public class ServerTests
     headless.Start();
     int previewPort = ((IPEndPoint)preview.LocalEndpoint).Port;
     int headlessPort = ((IPEndPoint)headless.LocalEndpoint).Port;
+    // The registry trusts only a live process; git waits on its open input on every system.
+    using System.Diagnostics.Process server = System.Diagnostics.Process.Start(
+      new System.Diagnostics.ProcessStartInfo("git", "hash-object --stdin")
+      {
+        RedirectStandardInput = true,
+        RedirectStandardOutput = true
+      })!;
     registry.Register(new ServerInstance(Environment.ProcessId, folder.Root, previewPort, false, "older"));
-    registry.Register(new ServerInstance(Environment.ProcessId + 1, folder.Root, headlessPort, true,
-      ServerInstance.CurrentBuild));
+    registry.Register(new ServerInstance(server.Id, folder.Root, headlessPort, true, ServerInstance.CurrentBuild));
 
     // Act
     string url = await HeadlessServer.Find(folder.Root, registry);
     preview.Stop();
     headless.Stop();
+    server.StandardInput.Close();
+    server.WaitForExit();
 
     // Assert
     url.ShouldBe($"http://localhost:{headlessPort}");
