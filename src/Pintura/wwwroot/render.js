@@ -233,11 +233,11 @@ function renderShape(item, parent) {
   place(node, item.frame);
   transform(item, node);
   shade(item, node);
-  const [x, y, width] = item.frame;
+  const [x, y] = item.frame;
   const opacity = item.opacity === undefined ? null : item.opacity / 100;
   const tail = item.tail ? [item.tail[0] - x, item.tail[1] - y] : null;
-  // A shape that grows to fit its text is drawn again at the height its text needs, once that can be measured.
-  node.draw = (height) => {
+  // A shape that grows to fit its text is drawn again at the size its text needs, once that can be measured.
+  node.draw = (height, width = item.frame[2]) => {
     node.querySelector(':scope > svg')?.remove();
     const svg = svgElement('svg', { width, height, viewBox: `0 0 ${width} ${height}` });
     node.prepend(svg);
@@ -583,8 +583,38 @@ function renderStage(slide, [width, height]) {
 
 // Needs the stage in the document, since both read the laid-out text.
 function fitText(stage) {
+  widenUnwrapped(stage);
   growShapes(stage);
   shrinkToFit(stage);
+}
+
+// Unwrapped, PowerPoint's "resize shape to fit text" sets the width to the longest line's too, keeping in place the
+// side the first paragraph aligns to, or its centre.
+function widenUnwrapped(stage) {
+  const scale = stage.getBoundingClientRect().width / stage.offsetWidth;
+  for (const node of stage.querySelectorAll('.item')) {
+    const box = node.querySelector(':scope > .text-box.grow.unwrapped');
+    if (!box) {
+      continue;
+    }
+    const turned = node.style.transform;
+    node.style.transform = '';
+    box.style.right = 'auto';
+    box.style.width = 'max-content';
+    const width = Math.ceil(box.getBoundingClientRect().width / scale * 10) / 10;
+    box.style.right = box.style.width = '';
+    node.style.transform = turned;
+    const align = box.querySelector('.paragraph')?.style.textAlign || 'left';
+    node.style.left = `${widened(align, parseFloat(node.style.left), parseFloat(node.style.width), width)}px`;
+    node.style.width = `${width}px`;
+    node.draw?.(parseFloat(node.style.height), width);
+  }
+}
+
+// Where a box set from x to frameWidth wide starts once its text sets it width wide.
+function widened(align, x, frameWidth, width) {
+  const anchor = { center: 0.5, right: 1 }[align] ?? 0;
+  return x + (frameWidth - width) * anchor;
 }
 
 // PowerPoint's "resize shape to fit text" sets the height to the text's, smaller as well as larger.
@@ -594,7 +624,7 @@ function growShapes(stage) {
     if (box) {
       const height = box.offsetHeight;
       node.style.height = `${height}px`;
-      node.draw(height);
+      node.draw(height, parseFloat(node.style.width));
     }
   }
 }
@@ -712,6 +742,7 @@ function measureBox(node) {
   const content = { top: parseFloat(style.paddingTop), bottom: box.clientHeight - parseFloat(style.paddingBottom) };
   const text = textExtent(box, scale);
   const fit = box.dataset.fit;
+  const widens = fit === 'grow' && box.classList.contains('unwrapped');
   const past = overflow(fit, text, frame, content);
   const paragraphs = [...box.querySelectorAll('.paragraph')].map((paragraph) => countLines(textRects(paragraph)));
   const measure = {
@@ -723,6 +754,8 @@ function measureBox(node) {
     overflow: past,
     scale: fit === 'shrink' ? parseFloat(box.style.getPropertyValue('--fit')) : undefined,
     height: fit === 'grow' ? Math.round(node.getBoundingClientRect().height / scale * 10) / 10 : undefined,
+    left: widens ? parseFloat(node.style.left) : undefined,
+    width: widens ? parseFloat(node.style.width) : undefined,
     tight: fit === 'none' && !box.classList.contains('unwrapped') && past === 0
       ? narrowed(box, scale, (text) => overflow(fit, text, frame, content)) : undefined,
     runts: [...box.querySelectorAll('.paragraph')].map(runt).filter(Boolean)
@@ -908,5 +941,5 @@ function measureCharts(stage) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine };
+  module.exports = { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened };
 }

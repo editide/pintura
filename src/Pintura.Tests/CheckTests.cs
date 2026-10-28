@@ -996,6 +996,33 @@ public class CheckTests
   }
 
   [Fact]
+  public void A_widened_box_runs_off_the_slide_by_its_measured_width()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: label
+          text: A label far longer than its frame
+          fit: grow
+          wrap: false
+          frame: [600, 200, 100, 20]
+      """);
+    var measurement = new Measurement([],
+      [new BoxMeasure("two", "label", "slide", "grow", 1, [1], 0, null, 20) { Left = 600, Width = 400 }]);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load(), measurement);
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Where.ShouldBe("two/label");
+    finding.Message.ShouldBe("runs 40pt past the slide's right edge");
+  }
+
+  [Fact]
   public void A_layout_element_off_the_slide_is_reported_once()
   {
     // Arrange

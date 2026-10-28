@@ -59,6 +59,7 @@ The title and placeholders take text keys too, `fit` included, from the layout o
 `fit: none` is the default: text may fill the insets, as in PowerPoint, and text running past the frame is an error in `--check`.
 `grow` makes the box as tall as its text, a shape's outline included, and `shrink` scales the text down until it fits.
 `wrap: false` breaks lines only where the text does, running past the frame if a line is longer; text wraps unless something says otherwise.
+With `fit: grow`, unwrapped text sets the box's width as well, to its longest line, as PowerPoint does: a left-aligned box grows rightward, a right-aligned one leftward, and a centred one about its centre, following the first paragraph's alignment, so a label's box follows its text.
 
 ## Example
 

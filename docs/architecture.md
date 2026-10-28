@@ -139,6 +139,7 @@ Content is a Markdown subset: one paragraph per line, `- ` bullets indented two 
 It resolves to paragraphs of runs, each run with its own text style.
 
 A box carries a style, alignment, insets, and fit: `none`, `grow`, or `shrink`.
+`grow` sets the height to the text's, and the width too when the text doesn't wrap, anchored on the side the first paragraph aligns to; `--check` places the box where it was drawn.
 PowerPoint lets text spill past its box, which a person notices and an agent can't, so overflow under `none` fails `--check`.
 The exporter computes the grown height or the shrink scale rather than leaving it to PowerPoint, which recalculates both only when someone edits the text.
 

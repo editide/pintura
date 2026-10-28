@@ -627,9 +627,13 @@ public static class Checks
         continue;
       }
       double[] rect = [.. pictures.GetValueOrDefault((slide.Id, item.Id))?.Drawn ?? ((Frame)frame.Value).Rect];
-      if (measured.GetValueOrDefault((slide.Id, item.Id))?.Height is double grown)
+      if (measured.GetValueOrDefault((slide.Id, item.Id)) is { Height: double grown } box)
       {
         rect[3] = grown;
+        if (box is { Left: double left, Width: double width })
+        {
+          (rect[0], rect[2]) = (left, width);
+        }
       }
       double rotate = item.Properties.TryGetValue("rotate", out Resolved? turn) ? (double)turn.Value : 0;
       placed.Add(new Placed(item.Id, name, owner, rect)
