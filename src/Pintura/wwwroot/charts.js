@@ -330,7 +330,15 @@ function dateLabels(chart, axis, slot, apart) {
   return labels;
 }
 
-// The plot narrows until its axis labels fit the chart, and a data label still past its edge moves back in, as
+// A box less `[left, top, right, bottom]` points.
+function insetBox(box, insets) {
+  const [left, top, right, bottom] = insets ?? [0, 0, 0, 0];
+  return { x: box.x + left, y: box.y + top, width: Math.max(1, box.width - left - right),
+    height: Math.max(1, box.height - top - bottom) };
+}
+
+// The plot and its axis labels sit inside the plot's insets, the room for data labels, though the plot narrows only
+// as far as its end axis labels need to fit the chart. A data label still past the chart's edge moves back in, as
 // PowerPoint moves it. PowerPoint can't narrow the plot, so an axis label the plot narrowed for is marked clipped.
 function layoutCartesian(chart, box, context) {
   const { size, out } = context;
@@ -340,7 +348,7 @@ function layoutCartesian(chart, box, context) {
     return [left, left + width];
   };
   const outside = ([start, end]) => start < box.x - 0.01 || end > box.x + box.width + 0.01;
-  let inner = box;
+  let inner = insetBox(box, chart.plotInsets);
   let drawn;
   let result;
   let clipped = null;
@@ -702,7 +710,7 @@ function layoutChart(chart, width, height, measure) {
   }
   box = { ...box, width: Math.max(1, box.width), height: Math.max(1, box.height) };
   if (chart.family === 'pie') {
-    layoutPie(chart, box, context);
+    layoutPie(chart, insetBox(box, chart.plotInsets), context);
   } else {
     layoutCartesian(chart, box, context);
   }

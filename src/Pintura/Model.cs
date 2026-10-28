@@ -594,7 +594,7 @@ public class ChartProperties
     "value_axis.format", "value_axis.gridlines", "value_axis.reverse", "secondary_axis.visible", "secondary_axis.min",
     "secondary_axis.max", "secondary_axis.step", "secondary_axis.format", "secondary_axis.reverse",
     "category_axis.visible", "category_axis.labels", "category_axis.format", "category_axis.step", "series_colors",
-    "gap_width", "overlap", "markers.shape", "markers.size", "markers.fill",
+    "gap_width", "overlap", "markers.shape", "markers.size", "markers.fill", "plot.insets",
     "text.font", "text.size", "text.color"
   ];
 
@@ -611,6 +611,8 @@ public class ChartProperties
   public double? Overlap { get; set; }
   /// <summary>What sits on each point of the chart's lines.</summary>
   public ChartMarkers Markers { get; init; } = new ChartMarkers();
+  /// <summary>Room between the chart's frame and its plot and axis labels, <c>[left, top, right, bottom]</c>.</summary>
+  public double[]? PlotInsets { get; set; }
   public ChartText Text { get; init; } = new ChartText();
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
 
@@ -648,6 +650,7 @@ public class ChartProperties
       "markers.shape" => Markers.Shape,
       "markers.size" => Markers.Size,
       "markers.fill" => Markers.Fill,
+      "plot.insets" => PlotInsets,
       "text.font" => Text.Font,
       "text.size" => Text.Size,
       "text.color" => Text.Color,

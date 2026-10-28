@@ -19,6 +19,7 @@ A chart is a file in `charts/`, placed on a slide with `chart: <stem>`, and its 
 | `category_axis` | `{ visible, labels, format, step }`; `labels: false` keeps the axis's line but drops its labels, as for logos placed beneath the categories; `format` names a date format, which makes the axis a time line, and `step` is the time between its labels, such as `7 days`, `1 month`, or `2 years`. |
 | `series_colors` | Colors in series order. |
 | `gap_width`, `overlap` | Bar spacing, in percent as in PowerPoint. |
+| `plot` | `{ insets }`, `[left, top, right, bottom]` points of room between the frame and the plot with its axis labels, for data labels to take, such as above a line's peak; PowerPoint places its plot itself, so the export leaves them out. |
 | `markers` | `{ shape, size, fill }` on each point of the chart's lines; `shape` is `circle`, `square`, `diamond`, `triangle`, or `none`, the default; `size` is whole points across, from 2 to 72, 5 by default; `fill` defaults to the line's color. |
 | `text` | `{ size, color, font }` for every label on the chart; what it leaves out comes from the base `text`. |
 

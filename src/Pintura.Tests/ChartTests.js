@@ -531,3 +531,26 @@ test('a line\'s first and last labels and its axis\'s end dates draw inside the 
   assert.ok(Math.abs(labels[0].x - Number(firstX)) < 0.5, 'the first label stays under its point');
   assert.deepEqual(drawn.filter((text) => text.clipped).map((text) => text.text), ["Mar '25", "Sep '26"]);
 });
+
+test('a plot\'s insets make room around it and its axis labels, which data labels may take', () => {
+  // Arrange
+  const series = [{ name: 'Close', values: [100, 200], type: 'line',
+    labels: { show: 'value', position: 'above', format: null } }];
+  const drawn = (plotInsets) => layoutChart(chart({ type: 'line', family: 'line', grouping: 'standard', series,
+    valueAxis: { visible: false, gridlines: false, min: 0, max: 200, step: 50 }, plotInsets }), 400, 200, measure);
+
+  // Act
+  const plain = drawn(undefined);
+  const inset = drawn([10, 30, 10, 20]);
+
+  // Assert
+  const axis = (primitives) => primitives.find((primitive) => primitive.part === 'category_axis' &&
+    primitive.kind === 'line');
+  const peak = (primitives) => texts(primitives).find((text) => text.text === '200');
+  const category = (primitives, name) => texts(primitives).find((text) => text.text === name);
+  assert.equal(axis(inset).x1, axis(plain).x1 + 10);
+  assert.equal(axis(inset).x2, axis(plain).x2 - 10);
+  assert.equal(category(inset, '2025').y, category(plain, '2025').y - 20);
+  assert.equal(peak(plain).y, 11);
+  assert.equal(peak(inset).y, 25);
+});

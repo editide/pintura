@@ -906,6 +906,10 @@ public static class Checks
         yield return $"a {element!.Shape} exports with PowerPoint's curl rather than a quarter of its thickness";
         break;
     }
+    if (item.Kind == "chart" && item.Properties.ContainsKey("plot.insets"))
+    {
+      yield return "a chart's plot insets aren't exported, so PowerPoint places its plot itself";
+    }
     if (item.Properties.TryGetValue("columns", out Resolved? columns) && (int)columns.Value > 1)
     {
       yield return "text columns aren't exported";

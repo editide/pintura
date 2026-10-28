@@ -349,6 +349,24 @@ public class ChartTests
   }
 
   [Fact]
+  public void A_plot_takes_insets_from_the_chart_and_a_wrong_count_is_an_error()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("type: line\ndata: revenue.csv\nplot: { insets: [0, 20, 0, 0] }");
+
+    // Act
+    ChartPayload chart = PayloadBuilder.Build(deck.Load(), 1, (path, _) => path).Slides[0].Items!
+      .Single(item => item.Id == "chart").Chart!;
+    deck.Chart("type: line\ndata: revenue.csv\nplot: { insets: [0, 20] }");
+    Slide broken = deck.Load().Slides.Single(slide => slide.Id == "chart");
+
+    // Assert
+    chart.PlotInsets.ShouldBe([0, 20, 0, 0]);
+    broken.Error!.Message.ShouldContain("insets must be [left, top, right, bottom] in points");
+  }
+
+  [Fact]
   public void Category_labels_show_by_default_as_in_PowerPoint()
   {
     // Arrange

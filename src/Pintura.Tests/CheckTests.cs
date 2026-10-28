@@ -774,6 +774,21 @@ public class CheckTests
   }
 
   [Fact]
+  public void A_charts_plot_insets_are_an_export_warning()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("type: line\ndata: revenue.csv\nplot: { insets: [0, 20, 0, 0] }");
+
+    // Act
+    List<Finding> findings = Checks.Export(deck.Load());
+
+    // Assert
+    findings.Select(finding => $"{finding.Where} {finding.Message}").ShouldContain(
+      "chart/chart a chart's plot insets aren't exported, so PowerPoint places its plot itself");
+  }
+
+  [Fact]
   public void A_decorative_element_is_left_out_of_the_geometry_checks()
   {
     // Arrange
