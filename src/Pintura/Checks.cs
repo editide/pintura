@@ -525,6 +525,15 @@ public static class Checks
       {
         continue;
       }
+      if (item.Kind == "arc")
+      {
+        placed.Add(new Placed(item.Id, name, owner, ArcBounds(((Frame)frame.Value).Rect,
+          Convert.ToDouble(item.Properties["arc.from"].Value), Convert.ToDouble(item.Properties["arc.to"].Value)))
+        {
+          Curve = true
+        });
+        continue;
+      }
       double[] rect = [.. pictures.GetValueOrDefault((slide.Id, item.Id))?.Drawn ?? ((Frame)frame.Value).Rect];
       if (measured.GetValueOrDefault((slide.Id, item.Id))?.Height is double grown)
       {
@@ -540,6 +549,24 @@ public static class Checks
       });
     }
     return placed;
+  }
+
+  /// <summary>The rectangle an arc's curve sweeps through, which its frame, the whole ellipse, can far exceed.
+  /// </summary>
+  private static double[] ArcBounds(double[] frame, double from, double to)
+  {
+    (double a, double b) = (frame[2] / 2, frame[3] / 2);
+    double sweep = ((to - from) % 360 + 360) % 360;
+    (double left, double top, double right, double bottom) = (double.MaxValue, double.MaxValue, double.MinValue,
+      double.MinValue);
+    for (int step = 0; step <= 360; step++)
+    {
+      double angle = (from + sweep * step / 360) * Math.PI / 180;
+      double radius = a * b / Math.Sqrt(Math.Pow(b * Math.Cos(angle), 2) + Math.Pow(a * Math.Sin(angle), 2));
+      (double x, double y) = (frame[0] + a + radius * Math.Cos(angle), frame[1] + b + radius * Math.Sin(angle));
+      (left, top, right, bottom) = (Math.Min(left, x), Math.Min(top, y), Math.Max(right, x), Math.Max(bottom, y));
+    }
+    return [left, top, right - left, bottom - top];
   }
 
   /// <summary>The sides of a text box with no fill or outline that its text lines up on: the side its paragraphs
@@ -1015,6 +1042,8 @@ public static class Checks
   private record Placed(string Id, string Name, string Owner, double[] Rect)
   {
     public double[][]? Line { get; init; }
+    /// <summary>An arc, placed by the rectangle its curve sweeps, with no edges to align.</summary>
+    public bool Curve { get; init; }
     public double[]? Tail { get; init; }
     public double Rotate { get; init; }
     /// <summary>A <c>grow</c> box's bottom follows its text rather than a number anyone wrote.</summary>
@@ -1022,7 +1051,7 @@ public static class Checks
     /// <summary>The only sides whose edges show, for text with nothing drawn around it; null for all four.</summary>
     public HashSet<string>? Sides { get; init; }
 
-    public bool IsLine => Line is not null;
+    public bool IsLine => Line is not null || Curve;
     private bool Shows(string side) => Sides?.Contains(side) != false;
     public bool Rotated => Rotate != 0;
     public double Left => Math.Min(Rect[0], Rect[0] + Rect[2]);
@@ -1074,6 +1103,10 @@ public static class Checks
         yield return new Edge("start", false, start[1], y);
         yield return new Edge("end", true, end[0], x);
         yield return new Edge("end", false, end[1], y);
+        yield break;
+      }
+      if (Curve)
+      {
         yield break;
       }
       if (Shows("left"))

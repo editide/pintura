@@ -70,6 +70,7 @@ public record ItemPayload
   public double[]? Tail { get; init; }
   public double[]? From { get; init; }
   public double[]? To { get; init; }
+  public double[]? Arc { get; init; }
   public string? Start { get; init; }
   public string? End { get; init; }
   public string? Picture { get; init; }
@@ -429,6 +430,7 @@ public static class PayloadBuilder
       Tail = Get<double[]>("tail"),
       From = Get<double[]>("from"),
       To = Get<double[]>("to"),
+      Arc = item.Kind == "arc" ? [Number("arc.from")!.Value, Number("arc.to")!.Value] : null,
       Start = Get<string>("start"),
       End = Get<string>("end"),
       Picture = picture is null ? null : pictureUrl(picture, fill),
@@ -494,11 +496,11 @@ public static class PayloadBuilder
       : new SourcePayload($"{element.Origin.Path}.{key}", null);
   }
 
-  /// <summary>Where the element's own fill and stroke are written, or would be: a text box or shape takes both, a
-  /// line only a stroke.</summary>
+  /// <summary>Where the element's own fill and stroke are written, or would be: a text box or shape takes both, an
+  /// arc or a line only a stroke.</summary>
   private static EditPayload Painted(EditPayload edit, Element element)
   {
-    if (element.Kind is not ("text" or "shape" or "line"))
+    if (element.Kind is not ("text" or "shape" or "line" or "arc"))
     {
       return edit;
     }
@@ -511,7 +513,7 @@ public static class PayloadBuilder
     Dictionary<string, Origin> stroke = element.Stroke?.Origins ?? new Dictionary<string, Origin>();
     return edit with
     {
-      Fill = element.Kind == "line" ? null : Own(element.Origins, "fill", "fill"),
+      Fill = element.Kind is "line" or "arc" ? null : Own(element.Origins, "fill", "fill"),
       Stroke = Own(element.Origins, "stroke", "stroke"),
       StrokeColor = Own(stroke, "color", "stroke.color"),
       StrokeWidth = Own(stroke, "width", "stroke.width")

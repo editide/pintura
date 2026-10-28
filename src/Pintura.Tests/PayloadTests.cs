@@ -130,6 +130,34 @@ public class PayloadTests
   }
 
   [Fact]
+  public void An_arc_draws_in_its_frame_between_its_angles_with_the_themes_line_stroke()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      elements:
+        - id: loop
+          arc: { from: 200, to: 290 }
+          frame: [100, 100, 300, 300]
+          end: triangle
+      """);
+
+    // Act
+    ItemPayload arc = Slide(deck, "two").Items!.Single(item => item.Id == "loop");
+
+    // Assert
+    arc.Kind.ShouldBe("arc");
+    arc.Frame.ShouldBe([100, 100, 300, 300]);
+    arc.Arc.ShouldBe([200, 290]);
+    arc.End.ShouldBe("triangle");
+    arc.Fill.ShouldBeNull();
+    arc.Stroke!.Width.ShouldBe(1);
+    arc.Edit.Frame.ShouldBe(new SourcePayload("elements.loop.frame", "[100, 100, 300, 300]"));
+    arc.Edit.Fill.ShouldBeNull();
+  }
+
+  [Fact]
   public void A_section_or_a_field_presentation_yaml_defines_carries_where_its_value_is_written_and_the_slide_number_doesnt()
   {
     // Arrange

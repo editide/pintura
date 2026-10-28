@@ -272,6 +272,32 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void An_arc_imports_with_its_frame_its_angles_in_degrees_and_its_arrowheads()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = Reads();
+    JsonObject read = reads["slides"]![5]!["read"]!.AsObject();
+    read["shape_elements"]!.AsArray().Add(JsonNode.Parse("""
+      { "id": 77, "position": { "left": 100, "top": 120, "z_index": 40 }, "size": { "width": 300, "height": 300 },
+        "shape_type": "arc", "shape_adjustments": { "start_angle": 0.75, "end_angle": 0.125 },
+        "shape_style": { "border_color": { "scheme": "accent1" }, "border_weight": 2, "fill": "transparent",
+          "head_arrow": "none", "tail_arrow": "triangle" } }
+      """));
+
+    // Act
+    Presentation presentation = Imported(output, reads);
+
+    // Assert
+    Element arc = presentation.Slides.SelectMany(slide => slide.Elements).Single(element => element.Kind == "arc");
+    arc.Frame!.Rect.ShouldBe([100, 120, 300, 300]);
+    arc.Arc.ShouldBe([270, 45]);
+    arc.Start.ShouldBeNull();
+    arc.End.ShouldBe("triangle");
+    arc.Stroke!.Width.ShouldBe(2);
+  }
+
+  [Fact]
   public void Each_layout_keeps_the_shapes_it_shows_with_a_picture_copied_once()
   {
     // Arrange

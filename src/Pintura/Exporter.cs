@@ -1002,6 +1002,27 @@ public partial class Exporter
     {
       position["flip_vertical"] = true;
     }
+    element["shape_style"] = LineStyle(properties);
+    return element;
+  }
+
+  // An arc is OOXML's, whose frame is its whole ellipse and whose handles are its angles as turns.
+  public static JsonObject Arc(JsonNode item)
+  {
+    JsonNode? properties = Get(item, "properties");
+    JsonObject element = Box(Get(properties, "frame"));
+    element["shape_type"] = "arc";
+    element["shape_adjustments"] = new JsonObject
+    {
+      ["start_angle"] = (Number(Get(properties, "arc.from")) ?? 0) / 360,
+      ["end_angle"] = (Number(Get(properties, "arc.to")) ?? 0) / 360
+    };
+    element["shape_style"] = LineStyle(properties);
+    return element;
+  }
+
+  private static JsonObject LineStyle(JsonNode? properties)
+  {
     var style = new JsonObject();
     if (Truthy(Get(properties, "stroke.color")))
     {
@@ -1019,8 +1040,7 @@ public partial class Exporter
         style[name] = marker;
       }
     }
-    element["shape_style"] = style;
-    return element;
+    return style;
   }
 
   #endregion
@@ -1949,6 +1969,11 @@ public partial class Exporter
       {
         key = "shape_elements_to_add";
         element = Line(item);
+      }
+      else if (kind == "arc")
+      {
+        key = "shape_elements_to_add";
+        element = Arc(item);
       }
       else if (kind == "picture")
       {

@@ -26,7 +26,7 @@ public partial class Importer
   /// <summary>File names, which the import chooses, and values its files carry rather than its keys.</summary>
   private static readonly HashSet<string> Unstated = ["chart", "data", "table", "categories"];
   private static readonly HashSet<string> Structure =
-    ["shape", "picture", "type", "header_rows", "from", "to"];
+    ["shape", "picture", "type", "header_rows", "from", "to", "arc.from", "arc.to"];
   private static readonly string[] Sides = ["border_top", "border_bottom", "border_left", "border_right"];
   private static readonly string[] Borders =
     [.. Sides.SelectMany(side => new[] { side, $"{side}.color", $"{side}.width", $"{side}.dash" })];
@@ -435,7 +435,7 @@ public partial class Importer
         shapeBase[key] = value?.DeepClone();
       }
     }
-    if (Mode(items.Where(item => item.Kind == "line").Select(line => Group(line.Properties, "stroke"))) is
+    if (Mode(items.Where(item => item.Kind is "line" or "arc").Select(line => Group(line.Properties, "stroke"))) is
       JsonObject stroke)
     {
       foreach ((string key, JsonNode? value) in stroke)
@@ -1815,6 +1815,13 @@ public partial class Importer
         {
           ["from"] = Yaml("from", properties["from"]),
           ["to"] = Yaml("to", properties["to"])
+        };
+        break;
+      case "arc":
+        map["arc"] = new OrderedDictionary<string, object?>
+        {
+          ["from"] = Yaml("arc.from", properties["arc.from"]),
+          ["to"] = Yaml("arc.to", properties["arc.to"])
         };
         break;
       case "picture":

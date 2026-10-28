@@ -304,7 +304,7 @@ public static partial class Patcher
   #region Scalars
 
   // The keys a new one goes after, in the order the docs write an element's keys.
-  private static readonly string[] KeyOrder = ["id", "shape", "line", "direction", "adjust", "frame", "style", "fill",
+  private static readonly string[] KeyOrder = ["id", "shape", "line", "arc", "direction", "adjust", "frame", "style", "fill",
     "stroke", "shadow", "align", "valign"];
 
   /// <summary>Writes one value, such as a color or a width. A key the file lacks is added with any maps it needs,

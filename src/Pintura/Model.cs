@@ -179,6 +179,8 @@ public class Element
   public double[]? Tail { get; init; }
   public double[]? From { get; init; }
   public double[]? To { get; init; }
+  /// <summary>An arc's start and end, in degrees clockwise from the right; it runs clockwise between them.</summary>
+  public double[]? Arc { get; init; }
   public string? Start { get; init; }
   public string? End { get; init; }
   /// <summary>The media path as written, relative to the file naming it.</summary>

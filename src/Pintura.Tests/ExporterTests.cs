@@ -174,6 +174,27 @@ public class ExporterTests
   }
 
   [Fact]
+  public void An_arc_exports_as_powerpoints_arc_in_its_frame_with_its_angles_as_turns_and_its_arrowheads()
+  {
+    // Arrange
+    JsonNode item = Json("""
+      { "properties": { "frame": [100, 100, 300, 300], "arc.from": 270, "arc.to": 45, "end": "triangle",
+        "stroke.color": { "theme": "dark1" }, "stroke.width": 1.5 } }
+      """);
+
+    // Act
+    JsonObject result = Exporter.Arc(item);
+
+    // Assert
+    ShouldMatch(result["shape_type"], "\"arc\"");
+    ShouldMatch(result["position"], """{ "left": 100, "top": 100 }""");
+    ShouldMatch(result["size"], """{ "width": 300, "height": 300 }""");
+    ShouldMatch(result["shape_adjustments"], """{ "start_angle": 0.75, "end_angle": 0.125 }""");
+    ShouldMatch(result["shape_style"]!["tail_arrow"], "\"triangle\"");
+    ShouldMatch(result["shape_style"]!["border_weight"], "1.5");
+  }
+
+  [Fact]
   public void A_contained_picture_is_centered_in_its_frame_at_its_own_aspect_ratio()
   {
     // Act

@@ -95,6 +95,7 @@ Moving an area moves every chart, table, and paragraph placed in it across the p
 | `text` | A box of paragraphs. |
 | `shape` | A shape with fill, stroke, and optional text. |
 | `line` | A straight line between two points, with optional arrowheads. |
+| `arc` | A curved line around the ellipse its frame holds, between two angles, with optional arrowheads. |
 | `picture` | A media file with fit and crop. |
 | `chart` | A reference to `charts/<id>.yaml`. |
 | `table` | A reference to `tables/<id>.yaml`. |

@@ -160,6 +160,23 @@ function shapePath(shape, width, height, options = {}) {
     .join(' ');
 }
 
+// An arc runs clockwise from one angle to the other, in degrees clockwise from the right, meeting the frame's ellipse
+// in the direction of each, as OOXML's arc does. Insets pull its ends back along the curve, in points.
+function arcPath(width, height, from, to, insets = {}) {
+  const [a, b] = [width / 2, height / 2];
+  const radius = (angle) => a * b / Math.hypot(b * Math.cos(angle), a * Math.sin(angle)) || 0;
+  const sweep = ((to - from) % 360 + 360) % 360 * Math.PI / 180;
+  const start = from * Math.PI / 180;
+  const end = start + sweep;
+  const pulled = (angle, inset) => Math.min(sweep / 2, (inset || 0) / (radius(angle) || 1));
+  const first = start + pulled(start, insets.start);
+  const last = end - pulled(end, insets.end);
+  const point = (angle) => [a + radius(angle) * Math.cos(angle), b + radius(angle) * Math.sin(angle)].map(round);
+  const [x1, y1] = point(first);
+  const [x2, y2] = point(last);
+  return `M${x1} ${y1} A${round(a)} ${round(b)} 0 ${last - first > Math.PI ? 1 : 0} 1 ${x2} ${y2}`;
+}
+
 // Braces and brackets are open strokes; filling one would close it with a straight edge.
 function isOpen(shape) {
   return shape === 'brace' || shape === 'bracket';
@@ -186,5 +203,5 @@ function dashArray(dash, width) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { shapePath, shapeCommands, isOpen, MARKERS, dashArray, clamp };
+  module.exports = { shapePath, shapeCommands, isOpen, MARKERS, dashArray, clamp, arcPath };
 }

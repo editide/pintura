@@ -25,6 +25,7 @@ The key naming the kind carries its content or its reference.
 | `text` | text box | Content in the markup (see `text`). |
 | `shape` | shape | A shape's name; may also carry `text` (see `shapes`). |
 | `line` | line | `{ from: [x, y], to: [x, y] }` (see `shapes`). |
+| `arc` | arc | `{ from, to }`, angles in degrees (see `shapes`). |
 | `picture` | picture | A media path (see `shapes`). |
 | `chart` | chart | A file stem in `charts/` (see `charts`). |
 | `table` | table | A file stem in `tables/` (see `tables`). |
@@ -47,10 +48,10 @@ elements:
 ```
 
 Shared keys: `id`, `frame`, `rotate` (degrees clockwise), `flip` (`horizontal`, `vertical`), `style`, `fill`, `stroke`, `shadow`, `opacity`, `decorative`.
-Lines, charts, and tables take no `shadow` (see `shapes`).
+Lines, arcs, charts, and tables take no `shadow` (see `shapes`).
 `decorative: true` marks decoration rather than content, such as a watermark or a band bleeding off the slide, and the geometry checks leave it out; charts and tables can't be decorative.
 Shape keys: `direction`, `adjust`, and `tail` (see `shapes`).
-Line keys: `start` and `end` (see `shapes`).
+Line and arc keys: `start` and `end` (see `shapes`).
 Text keys: `insets` (`[left, top, right, bottom]`), `fit` (`none`, `grow`, `shrink`), `wrap`, `columns`, and any text property as a one-off, such as `align` or `color` (see `styles`).
 
 Alignment, insets, and fit default to the theme's `text` style, and `shape_text` for text in a shape.

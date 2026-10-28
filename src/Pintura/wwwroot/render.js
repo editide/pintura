@@ -352,6 +352,39 @@ function renderLine(item, parent) {
   return node;
 }
 
+// An arc's frame is its whole ellipse, so only its stroke takes clicks, leaving what it circles clickable.
+function renderArc(item, parent) {
+  const [, , width, height] = item.frame;
+  const node = element('div', 'item arc', parent);
+  place(node, item.frame);
+  const svg = svgElement('svg', { width: Math.max(1, width), height: Math.max(1, height), overflow: 'visible' }, node);
+  if (!item.stroke) {
+    return node;
+  }
+  const [from, to] = item.arc;
+  const defs = svgElement('defs', {}, svg);
+  const opacity = item.opacity === undefined ? null : item.opacity / 100;
+  svgElement('path', {
+    class: 'hit',
+    d: arcPath(width, height, from, to),
+    fill: 'none',
+    stroke: 'transparent',
+    'stroke-width': Math.max(8, item.stroke.width + 6)
+  }, svg);
+  const inset = (kind) => {
+    const shape = kind && MARKERS[kind];
+    return shape ? (shape.anchor - shape.shaft) * MARKER_SCALE * item.stroke.width : 0;
+  };
+  svgElement('path', {
+    d: arcPath(width, height, from, to, { start: inset(item.start), end: inset(item.end) }),
+    fill: 'none',
+    'marker-start': item.start ? marker(item.start, item.stroke.color, defs) : null,
+    'marker-end': item.end ? marker(item.end, item.stroke.color, defs) : null,
+    ...strokeAttributes(item.stroke, opacity)
+  }, svg);
+  return node;
+}
+
 function renderPicture(item, parent) {
   const node = element('div', 'item picture-item', parent);
   node.picture = item;
@@ -521,6 +554,7 @@ function renderItem(item, parent) {
     text: renderTextItem,
     shape: renderShape,
     line: renderLine,
+    arc: renderArc,
     picture: renderPicture,
     chart: renderChart,
     table: renderTable,
