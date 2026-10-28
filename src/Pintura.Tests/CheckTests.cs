@@ -746,6 +746,34 @@ public class CheckTests
   }
 
   [Fact]
+  public void An_axis_label_the_plot_narrowed_for_is_an_export_warning_since_PowerPoint_cuts_it_off()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("type: line\ndata: revenue.csv");
+    deck.Write("deck/slides/chart.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - { id: chart, chart: revenue, frame: [40, 100, 600, 300] }
+      """);
+    var measurement = new Measurement([], [],
+    [
+      new ChartMeasure("chart", "chart", [new ChartLabel("2024", [40, 380, 30, 12], Clipped: true),
+        new ChartLabel("2025", [300, 380, 30, 12]), new ChartLabel("2026", [600, 380, 30, 12], Clipped: true)])
+    ]);
+
+    // Act
+    List<Finding> findings = Checks.Export(deck.Load(), measurement);
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Where.ShouldBe("chart/chart");
+    finding.Message.ShouldBe(
+      "PowerPoint can't narrow a chart's plot to fit its axis labels 2024 and 2026, so it cuts them off at its edge");
+  }
+
+  [Fact]
   public void A_decorative_element_is_left_out_of_the_geometry_checks()
   {
     // Arrange

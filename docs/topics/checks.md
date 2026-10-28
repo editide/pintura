@@ -14,7 +14,7 @@ It exits 1 when there are errors, and lists warnings without failing.
 | Geometry | Elements running off the slide; boxes partly overlapping, where a box wholly inside another is layering; text crossing a chart's axis, data, or legend labels, even inside the chart's frame; an edge within 3pt of the same side of another element or area without meeting it, unless the two share a centre line; a picture whose image has empty margins of more than 5% built in, unless it's an icon with a `fill`. Text with no fill or outline has only the edges it's aligned and anchored to, a straight line's ends count along it and its run only against other lines, and a picture's edges are where its image draws, not its frame. None of these count an element marked `decorative: true`. | warning |
 | Consistency | A title or placeholder moved from its layout's frame; text at another size on one slide than the rest of the presentation has for its style and level; the same one-off text properties on three or more slides. | warning |
 | Comments | A comment on a slide or element that no longer exists, or a comments file git doesn't track in a repository. | warning |
-| Export | With `--export`: picture crops, callout tails, text columns, and the other features the export can't reproduce. | warning |
+| Export | With `--export`: picture crops, callout tails, text columns, axis labels PowerPoint cuts off at a chart's edge, and the other features the export can't reproduce. | warning |
 
 Each finding names the slide and element, `revenue/takeaway`, and a structure error names the file, the line, and the topic to read.
 A theme or layout element is one finding, named by the first slide showing it.

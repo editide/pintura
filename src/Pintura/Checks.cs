@@ -82,7 +82,7 @@ public static class Checks
     findings.AddRange(Comments(presentation));
     if (export)
     {
-      findings.AddRange(Export(presentation));
+      findings.AddRange(Export(presentation, measurement));
     }
     return findings;
   }
@@ -841,8 +841,9 @@ public static class Checks
 
   #region Export
 
-  /// <summary>What the PowerPoint export can't reproduce, from the gaps the exporter reports.</summary>
-  public static List<Finding> Export(Presentation presentation)
+  /// <summary>What the PowerPoint export can't reproduce, from the gaps the exporter reports and the charts as the
+  /// headless page drew them.</summary>
+  public static List<Finding> Export(Presentation presentation, Measurement? measurement = null)
   {
     var findings = new List<Finding>();
     var candidates = new List<Candidate>();
@@ -850,7 +851,9 @@ public static class Checks
     {
       foreach (SceneItem item in SceneBuilder.Build(presentation, slide).Items)
       {
-        foreach (string gap in Gaps(item))
+        ChartMeasure? chart = measurement?.Charts?.FirstOrDefault(chart => chart.Slide == slide.Id &&
+          chart.Id == item.Id);
+        foreach (string gap in Gaps(item).Concat(chart is null ? [] : Clipped(chart)))
         {
           string key = item.Owner == "slide" ? $"{slide.Id}/{item.Id}/{gap}" : $"{item.Owner}/{item.Id}/{gap}";
           candidates.Add(new Candidate(key, item.Owner,
@@ -860,6 +863,17 @@ public static class Checks
     }
     findings.AddRange(Collapse(candidates));
     return findings;
+  }
+
+  private static IEnumerable<string> Clipped(ChartMeasure chart)
+  {
+    List<string> clipped = chart.Labels.Where(label => label.Clipped).Select(label => label.Text).Distinct().ToList();
+    if (clipped.Count > 0)
+    {
+      string labels = clipped.Count == 1 ? $"axis label {clipped[0]}, so it cuts it"
+        : $"axis labels {string.Join(", ", clipped.SkipLast(1))} and {clipped[^1]}, so it cuts them";
+      yield return $"PowerPoint can't narrow a chart's plot to fit its {labels} off at its edge";
+    }
   }
 
   private static IEnumerable<string> Gaps(SceneItem item)
