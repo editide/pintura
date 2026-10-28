@@ -265,6 +265,13 @@ public class SceneBuilder
         Set("end", element.End);
         Strokes(properties, styles.LineStroke, element.Stroke);
         break;
+      case "arc":
+        Set("arc.from", element.Arc![0]);
+        Set("arc.to", element.Arc[1]);
+        Set("start", element.Start);
+        Set("end", element.End);
+        Strokes(properties, styles.LineStroke, element.Stroke);
+        break;
       case "picture":
         Set("picture", element.Picture);
         properties["fit"] = element.Fit is not null

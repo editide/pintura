@@ -1233,11 +1233,13 @@ body.ctrl-held #slide-frame [data-trace]:hover {
 
 /* Overlays and selection sit on a scaled stage, so their lines and labels divide by the scale to stay one screen
    pixel wide and readable. */
-.item.line {
+.item.line,
+.item.arc {
   pointer-events: none;
 }
 
-.item.line .hit {
+.item.line .hit,
+.item.arc .hit {
   pointer-events: stroke;
 }
 

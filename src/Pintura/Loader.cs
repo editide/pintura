@@ -1365,7 +1365,7 @@ public partial class PresentationLoader
 
   #region Elements
 
-  private static readonly string[] Kinds = ["shape", "line", "picture", "chart", "table", "text"];
+  private static readonly string[] Kinds = ["shape", "line", "arc", "picture", "chart", "table", "text"];
 
   /// <summary>Whether a slide id, or a chart's or table's, names a file in its folder and nowhere else, on any
   /// system, since the page's requests name slides too.</summary>
@@ -1461,8 +1461,8 @@ public partial class PresentationLoader
       throw idNode.Error("id can't be empty");
     }
     string kind = Kinds.FirstOrDefault(probe.Has)
-      ?? throw entry.Error($"element {id} needs one of text, shape, line, picture, chart, or table", "slides");
-    string topic = kind is "shape" or "line" or "picture" ? "shapes" : kind is "chart" ? "charts"
+      ?? throw entry.Error($"element {id} needs one of text, shape, line, arc, picture, chart, or table", "slides");
+    string topic = kind is "shape" or "line" or "arc" or "picture" ? "shapes" : kind is "chart" ? "charts"
       : kind is "table" ? "tables" : "slides";
     MapNode map = entry.WithPath($"elements.{id}").WithTopic(topic).AsMap();
     map.Take("id");
@@ -1588,6 +1588,28 @@ public partial class PresentationLoader
       end = Take("end")?.AsChoice(Markers);
     }
 
+    double[]? arc = null;
+    if (kind == "arc")
+    {
+      MapNode arcMap = Take("arc")!.AsMap();
+      double Angle(string key)
+      {
+        Node node = arcMap.Require(key);
+        origins[$"arc.{key}"] = node.Origin;
+        return node.AsNumber() is double angle and >= 0 and < 360
+          ? angle
+          : throw node.Error("an arc's angles are degrees clockwise from the right, from 0 up to 360");
+      }
+      arc = [Angle("from"), Angle("to")];
+      if (arc[0] == arc[1])
+      {
+        throw arcMap.Node.Error("an arc's from and to are different angles");
+      }
+      arcMap.Done();
+      start = Take("start")?.AsChoice(Markers);
+      end = Take("end")?.AsChoice(Markers);
+    }
+
     string? picture = null;
     string? picturePath = null;
     string? fit = null;
@@ -1685,6 +1707,7 @@ public partial class PresentationLoader
       Tail = tail,
       From = from,
       To = to,
+      Arc = arc,
       Start = start,
       End = end,
       Picture = picture,

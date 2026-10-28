@@ -68,7 +68,7 @@ function renderFillAndOutline(item, panel) {
   const outline = item.stroke
     ? `${paintLabel(edit.strokeColor.source, item.stroke.color)} · ${item.stroke.width}pt`
     : 'None';
-  paintButton(row, item.kind === 'line' ? 'Line' : 'Outline', item.stroke?.color, outline,
+  paintButton(row, item.kind === 'line' || item.kind === 'arc' ? 'Line' : 'Outline', item.stroke?.color, outline,
     (button) => openPaint(button, item, 'stroke'));
 }
 

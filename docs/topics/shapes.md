@@ -1,6 +1,6 @@
 # shapes
 
-Shapes, lines, and pictures are elements (see `slides`).
+Shapes, lines, arcs, and pictures are elements (see `slides`).
 
 ## Shapes
 
@@ -29,6 +29,36 @@ A `brace` or `bracket` points in its `direction`: `direction: right` opens to th
 | `line` | `{ from: [x, y], to: [x, y] }` |
 | `stroke` | `{ color, width, dash }`; the theme's `line` base sets the default. |
 | `start`, `end` | Arrowheads: `arrow`, `triangle`, `stealth`, `diamond`, `oval`. |
+
+## Arcs
+
+An arc is a curved line around an ellipse, the one its `frame` holds, for a cycle of boxes or an arrow bending around something.
+
+| Key | Value |
+| --- | --- |
+| `arc` | `{ from, to }`: where it starts and ends on the ellipse, in degrees clockwise from the right, from 0 up to 360; it runs clockwise from `from` to `to`. |
+| `frame` | The whole ellipse's `[x, y, w, h]`, however little of it the arc draws. |
+| `stroke` | As for a line; the theme's `line` base sets the default. |
+| `start`, `end` | Arrowheads, as for a line; `end` points clockwise. |
+
+Arcs around one cycle share a frame and differ only in their angles: 0 is the right, 90 the bottom, 180 the left, 270 the top.
+To run counterclockwise, swap `from` and `to` and put the arrowhead on `start`.
+
+```yaml
+# Four boxes at the top, right, bottom and left of a circle, and an arc between each pair, clockwise.
+elements:
+  - id: plan_to_build
+    arc: { from: 290, to: 340 }
+    frame: [330, 120, 300, 300]
+    end: triangle
+  - id: build_to_ship
+    arc: { from: 20, to: 70 }
+    frame: [330, 120, 300, 300]
+    end: triangle
+```
+
+The export draws PowerPoint's own arc, whose yellow handles move its ends.
+`--check` places an arc by the curve it draws, so the boxes it circles don't overlap its frame.
 
 ## Pictures
 

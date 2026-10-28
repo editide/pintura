@@ -378,6 +378,34 @@ public class LoaderTests
   }
 
   [Fact]
+  public void An_arc_needs_a_frame_and_two_different_angles_on_the_turn()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    LoadException Error(string arc)
+    {
+      deck.Write("deck/slides/two.yaml", $"""
+        layout: content
+        elements:
+          - id: loop
+        {arc}
+        """);
+      return deck.Error();
+    }
+
+    // Act
+    LoadException unframed = Error("    arc: { from: 200, to: 290 }");
+    LoadException closed = Error("    arc: { from: 90, to: 90 }\n    frame: [100, 100, 300, 300]");
+    LoadException past = Error("    arc: { from: 0, to: 360 }\n    frame: [100, 100, 300, 300]");
+
+    // Assert
+    unframed.Problem.ShouldBe("element loop needs a frame");
+    closed.Problem.ShouldBe("an arc's from and to are different angles");
+    past.Problem.ShouldBe("an arc's angles are degrees clockwise from the right, from 0 up to 360");
+    past.Topic.ShouldBe("shapes");
+  }
+
+  [Fact]
   public void A_direction_on_a_shape_without_one_is_an_error()
   {
     // Arrange

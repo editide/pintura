@@ -15,6 +15,7 @@ public record ElementEntry(
   string? Area,
   double[]? From,
   double[]? To,
+  double[]? Arc,
   string? Text,
   string Origin);
 
@@ -161,7 +162,8 @@ public static class HeadlessRunner
       string owner = entry.Role ?? entry.Owner;
       string geometry = entry.From is not null
         ? $"{Numbers(entry.From)} → {Numbers(entry.To!)}"
-        : (entry.Area is null ? "" : $"{entry.Area} ") + (entry.Frame is null ? "" : Numbers(entry.Frame));
+        : (entry.Area is null ? "" : $"{entry.Area} ") + (entry.Frame is null ? "" : Numbers(entry.Frame)) +
+          (entry.Arc is [double from, double to] ? $" {Number(from)}° → {Number(to)}°" : "");
       string text = entry.Text is null ? "" : $"  \"{Shorten(entry.Text, 48)}\"";
       output.WriteLine($"  {owner,-11} {entry.Id.PadRight(idWidth)}  {entry.Kind.PadRight(kindWidth)}  " +
         $"{geometry}{text}");
@@ -181,6 +183,9 @@ public static class HeadlessRunner
       frame?.Area,
       item.Properties.GetValueOrDefault("from")?.Value as double[],
       item.Properties.GetValueOrDefault("to")?.Value as double[],
+      item.Kind == "arc"
+        ? [Convert.ToDouble(item.Properties["arc.from"].Value), Convert.ToDouble(item.Properties["arc.to"].Value)]
+        : null,
       item.Paragraphs is null ? null : PlainText(item.Paragraphs),
       item.Origin.ToString());
   }

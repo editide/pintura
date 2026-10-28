@@ -1094,6 +1094,10 @@ public partial class PowerPointMapping
     {
       return Line(element, style, ids, where);
     }
+    if (shapeType == "arc")
+    {
+      return Arc(element, style, ids, where);
+    }
     Layers own = ElementLayers(layers, element);
     List<Paragraph> paragraphs = ExpandElement(element, own, where);
     return Shape(element, shapeType, style, paragraphs, own, ids, where, read);
@@ -1112,6 +1116,37 @@ public partial class PowerPointMapping
       ["from"] = new JsonArray(Round(horizontal ? left + width : left), Round(vertical ? top + height : top)),
       ["to"] = new JsonArray(Round(horizontal ? left : left + width), Round(vertical ? top : top + height))
     };
+    Stroked(properties, style, where);
+    return Item(Id(element, "line", ids, where), "line", properties, null);
+  }
+
+  // OOXML's arc, unrotated and unflipped, is Pintura's: the tools give its angles as turns clockwise from the right.
+  private JsonObject Arc(JsonObject element, JsonObject style, Ids ids, string where)
+  {
+    double Angle(string handle, double fallback)
+    {
+      double turns = (double?)element["shape_adjustments"]?[handle] ?? fallback;
+      return Round((turns % 1 + 1) % 1 * 360) % 360;
+    }
+
+    var properties = new JsonObject
+    {
+      ["frame"] = Frame(element),
+      ["arc.from"] = Angle("start_angle", 0.75),
+      ["arc.to"] = Angle("end_angle", 0)
+    };
+    JsonObject position = element["position"]!.AsObject();
+    if ((double?)position["rotation"] is double rotation and not 0 || (bool?)position["flip_horizontal"] == true ||
+      (bool?)position["flip_vertical"] == true)
+    {
+      findings.Add($"{where}: an arc's rotation and flips aren't imported, so it may sweep elsewhere");
+    }
+    Stroked(properties, style, where);
+    return Item(Id(element, "arc", ids, where), "arc", properties, null);
+  }
+
+  private void Stroked(JsonObject properties, JsonObject style, string where)
+  {
     foreach ((string read, string key) in new[] { ("head_arrow", "start"), ("tail_arrow", "end") })
     {
       if ((string?)style[read] is string head && head != "none")
@@ -1130,7 +1165,6 @@ public partial class PowerPointMapping
     {
       properties[key] = value?.DeepClone();
     }
-    return Item(Id(element, "line", ids, where), "line", properties, null);
   }
 
   private JsonObject Shape(JsonObject element, string shapeType, JsonObject style, List<Paragraph> paragraphs,

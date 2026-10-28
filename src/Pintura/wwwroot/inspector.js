@@ -269,7 +269,7 @@ function groupOf(kind, key, text) {
   if (TEXT.has(key) && (text || key !== 'style')) {
     return 'text';
   }
-  return kind === 'line' ? 'line' : 'shape';
+  return kind === 'line' || kind === 'arc' ? 'line' : 'shape';
 }
 
 // What a value nothing sets falls back to, by kind.

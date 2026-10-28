@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { shapeCommands, shapePath, isOpen, dashArray } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot',
+const { shapeCommands, shapePath, isOpen, dashArray, arcPath } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot',
   'shapes.js'));
 
 function points(commands) {
@@ -103,4 +103,29 @@ test('dashes scale with the stroke width and solid has none', () => {
   // Assert
   assert.equal(dash, '6 4.5');
   assert.equal(solid, null);
+});
+test('an arc runs clockwise from its start angle to its end, wrapping past the right', () => {
+  // Act
+  const quarter = arcPath(200, 200, 270, 0);
+  const wrapped = arcPath(200, 200, 315, 45);
+
+  // Assert
+  assert.equal(quarter, 'M100 0 A100 100 0 0 1 200 100');
+  assert.equal(wrapped, 'M170.711 29.289 A100 100 0 0 1 170.711 170.711');
+});
+
+test('an arc on an ellipse meets it in the direction of each angle, and a long one takes the large arc', () => {
+  // Act
+  const path = arcPath(400, 200, 0, 270);
+
+  // Assert
+  assert.equal(path, 'M400 100 A200 100 0 1 1 200 0');
+});
+
+test('an arc pulls back an end by a length along its curve, where an arrowhead takes over from the stroke', () => {
+  // Act
+  const path = arcPath(200, 200, 270, 0, { end: Math.PI * 25 });
+
+  // Assert
+  assert.equal(path, 'M100 0 A100 100 0 0 1 170.711 29.289');
 });
