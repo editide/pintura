@@ -71,6 +71,8 @@ const LABELS = {
   series_colors: 'Series colors',
   gap_width: 'Gap width',
   overlap: 'Overlap',
+  totals: 'Totals',
+  connector_lines: 'Connector lines',
   header_rows: 'Header rows',
   row_style: 'Row style'
 };
@@ -224,7 +226,7 @@ function kindSummary(detail) {
   return detail.role === 'title' ? 'Title placeholder' : kindName(detail);
 }
 
-const CHART_FILE = new Set(['chart', 'type', 'style', 'data', 'title']);
+const CHART_FILE = new Set(['chart', 'type', 'style', 'data', 'title', 'totals']);
 const TABLE_FILE = new Set(['table', 'style', 'data']);
 const PICTURE = new Set(['picture', 'alt', 'crop', 'fit']);
 
@@ -246,7 +248,7 @@ function groupOf(kind, key, text) {
     if (key === 'legend' || key === 'series_colors') {
       return 'legend';
     }
-    if (key === 'gap_width' || key === 'overlap') {
+    if (key === 'gap_width' || key === 'overlap' || key === 'connector_lines') {
       return 'bars';
     }
     return key.startsWith('text.') ? 'text' : 'more';

@@ -10,6 +10,7 @@ A chart is a file in `charts/`, placed on a slide with `chart: <stem>`, and its 
 | `style` | A named chart style from the theme's `styles.yaml`; without one, the chart takes only the `chart` base. |
 | `data` | A CSV path, or a book's lines (see `pintura --docs books`). |
 | `series_in` | `rows` (the default) or `columns`. |
+| `totals` | A waterfall's categories drawn as totals (see Waterfalls); only a chart file takes it. |
 | `title` | Chart title text, bold at 1.2 times the chart's text size; none if left out. |
 | `legend` | `bottom`, `top`, `left`, `right`, or `none`. |
 | `data_labels` | `{ show, format, position, color, bold }`; `show` is `value`, `percent` (pie and doughnut), or `none`, and labels are off until something sets it; `color` defaults to the text's, and a format's `negative_style` wins over it. |
@@ -19,14 +20,15 @@ A chart is a file in `charts/`, placed on a slide with `chart: <stem>`, and its 
 | `category_axis` | `{ visible, labels, format, step }`; `labels: false` keeps the axis's line but drops its labels, as for logos placed beneath the categories; `format` names a date format, which makes the axis a time line, and `step` is the time between its labels, such as `7 days`, `1 month`, or `2 years`. |
 | `series_colors` | Colors in series order. |
 | `gap_width`, `overlap` | Bar spacing, in percent as in PowerPoint. |
+| `connector_lines` | `true` or `false`: a waterfall's lines from each bar's end across to the next bar. |
 | `plot` | `{ insets }`, `[left, top, right, bottom]` points of room between the frame and the plot with its axis labels, for data labels to take, such as above a line's peak; PowerPoint places its plot itself, so the export leaves them out. |
 | `markers` | `{ shape, size, fill }` on each point of the chart's lines; `shape` is `circle`, `square`, `diamond`, `triangle`, or `none`, the default; `size` is whole points across, from 2 to 72, 5 by default; `fill` defaults to the line's color. |
 | `text` | `{ size, color, font }` for every label on the chart; what it leaves out comes from the base `text`. |
 
-`position` is `center`, `inside`, or `inside_base` on any column or bar chart, `outside` on clustered ones and pies (past the bar's end, which for a negative value is below or to the left), and `above`, `below`, `left`, `right`, or `center` on lines.
+`position` is `center`, `inside`, or `inside_base` on any column or bar chart, `outside` on clustered ones, waterfalls, and pies (past the bar's end, which for a negative value or a decrease is below or to the left), and `above`, `below`, `left`, `right`, or `center` on lines.
 A doughnut's labels sit on its ring and take no position.
 
-What nothing sets is PowerPoint's default, which `--element` shows as such: `gap_width: 150`, `overlap: 0`, both axes visible, series colors `accent1` to `accent6`, and labels `outside` on clustered charts, `center` on stacked ones, `above` on lines, and `inside` on pies.
+What nothing sets is PowerPoint's default, which `--element` shows as such: `gap_width: 150`, `overlap: 0`, both axes visible, series colors `accent1` to `accent6`, a waterfall's connector lines on, and labels `outside` on clustered charts and waterfalls, `center` on stacked ones, `above` on lines, and `inside` on pies.
 Stacked charts always overlap fully.
 Gridlines, the legend, the title, labels, and markers stay off until something sets them.
 A marker is outlined in its line's color and width, so `fill: light1` draws it hollow.
@@ -39,7 +41,7 @@ Category labels sit at the plot's edge, clear of negative bars, and wrap to thei
 Everything stays inside the chart's frame: the plot narrows until its first and last axis labels fit, and a data label that would still run past the frame moves back inside it, off its point, as PowerPoint moves it.
 PowerPoint can't narrow the plot, so it cuts those axis labels off at the frame, which `--check --export` warns of.
 
-Keys layer from the theme's `chart` base through the named style to the chart, the last one winning; the base and styles take every key but `type`, `data`, and `series_in`.
+Keys layer from the theme's `chart` base through the named style to the chart, the last one winning; the base and styles take every key but `type`, `data`, `series_in`, and `totals`.
 Maps merge key by key, so a chart writing `data_labels: { format: billions_of_dollars }` keeps its style's `show: value`.
 
 ## Series
@@ -121,7 +123,32 @@ series:
     markers: { shape: circle, size: 7, fill: light1 }
 ```
 
-Types: `clustered_column`, `stacked_column`, `percent_stacked_column`, `clustered_bar`, `stacked_bar`, `percent_stacked_bar`, `line`, `stacked_line`, `percent_stacked_line`, `pie`, `doughnut`.
+Types: `clustered_column`, `stacked_column`, `percent_stacked_column`, `clustered_bar`, `stacked_bar`, `percent_stacked_bar`, `line`, `stacked_line`, `percent_stacked_line`, `pie`, `doughnut`, `waterfall`.
+
+## Waterfalls
+
+A waterfall draws one series as columns that step from one level to the next, as a bridge from one figure to another.
+Each value is a step on from where the bar before it ended, the first from zero, except the categories `totals` names, which stand from zero to their value, and the bars after a total run on from it.
+An empty cell draws nothing and moves nothing.
+`series_colors` colors its increases, decreases, and totals in that order, as PowerPoint's legend names them, and a point's `color` still wins.
+The axis reaches every level a bar does.
+Its series takes `data_labels` and `points` but no `type`, `axis`, or `markers`, and its categories take no date format.
+The CSV holds every bar's value, totals included, and `--check` warns when a total isn't where the bars since the total before it end, to within the last digit its labels show; a total with no bars before it, such as the first, sets the level.
+The export is PowerPoint's own waterfall, where a point's label in a color or boldness of its own takes its series', which `--check --export` warns of.
+
+```csv
+bridge,2024,Space,Connectivity,AI,2025
+Adjusted EBITDA,5350,-501,3319,-1584,6584
+```
+
+```yaml
+# charts/ebitda-bridge.yaml
+type: waterfall
+data: ebitda-bridge.csv
+totals: ["2024", "2025"]
+value_axis: { format: billions_of_dollars }
+data_labels: { show: value, format: billions_of_dollars }
+```
 
 ## Data
 
@@ -195,4 +222,6 @@ data_labels: { format: billions_of_dollars }
 - A line on a bar chart, or a column series on `axis: secondary`: a line runs along the categories, so only lines over columns, and only lines take the secondary axis.
 - `"$11.4B"` in the CSV: write `11387` and let a format spell it.
 - `Jan-2-26` or `1/2/2026` as a category: write `2026-01-02`, and let a date format on `category_axis` spell it.
-- A type outside the list (`waterfall`, `scatter`, `area`): not supported.
+- A waterfall's total left out of `totals`, which draws it as one more step, or a total computed by leaving its cell empty: name it in `totals` and write its value in the CSV.
+- A bridge built as a stacked column with an invisible series under each bar: use `type: waterfall`.
+- A type outside the list (`scatter`, `area`): not supported.

@@ -1,0 +1,12 @@
+type: waterfall
+title: Revenue, 2024 to 2025
+data: revenue-bridge.csv
+series_in: columns
+totals: ["2024", "2025"]
+connector_lines: false
+value_axis: { format: billions_of_dollars }
+data_labels: { show: value, format: billions_of_dollars }
+series:
+  Revenue:
+    points:
+      Connectivity: { color: accent6 }

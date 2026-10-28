@@ -1,4 +1,4 @@
-# One slide per pair of chart types, so every type renders, and one of a total and a line over columns; the figures are Acme's, a made-up company's.
+# One slide per pair of chart types, so every type renders, one of a total and a line over columns, and one of waterfalls; the figures are Acme's, a made-up company's.
 name: Every chart type
 theme: ../../../../themes/default
 
@@ -13,3 +13,4 @@ slides:
   - percent-lines-and-pie
   - doughnut
   - combinations
+  - waterfalls

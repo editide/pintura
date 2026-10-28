@@ -151,6 +151,10 @@ public record ChartPayload
   public DateAxisPayload? Dates { get; init; }
   public double? GapWidth { get; init; }
   public double? Overlap { get; init; }
+  /// <summary>A waterfall's categories drawn as totals; its colors are an increase's, a decrease's, and a total's.
+  /// </summary>
+  public List<string>? Totals { get; init; }
+  public bool? ConnectorLines { get; init; }
   /// <summary><c>[left, top, right, bottom]</c> in points.</summary>
   public double[]? PlotInsets { get; init; }
   public ChartTextPayload Text { get; init; } = new ChartTextPayload("", 0, "");
@@ -640,6 +644,8 @@ public static class PayloadBuilder
         : null,
       GapWidth = Value("gap_width") as double?,
       Overlap = Value("overlap") as double?,
+      Totals = Value("totals") as List<string>,
+      ConnectorLines = Value("connector_lines") as bool?,
       PlotInsets = Value("plot.insets") as double[],
       Text = new ChartTextPayload(Family((string)Value("text.font")!, theme), Convert.ToDouble(Value("text.size")),
         text),

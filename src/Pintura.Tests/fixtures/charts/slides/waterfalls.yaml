@@ -1,0 +1,10 @@
+layout: content
+title: Waterfalls, with and without connector lines
+
+elements:
+  - id: left
+    chart: waterfall
+    frame: left
+  - id: right
+    chart: revenue-waterfall
+    frame: right

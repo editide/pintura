@@ -1466,6 +1466,7 @@ public partial class Exporter
     string type = Text(Get(properties, "type")) ?? "";
     bool pie = type is "pie" or "doughnut";
     bool line = type.EndsWith("line", StringComparison.Ordinal);
+    bool waterfall = type == "waterfall";
     List<JsonNode?> colors = Items(Get(properties, "series_colors"));
     // PowerPoint draws a bar chart's first category at the bottom, and a clustered group's first series too. The
     // tools have no reversed category axis (c:orientation maxMin), so the data goes in last first and the embedded
@@ -1508,7 +1509,8 @@ public partial class Exporter
         return null;
       }
       var labels = new JsonObject { [show == "value" ? "show_value" : "show_percentage"] = true };
-      foreach (string other in new[]
+      // A waterfall's labels show a value and nothing else, so the flags that turn the rest off are refused there.
+      foreach (string other in waterfall ? [] : new[]
         { "show_value", "show_percentage", "show_category_name", "show_series_name", "show_legend_key" })
       {
         labels[other] = Truthy(labels[other]);
@@ -1598,6 +1600,23 @@ public partial class Exporter
           ? new JsonObject { ["fill"] = "transparent" }
           : new JsonObject { ["border"] = new JsonObject { ["color"] = "transparent" } };
       }
+      else if (waterfall)
+      {
+        // Each bar is colored as an increase, a decrease, or a total, unless it has a color of its own.
+        List<string?> totals = Items(Get(properties, "totals")).Select(Text).ToList();
+        result["subtotal_indices"] = Array(categories
+          .Select((category, point) => (Total: totals.Contains(Text(category)), Point: point))
+          .Where(pair => pair.Total)
+          .Select(pair => (JsonNode?)pair.Point));
+        JsonNode? colored = Get(entry.Entry, "points");
+        result["data_points"] = Array(categories.Select((category, point) =>
+        {
+          JsonNode? own = colored is null ? null : Get(colored, $"points.{Text(category)}.color");
+          int kind = totals.Contains(Text(category)) ? 2 : Number(entry.Values.ElementAtOrDefault(point)) < 0 ? 1 : 0;
+          JsonNode? fill = own is not null ? Color(own) : colors.Count > 0 ? Color(colors[kind % colors.Count]) : null;
+          return fill is null ? null : new JsonObject { ["index"] = point, ["fill"] = fill };
+        }).Where(point => point is not null));
+      }
       else if (pie && colors.Count > 0)
       {
         result["data_points"] = Array(categories.Select((_, point) => (JsonNode?)new JsonObject
@@ -1613,7 +1632,7 @@ public partial class Exporter
           ? new JsonObject { ["border"] = new JsonObject { ["color"] = own, ["weight"] = 2.25 } }
           : new JsonObject { ["fill"] = own };
       }
-      if (Get(entry.Entry, "points") is JsonNode points && !drawnAsLine)
+      if (Get(entry.Entry, "points") is JsonNode points && !drawnAsLine && !waterfall)
       {
         result["data_points"] = Array(categories
           .Select((category, point) => (Point: point, Color: Get(points, $"points.{Text(category)}.color")))
@@ -1690,6 +1709,17 @@ public partial class Exporter
           {
             label["number_format"] = format.DeepClone();
           }
+          if (waterfall)
+          {
+            string runs = "default_text_style_for_all_runs";
+            if (seriesLabels is null || !JsonNode.DeepEquals(own[runs], seriesLabels[runs]))
+            {
+              gaps.Add("a waterfall point's label in a color or boldness of its own exports in its series', as " +
+                "editide can't yet style one waterfall label");
+            }
+            byIndex.Add(label);
+            continue;
+          }
           // A series without labels gives a point's label no style to inherit, so it carries the chart's text whole.
           JsonObject style = own["default_text_style_for_all_runs"]!.DeepClone().AsObject();
           style["is_bold"] = Truthy(Get(labelled, $"{prefix}bold"));
@@ -1728,6 +1758,10 @@ public partial class Exporter
     JsonObject element = Box(Get(properties, "frame"));
     element["series_list"] = seriesList;
     element["chart_data"] = data;
+    if (waterfall)
+    {
+      element["connector_lines"] = Truthy(Get(properties, "connector_lines"));
+    }
 
     if (Text(Get(properties, "title")) is string { Length: > 0 } title)
     {
@@ -1760,7 +1794,7 @@ public partial class Exporter
     {
       var chartLegend = new JsonObject { ["dock"] = legend, ["overlay"] = false, ["text_style"] = text.DeepClone() };
       // An entry for a series or slice drawn in no color comes off, as the preview leaves it out.
-      int count = pie ? categories.Count : series.Count;
+      int count = pie ? categories.Count : waterfall ? 0 : series.Count;
       List<int> hidden = Enumerable.Range(0, count)
         .Where(index => (!pie && series[index].Type == "total") ||
           (colors.Count > 0 && Truthy(Get(colors[(pie ? index : series[index].Color) % colors.Count], "none"))))
@@ -1829,7 +1863,8 @@ public partial class Exporter
         : new JsonObject
         {
           ["labels_text_style"] = text.DeepClone(),
-          ["label_position"] = IsFalse(Get(properties, "category_axis.labels")) ? "none" : "low"
+          // A waterfall's labels sit at the foot of its plot, with no position to set.
+          ["label_position"] = IsFalse(Get(properties, "category_axis.labels")) ? "none" : waterfall ? "next_to" : "low"
         };
       element["primary_category_axis"] = categoryAxis;
       if (Text(Get(properties, "category_axis.format")) is string { Length: > 0 } dates)

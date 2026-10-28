@@ -368,7 +368,7 @@ What the export can't write, which it reports rather than approximates:
 - Callout tails, which come out normalized.
 - Font embedding, needed before a brand font survives on a machine without it.
 
-The chart types editide's tools write natively (column, bar, and line in all three groupings, pie, doughnut) set Pintura's first chart vocabulary.
+The chart types editide's tools write natively (column, bar, and line in all three groupings, pie, doughnut) set Pintura's first chart vocabulary, and the waterfall followed when the tools could write it.
 
 ## HTML snippets (later)
 

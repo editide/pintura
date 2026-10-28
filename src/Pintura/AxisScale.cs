@@ -89,10 +89,16 @@ public static class AxisScale
   }
 
   /// <summary>Where each value on the axis ends, stacked as the chart draws it: lines on the running total, bars with
-  /// positives and negatives apart. Totals are left out, or with <paramref name="powerPoint"/>, counted as the export
-  /// writes them: a line of their own over columns, and one more segment on bars.</summary>
+  /// positives and negatives apart, and a waterfall's bars at both ends. A stack's totals are left out, or with
+  /// <paramref name="powerPoint"/>, counted as the export writes them: a line of their own over columns, and one more
+  /// segment on bars.</summary>
   private static List<double> Ends(Chart chart, bool secondary, bool powerPoint)
   {
+    if (chart.Type == "waterfall")
+    {
+      return secondary ? [] : chart.Bars().OfType<(double From, double To)>()
+        .SelectMany(bar => new[] { bar.From, bar.To }).ToList();
+    }
     string Type(ChartSeries series) => chart.SeriesOptions.GetValueOrDefault(series.Name)?.Type ?? chart.Family;
     bool Secondary(ChartSeries series) => chart.SeriesOptions.GetValueOrDefault(series.Name)?.Axis == "secondary";
     bool Stacks(ChartSeries series) => chart.Grouping != "clustered" &&

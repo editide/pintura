@@ -631,3 +631,77 @@ test('an outside label the chart\'s edge pushes back over its bar is marked with
   assert.deepEqual(roomy.map((label) => label.moved), [undefined, undefined]);
   assert.deepEqual(bars.map((label) => [label.text, label.moved]), [['800', 'right'], ['-200', undefined]]);
 });
+
+function waterfall(overrides = {}) {
+  return chart({
+    type: 'waterfall',
+    categories: ['Revenue', 'COGS', 'Gross Profit', 'Rebate'],
+    series: [{ name: 'Value', values: [500, -200, 300, 20] }],
+    totals: ['Revenue', 'Gross Profit'],
+    colors: ['#111111', '#222222', '#333333'],
+    valueAxis: { visible: true, gridlines: false, min: 0, max: 600, step: 100 },
+    gapWidth: 50,
+    connectorLines: true,
+    ...overrides
+  });
+}
+
+test("a waterfall's steps run from the level before them and its totals stand from zero", () => {
+  // Act
+  const extents = stackSeries(waterfall());
+
+  // Assert
+  assert.deepEqual(extents, [[[0, 500], [500, 300], [0, 300], [300, 320]]]);
+});
+
+test('a waterfall colors each bar as an increase, a decrease, or a total, and a point keeps a color of its own', () => {
+  // Arrange
+  const colored = waterfall({ series: [{ name: 'Value', values: [500, -200, 300, 20],
+    colors: [null, null, null, '#C00000'] }] });
+
+  // Act
+  const bars = layoutChart(colored, 400, 300, measure).filter((primitive) => primitive.part === 'bar');
+
+  // Assert
+  assert.deepEqual(bars.map((bar) => bar.fill), ['#333333', '#222222', '#333333', '#C00000']);
+});
+
+test("a waterfall's connector lines run level from each bar's end to the next bar", () => {
+  // Act
+  const primitives = layoutChart(waterfall(), 400, 300, measure);
+
+  // Assert
+  const bars = primitives.filter((primitive) => primitive.part === 'bar');
+  const connectors = primitives.filter((primitive) => primitive.part === 'connector');
+  assert.equal(connectors.length, 3);
+  const [first] = connectors;
+  assert.ok(Math.abs(first.x1 - (bars[0].x + bars[0].width)) < 0.01);
+  assert.ok(Math.abs(first.x2 - bars[1].x) < 0.01);
+  assert.ok(Math.abs(first.y1 - bars[0].y) < 0.01 && first.y1 === first.y2);
+  assert.equal(layoutChart(waterfall({ connectorLines: false }), 400, 300, measure)
+    .filter((primitive) => primitive.part === 'connector').length, 0);
+});
+
+test("a waterfall's outside label sits below a decrease, past the end its step reaches", () => {
+  // Arrange
+  const labelled = waterfall({ labels: { show: 'value', position: 'outside', format: null } });
+
+  // Act
+  const primitives = layoutChart(labelled, 400, 300, measure);
+
+  // Assert
+  const decrease = primitives.filter((primitive) => primitive.part === 'bar')[1];
+  const label = texts(primitives).find((text) => text.text === '-200');
+  assert.ok(label.y > decrease.y + decrease.height);
+});
+
+test("a waterfall's legend names its increases, decreases, and totals in their colors", () => {
+  // Act
+  const primitives = layoutChart(waterfall({ legend: 'bottom' }), 400, 300, measure);
+
+  // Assert
+  const legend = primitives.filter((primitive) => primitive.part === 'legend');
+  assert.deepEqual(texts(legend).map((text) => text.text), ['Increase', 'Decrease', 'Total']);
+  assert.deepEqual(legend.filter((primitive) => primitive.kind === 'rect').map((swatch) => swatch.fill),
+    ['#111111', '#222222', '#333333']);
+});

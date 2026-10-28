@@ -638,6 +638,65 @@ public class ExporterTests
   }
 
   [Fact]
+  public void A_waterfall_goes_as_one_series_with_its_totals_as_subtotals_and_each_bar_colored_by_its_kind()
+  {
+    // Arrange
+    JsonNode item = Json("""
+      { "properties": { "frame": [40, 100, 430, 380], "type": "waterfall",
+        "categories": ["Revenue", "COGS", "Gross Profit", "Rebate"], "totals": ["Revenue", "Gross Profit"],
+        "series": [{ "name": "Value", "values": [500, -200, 300, 20], "type": "column", "secondary": false,
+          "points": { "points.Rebate.color": { "theme": "accent6" } } }],
+        "series_colors": [{ "theme": "accent1" }, { "theme": "accent2" }, { "theme": "accent3" }],
+        "data_labels.show": "value", "data_labels.position": "outside", "legend": "bottom", "gap_width": 50,
+        "connector_lines": false, "category_axis.visible": true, "category_axis.labels": true } }
+      """);
+    Exporter exporter = NewExporter();
+
+    // Act
+    JsonObject result = exporter.Chart(item);
+
+    // Assert
+    ShouldMatch(result["series_list"], """
+      [{ "index": 0, "name": "Value", "chart_type": "waterfall", "subtotal_indices": [0, 2],
+        "data_points": [{ "index": 0, "fill": { "scheme": "accent3" } },
+          { "index": 1, "fill": { "scheme": "accent2" } }, { "index": 2, "fill": { "scheme": "accent3" } },
+          { "index": 3, "fill": { "scheme": "accent6" } }],
+        "default_data_label": { "show_value": true, "dock": "outside_end", "default_text_style_for_all_runs": {} } }]
+      """);
+    ShouldMatch(result["connector_lines"], "false");
+    ShouldMatch(result["gap_width"], "50");
+    ShouldMatch(result["primary_category_axis"]!["label_position"], "\"next_to\"");
+    ShouldMatch(result["chart_legend"], """{ "dock": "bottom", "overlay": false, "text_style": {} }""");
+    exporter.Gaps.ShouldBeEmpty();
+  }
+
+  [Fact]
+  public void A_waterfall_points_own_label_goes_by_index_without_its_style_which_is_a_gap()
+  {
+    // Arrange
+    JsonNode item = Json("""
+      { "properties": { "frame": [40, 100, 430, 380], "type": "waterfall", "categories": ["Start", "End"],
+        "totals": ["Start", "End"],
+        "series": [{ "name": "Value", "values": [500, 500], "type": "column", "secondary": false,
+          "labels": { "data_labels.show": "value", "data_labels.position": "inside" },
+          "points": { "points.End.data_labels.show": "value", "points.End.data_labels.position": "outside",
+            "points.End.data_labels.bold": true } }],
+        "data_labels.show": "value", "data_labels.position": "inside" } }
+      """);
+    Exporter exporter = NewExporter();
+
+    // Act
+    JsonObject result = exporter.Chart(item);
+
+    // Assert
+    ShouldMatch(result["series_list"]![0]!["data_labels"], """
+      [{ "index": 1, "show_value": true, "dock": "outside_end" }]
+      """);
+    exporter.Gaps.ShouldBe(["a waterfall point's label in a color or boldness of its own exports in its series', " +
+      "as editide can't yet style one waterfall label"]);
+  }
+
+  [Fact]
   public void An_empty_cell_keeps_its_paragraphs_size_in_an_empty_run_so_its_row_is_as_tall_as_the_preview_draws()
   {
     // Arrange

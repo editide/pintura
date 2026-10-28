@@ -34,7 +34,7 @@ A logo on three layouts is written three times: repetition an agent keeps in ste
 The format is designed for the people and agents writing it, and the exporter adapts it to OOXML.
 Lines have endpoints, corner radii are in points, and only text is a placeholder, whatever OOXML does.
 The exporter gates only capability: a chart type, fill, or text property ships when it can leave the export as a native, editable PowerPoint object.
-A convenience PowerPoint lacks, such as a waterfall chart, is allowed when it compiles to objects PowerPoint has.
+A convenience PowerPoint lacks, such as a stack's total, is allowed when it compiles to objects PowerPoint has.
 `html` is the one deliberate exception, and it exports as a picture, visibly so.
 
 ## 6. Numbers have a source

@@ -520,6 +520,10 @@ public class SceneBuilder
       object value = key switch { "style" => chart.Style!, "data" => chart.Source, _ => chart.SeriesIn };
       properties[key] = new Resolved(value, chart.Origins[key]);
     }
+    if (chart.Type == "waterfall")
+    {
+      properties["totals"] = new Resolved(chart.Totals, chart.Origins.GetValueOrDefault("totals"));
+    }
 
     properties["text.font"] = new Resolved(styles.Text.Font!, styles.Text.Origins["font"]);
     properties["text.size"] = new Resolved(styles.Text.Size!, styles.Text.Origins["size"]);
@@ -555,7 +559,11 @@ public class SceneBuilder
     if (bars)
     {
       properties.TryAdd("gap_width", new Resolved(150.0, null));
-      if (chart.Grouping == "clustered")
+      if (chart.Type == "waterfall")
+      {
+        properties.Remove("overlap");
+      }
+      else if (chart.Grouping == "clustered")
       {
         properties.TryAdd("overlap", new Resolved(0.0, null));
       }
@@ -568,6 +576,14 @@ public class SceneBuilder
     {
       properties.Remove("gap_width");
       properties.Remove("overlap");
+    }
+    if (chart.Type == "waterfall")
+    {
+      properties.TryAdd("connector_lines", new Resolved(true, null));
+    }
+    else
+    {
+      properties.Remove("connector_lines");
     }
     properties.TryAdd("series_colors", new Resolved(
       new List<Color>(Color.ThemeColors[4..10].Select(name => new Color { Theme = name })), null));

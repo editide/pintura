@@ -45,7 +45,7 @@ public partial class PowerPointMapping
   private static readonly HashSet<string> ChartTypes =
   [
     "clustered_column", "stacked_column", "percent_stacked_column", "clustered_bar", "stacked_bar",
-    "percent_stacked_bar", "line", "stacked_line", "percent_stacked_line", "pie", "doughnut"
+    "percent_stacked_bar", "line", "stacked_line", "percent_stacked_line", "pie", "doughnut", "waterfall"
   ];
   private static readonly Dictionary<string, string> LabelPositions = new Dictionary<string, string>
   {
@@ -1721,6 +1721,16 @@ public partial class PowerPointMapping
     {
       properties["title"] = words;
     }
+    bool waterfall = type == "waterfall";
+    if (waterfall)
+    {
+      List<int> subtotals = (drawn.FirstOrDefault()?["subtotal_indices"]?.AsArray() ?? [])
+        .Select(index => (int)index!).ToList();
+      properties["totals"] = new JsonArray(categoryKeys
+        .Where(key => subtotals.Contains(int.Parse(key[..key.IndexOf(':')], CultureInfo.InvariantCulture)))
+        .Select(key => (JsonNode?)key[(key.IndexOf(':') + 1)..]).ToArray());
+      properties["connector_lines"] = (bool?)element["connector_lines"] ?? true;
+    }
 
     // PowerPoint draws labels at a position their chart can't place them at its default, as the format does, so
     // the default is written rather than left to a series' position the labels would otherwise inherit. A total's
@@ -1819,7 +1829,34 @@ public partial class PowerPointMapping
     // A pie's points are its slices, which series_colors colors in order.
     var colors = new JsonArray();
     JsonArray points = drawn.FirstOrDefault()?["data_point_list"]?.AsArray() ?? [];
-    if (family == "pie" && points.Count > 0)
+    // A waterfall's colors are its increases', decreases', and totals', each the one most of its bars have, and
+    // PowerPoint's own where none has one.
+    Dictionary<int, JsonObject> pointColors = new Dictionary<int, JsonObject>();
+    if (waterfall)
+    {
+      List<string> totalNames = properties["totals"]!.AsArray().Select(total => (string)total!).ToList();
+      List<(int Point, int Kind, JsonObject? Fill)> bars = categoryKeys.Select((key, point) =>
+      {
+        double? value = drawn.Count > 0 ? Value(key, drawn[0]) : null;
+        int kind = totalNames.Contains(key[(key.IndexOf(':') + 1)..]) ? 2 : value < 0 ? 1 : 0;
+        JsonNode? read = points.FirstOrDefault(candidate => (int?)candidate!["index"] == point);
+        return (point, kind, Color(read?["fill"], where));
+      }).ToList();
+      for (int kind = 0; kind < 3; kind++)
+      {
+        JsonObject color = (JsonObject?)Mode(bars.Where(bar => bar.Kind == kind && bar.Fill is not null)
+          .Select(bar => ((JsonNode?)bar.Fill, 1.0))) ?? new JsonObject { ["theme"] = Accents[kind] };
+        colors.Add(color);
+        foreach ((int point, _, JsonObject? fill) in bars.Where(bar => bar.Kind == kind && bar.Fill is not null))
+        {
+          if (!JsonNode.DeepEquals(fill, color))
+          {
+            pointColors[point] = fill!;
+          }
+        }
+      }
+    }
+    else if (family == "pie" && points.Count > 0)
     {
       for (int slice = 0; slice < categoryKeys.Count; slice++)
       {
@@ -1852,9 +1889,12 @@ public partial class PowerPointMapping
     if (family is "column" or "bar")
     {
       properties["gap_width"] = (double?)element["gap_width"] ?? 150;
-      properties["overlap"] = type.StartsWith("clustered", StringComparison.Ordinal)
-        ? (double?)element["overlap"] ?? 0
-        : 100;
+      if (!waterfall)
+      {
+        properties["overlap"] = type.StartsWith("clustered", StringComparison.Ordinal)
+          ? (double?)element["overlap"] ?? 0
+          : 100;
+      }
     }
 
     JsonObject Markers(JsonObject entry)
@@ -2073,7 +2113,17 @@ public partial class PowerPointMapping
         AddPoints(json, pointLabels);
         json["labels"] ??= own;
       }
-      if (SeriesType(entry) is "column" or "bar" && entry["data_point_list"] is JsonArray { Count: > 0 } list)
+      if (waterfall)
+      {
+        if (pointColors.Count > 0)
+        {
+          AddPoints(json, new JsonObject(pointColors.Select(pair => KeyValuePair.Create(
+            $"points.{categoryKeys[pair.Key][(categoryKeys[pair.Key].IndexOf(':') + 1)..]}.color",
+            (JsonNode?)pair.Value.DeepClone()))));
+          json["labels"] ??= own;
+        }
+      }
+      else if (SeriesType(entry) is "column" or "bar" && entry["data_point_list"] is JsonArray { Count: > 0 } list)
       {
         JsonObject? color = Color(entry["default_data_point"]?["fill"], where);
         var colored = new JsonObject();
@@ -2118,7 +2168,8 @@ public partial class PowerPointMapping
       {
         Name = (string)series!["name"]!,
         Values = series["values"]!.AsArray().Select(value => (double?)value).ToList()
-      }).ToList()
+      }).ToList(),
+      Totals = properties["totals"]?.AsArray().Select(total => (string)total!).ToList() ?? []
     };
     foreach (JsonNode? series in properties["series"]!.AsArray())
     {

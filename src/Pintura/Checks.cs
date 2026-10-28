@@ -720,6 +720,10 @@ public static class Checks
     foreach (SceneItem item in scene.Items.Where(item => item.Chart is not null))
     {
       Chart chart = item.Chart!;
+      if (chart.Type == "waterfall" && WaterfallTotals(presentation, slide, item) is Finding finding)
+      {
+        yield return finding;
+      }
       foreach (ChartSeries total in chart.Series.Where(series =>
         chart.SeriesOptions.GetValueOrDefault(series.Name)?.Type == "total"))
       {
@@ -760,6 +764,58 @@ public static class Checks
         };
       }
     }
+  }
+
+  /// <summary>A waterfall's total that isn't where the bars since the total before it end, to within the last digit its
+  /// labels show. A total with no bars before it, such as the first, sets the level the bars after it start from.
+  /// </summary>
+  private static Finding? WaterfallTotals(Presentation presentation, Slide slide, SceneItem item)
+  {
+    Chart chart = item.Chart!;
+    ChartSeries series = chart.Series[0];
+    var off = new List<(string Category, double Value, double Level)>();
+    double level = 0;
+    bool stepped = false;
+    for (int point = 0; point < series.Values.Count; point++)
+    {
+      if (series.Values[point] is not double value)
+      {
+        continue;
+      }
+      string category = chart.Categories[point];
+      if (!chart.Totals.Contains(category))
+      {
+        level += value;
+        stepped = true;
+        continue;
+      }
+      string? name = new[]
+        {
+          $"series.{series.Name}.points.{category}.data_labels.format", $"series.{series.Name}.data_labels.format",
+          "data_labels.format"
+        }
+        .Select(key => item.Properties.GetValueOrDefault(key)?.Value as string)
+        .FirstOrDefault(found => found is not null);
+      NumberFormat? format = name is null ? null : presentation.Theme.Styles.Formats[name];
+      double tolerance = format is null ? 1e-9 : 0.5 * Math.Pow(10, -(format.Decimals ?? 0)) / (format.Scale ?? 1);
+      if (stepped && Math.Abs(value - level) > tolerance + 1e-9)
+      {
+        off.Add((category, value, level));
+      }
+      level = value;
+      stepped = false;
+    }
+    if (off.Count == 0)
+    {
+      return null;
+    }
+    (string first, double written, double reached) = off[0];
+    return new Finding("warning", "consistency", $"{slide.Id}/{item.Id}",
+      $"{first} is {Plain(written)}, where the bars before it come to {Plain(reached)}" +
+      (off.Count > 1 ? $", and {off.Count - 1} more like it" : "") + $", in {chart.Source}")
+    {
+      Slide = slide.Id
+    };
   }
 
   /// <summary>A title or placeholder the slide moves from where its layout puts it.</summary>
