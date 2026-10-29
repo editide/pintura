@@ -10,9 +10,15 @@
 <body>
   <div id="error" hidden></div>
   <div id="export-findings" role="status" hidden>
+    <svg class="icon export-findings-icon" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M8.7 3.7 2.4 14.6a1.5 1.5 0 0 0 1.3 2.2h12.6a1.5 1.5 0 0 0 1.3-2.2L11.3 3.7a1.5 1.5 0 0 0-2.6 0Z"></path>
+      <path d="M10 8v3.5M10 14.2v.1"></path>
+    </svg>
     <p></p>
     <ul></ul>
-    <button type="button" class="export-findings-close">Dismiss</button>
+    <button type="button" class="icon-button export-findings-close" title="Dismiss" aria-label="Dismiss">
+      <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15"></path></svg>
+    </button>
   </div>
   <div class="layout" id="layout">
     <nav class="sidebar" aria-label="Slides">
