@@ -184,12 +184,12 @@ public class HtmlExportTests
   }
 
   [Fact]
-  public void A_screenshot_is_carried_as_webp_with_every_pixel_kept()
+  public void A_flat_picture_is_carried_as_webp_with_every_pixel_kept()
   {
     // Arrange
     using var fixture = new DeckFixture();
-    using SKBitmap screenshot = Screenshot();
-    byte[] png = Encode(screenshot, SKEncodedImageFormat.Png, 100);
+    using SKBitmap flat = Flat();
+    byte[] png = Encode(flat, SKEncodedImageFormat.Png, 100);
     Place(fixture, "filing.png", png);
 
     // Act
@@ -199,7 +199,7 @@ public class HtmlExportTests
     byte[] carried = Carried(html, "image/webp");
     carried.Length.ShouldBeLessThan(png.Length);
     using SKBitmap decoded = SKBitmap.Decode(carried);
-    decoded.Pixels.ShouldBe(screenshot.Pixels);
+    decoded.Pixels.ShouldBe(flat.Pixels);
   }
 
   [Fact]
@@ -250,8 +250,8 @@ public class HtmlExportTests
     return bitmap;
   }
 
-  /// <summary>Flat colors and hard edges, like a page of a filing, which a lossless encoding keeps exactly.</summary>
-  private static SKBitmap Screenshot()
+  /// <summary>Flat colors and hard edges, which a lossless encoding keeps exactly at less than the lossy size.</summary>
+  private static SKBitmap Flat()
   {
     var bitmap = new SKBitmap(400, 300);
     using var canvas = new SKCanvas(bitmap);
