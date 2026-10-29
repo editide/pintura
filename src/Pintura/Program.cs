@@ -149,8 +149,18 @@ try
   if (options.Command == HeadlessCommand.ExportHtml)
   {
     string file = Path.GetFullPath(options.Output!);
-    File.WriteAllText(file, HtmlExport.Build(PresentationLoader.Load(root), PreviewServer.InterfaceFolder()));
+    Presentation presentation = PresentationLoader.Load(root);
+    File.WriteAllText(file, HtmlExport.Build(presentation, PreviewServer.InterfaceFolder()));
     Console.WriteLine(file);
+    if (HtmlExport.Warnings(presentation) is [_, ..] warnings)
+    {
+      Console.WriteLine();
+      Console.WriteLine("what the page can't carry:");
+      foreach (string warning in warnings)
+      {
+        Console.WriteLine($"- {warning}");
+      }
+    }
     return 0;
   }
 

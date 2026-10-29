@@ -98,5 +98,44 @@ public class ThemeFontTests
     html.ShouldContain("\"url\":\"data:font/ttf;base64,");
   }
 
+  [Fact]
+  public void The_html_export_warns_of_a_font_the_theme_doesnt_ship()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("theme/theme.yaml", DeckFixture.Theme.Replace("heading: Georgia", "heading: DM Sans"));
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: quote
+          text: "[Plex]{font=\"Plex Medm\"} and [Garamond]{font=\"EB Garamond\"}"
+          frame: content
+      """);
+    Ship(deck, "Plex-Medium.ttf", TestFont.Bytes("Plex Medm", 500, typographic: "Plex"));
+
+    // Act
+    List<string> warnings = HtmlExport.Warnings(deck.Load());
+
+    // Assert
+    warnings.ShouldBe([
+      "DM Sans isn't in the theme's fonts/, so readers without it installed see the text in it in another font",
+      "EB Garamond isn't in the theme's fonts/, so readers without it installed see the text in it in another font"
+    ]);
+  }
+
+  [Fact]
+  public void The_html_export_doesnt_warn_of_a_font_every_desktop_and_iphone_has()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+
+    // Act
+    List<string> warnings = HtmlExport.Warnings(deck.Load());
+
+    // Assert
+    warnings.ShouldBeEmpty();
+  }
+
 
 }

@@ -350,6 +350,7 @@ pintura presentations/example --export-html deck.html
 
 `--export-html` writes one HTML file that shows the presentation with no server, for sending to someone with only a browser.
 The renderer, its stylesheet and its font, the slides, every picture, and the theme's `fonts/` are inlined, so the slides draw in the theme's fonts whatever the reader has installed.
+It lists each font the slides use that the theme doesn't ship, which the reader sees only if they have it installed, leaving out those every Windows, Mac, and iPhone has: Arial, Courier New, Georgia, Times New Roman, Trebuchet MS, and Verdana.
 A PNG or JPEG goes in as WebP when that's smaller: lossless where that costs at most twice the lossy size, as for a chart or a diagram, and lossy otherwise, as for a photograph or a screenshot.
 Each encoding is kept in the user's cache folder (`~/.cache/pintura/pictures` on Linux) by a hash of the picture and of Pintura's build, so exporting again encodes only the pictures that changed, and a new build encodes them all afresh; one unused for a month is deleted.
 It opens on one slide at fit, with a sidebar of thumbnails by section that `\` or its button shows; the arrow keys, the mouse wheel, a click on the slide, or a thumbnail move between slides, and `P` or F5 presents.

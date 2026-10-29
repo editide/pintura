@@ -228,6 +228,7 @@ public static partial class PreviewServer
       if (format == "html")
       {
         string html = await Task.Run(() => Html(presentation, assets, progress));
+        Findings(context, HtmlExport.Warnings(presentation));
         return Results.File(Encoding.UTF8.GetBytes(html), "text/html; charset=utf-8", name);
       }
       if (format == "pptx")
@@ -239,10 +240,7 @@ public static partial class PreviewServer
           return Refused($"{string.Join(", ", broken)} doesn't load; fix it first", StatusCodes.Status409Conflict);
         }
         (byte[] bytes, ExportReport report) = await Task.Run(() => Pptx(presentation, name, progress));
-        if (report.Gaps.Count > 0)
-        {
-          context.Response.Headers["Pintura-Findings"] = Uri.EscapeDataString(JsonSerializer.Serialize(report.Gaps));
-        }
+        Findings(context, report.Gaps);
         return Results.File(bytes, PptxType, name);
       }
       return Results.File(await headless.Print(store.Deck.Size), "application/pdf", name);
@@ -255,6 +253,15 @@ public static partial class PreviewServer
       UnauthorizedAccessException or ArgumentException or InvalidOperationException or BookException)
     {
       return Refused(exception.Message, StatusCodes.Status500InternalServerError);
+    }
+  }
+
+  /// <summary>What the export couldn't carry over, for the page to list beside the download.</summary>
+  private static void Findings(HttpContext context, IReadOnlyCollection<string> findings)
+  {
+    if (findings.Count > 0)
+    {
+      context.Response.Headers["Pintura-Findings"] = Uri.EscapeDataString(JsonSerializer.Serialize(findings));
     }
   }
 
