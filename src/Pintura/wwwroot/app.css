@@ -682,7 +682,41 @@ main {
 
 .export-button:disabled {
   cursor: progress;
-  opacity: .6;
+}
+
+.export-button .spinner {
+  display: none;
+  width: 14px;
+  height: 14px;
+  margin: 1px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+.export-button[aria-busy="true"] .spinner {
+  display: inline-block;
+}
+
+.export-button[aria-busy="true"] .icon {
+  display: none;
+}
+
+.export-button[aria-busy="true"] .label {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-button .spinner {
+    animation-duration: 2.4s;
+  }
 }
 
 .tool[data-action]:disabled {

@@ -20,16 +20,35 @@ public static class HtmlExport
   private const string BackIcon = "<svg class=\"icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\">"
     + "<path d=\"M16 10H4.5M9 5l-5 5 5 5\"></path></svg>";
 
-  public static string Build(Presentation presentation, string assets, IBookReader? books = null)
+  /// <summary>The page, reporting what it is doing to <paramref name="progress"/> with how far it is, when it can
+  /// tell.</summary>
+  public static string Build(Presentation presentation, string assets, IBookReader? books = null,
+    PictureCache? pictures = null, Action<string, double?>? progress = null)
   {
+    // A book's page, exported by Libreta, needs nothing of the slides, so it's exported while the pictures encode.
+    IBookReader reader = books ?? LibretaReader.Shared;
+    Task<Dictionary<string, string>> exporting = Task.Run(() => presentation.Books.Values
+      .ToDictionary(book => book.Id, book => reader.Page(book.Root)));
+    pictures ??= PictureCache.User;
     // Encoding the pictures is the slow part of the export, so each is encoded once, all at the same time, however
     // many slides draw it.
-    ConcurrentDictionary<(string, string?), string> uris = new(PresentationStore.Media(presentation)
+    List<string> encoded = PresentationStore.Media(presentation)
       .Where(path => PresentationStore.ServedType(path) is "image/png" or "image/jpeg")
-      .AsParallel()
-      .Select(path => KeyValuePair.Create<(string, string?), string>((path, null), DataUri(path, null))));
+      .ToList();
+    int done = 0;
+    progress?.Invoke("Exporting pictures", 0);
+    ConcurrentDictionary<(string, string?), string> uris = new(encoded.AsParallel().Select(path =>
+    {
+      string uri = DataUri(path, null, pictures);
+      // One at a time, so the share reported never goes back.
+      lock (encoded)
+      {
+        progress?.Invoke("Exporting pictures", (double)++done / encoded.Count);
+      }
+      return KeyValuePair.Create<(string, string?), string>((path, null), uri);
+    }));
     DeckPayload deck = PayloadBuilder.Build(presentation, 0,
-      (path, fill) => uris.GetOrAdd((path, fill), key => DataUri(key.Item1, key.Item2)));
+      (path, fill) => uris.GetOrAdd((path, fill), key => DataUri(key.Item1, key.Item2, pictures)));
     // What the preview needs to write edits back names the files on this machine, and a sent file has no use for it;
     // the reviewers' comments are for the authors, not whoever the file is sent to.
     deck = deck with
@@ -41,9 +60,12 @@ public static class HtmlExport
       }).ToList()
     };
     string json = ScriptJson(deck);
+    if (presentation.Books.Count > 0)
+    {
+      progress?.Invoke(presentation.Books.Count == 1 ? "Exporting the book" : "Exporting the books", null);
+    }
     // A number traced to a book opens it beside the slide, so the reader can follow it without Libreta.
-    Dictionary<string, string> pages = presentation.Books.Values
-      .ToDictionary(book => book.Id, book => (books ?? LibretaReader.Shared).Page(book.Root));
+    Dictionary<string, string> pages = exporting.GetAwaiter().GetResult();
 
     var html = new StringBuilder();
     html.AppendLine("<!doctype html>");
@@ -107,7 +129,7 @@ public static class HtmlExport
     });
   }
 
-  private static string DataUri(string path, string? fill)
+  private static string DataUri(string path, string? fill, PictureCache pictures)
   {
     string contentType = PresentationStore.ServedType(path) ?? "application/octet-stream";
     if (PresentationLoader.Svg(path))
@@ -118,7 +140,9 @@ public static class HtmlExport
       return $"data:{contentType};base64,{Convert.ToBase64String(svg)}";
     }
     byte[] original = File.ReadAllBytes(path);
-    byte[]? webp = contentType is "image/png" or "image/jpeg" ? WebP(original) : null;
+    byte[]? webp = contentType is "image/png" or "image/jpeg"
+      ? pictures.Get(original, "webp", () => WebP(original))
+      : null;
     return webp is not null && webp.Length < original.Length
       ? $"data:image/webp;base64,{Convert.ToBase64String(webp)}"
       : $"data:{contentType};base64,{Convert.ToBase64String(original)}";

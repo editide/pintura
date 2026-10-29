@@ -811,6 +811,35 @@ public class BookTests
   }
 
   [Fact]
+  public void A_books_page_is_exported_again_only_once_the_book_changes()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    folder.Write("book/book.yaml", "name: Acme");
+    string libreta = FakeLibreta(folder, $$"""
+      #!/bin/sh
+      echo call >> '{{folder.PathTo("calls").Replace('\\', '/')}}'
+      echo "<html>$(cat "$1/book.yaml")</html>" > "$3"
+      echo wrote
+      """);
+    var reader = new LibretaReader(libreta);
+    int Calls() => File.ReadAllLines(folder.PathTo("calls")).Length;
+
+    // Act
+    reader.Page(folder.PathTo("book"));
+    string unchanged = reader.Page(folder.PathTo("book"));
+    int beforeChange = Calls();
+    folder.Write("book/book.yaml", "name: Acme, restated");
+    string changed = reader.Session().Page(folder.PathTo("book"));
+
+    // Assert
+    beforeChange.ShouldBe(1);
+    unchanged.ShouldContain("name: Acme</html>");
+    changed.ShouldContain("Acme, restated");
+    Calls().ShouldBe(2);
+  }
+
+  [Fact]
   public void A_presentation_inside_the_book_changes_nothing_libreta_reads_but_formats_above_it_do()
   {
     // Arrange

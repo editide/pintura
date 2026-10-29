@@ -1136,24 +1136,30 @@ document.querySelector('.export-findings-close').addEventListener('click', () =>
   document.getElementById('export-findings').hidden = true;
 });
 
+/** The button's label for what the server says the export is doing, such as "Exporting pictures 40%". */
+function exportProgressLabel({ stage, fraction }) {
+  const step = stage || 'Exporting';
+  return fraction == null ? step : `${step} ${Math.round(fraction * 100)}%`;
+}
+
 // Fetched rather than linked, so an export that fails says why instead of downloading the error.
 async function downloadExport(format) {
   const button = document.getElementById('export-button');
   const label = button.querySelector('.label');
   button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
   label.textContent = 'Exporting';
   document.getElementById('export-findings').hidden = true;
-  // A .pptx makes a round trip to editide a tool call, so it reports how far it is.
-  const polling = format === 'pptx' ? setInterval(async () => {
+  const polling = setInterval(async () => {
     try {
-      const { fraction } = await (await fetch('api/export/progress', { cache: 'no-store' })).json();
-      if (fraction != null && button.disabled) {
-        label.textContent = `Exporting ${Math.round(fraction * 100)}%`;
+      const progress = await (await fetch('api/export/progress', { cache: 'no-store' })).json();
+      if (button.disabled) {
+        label.textContent = exportProgressLabel(progress);
       }
     } catch {
-      // A missed poll leaves the last share showing.
+      // A missed poll leaves the last step showing.
     }
-  }, 500) : null;
+  }, 500);
   try {
     const response = await fetch(`api/export/${format}`, { method: 'POST', cache: 'no-store' });
     if (!response.ok) {
@@ -1185,6 +1191,7 @@ async function downloadExport(format) {
   } finally {
     clearInterval(polling);
     button.disabled = false;
+    button.removeAttribute('aria-busy');
     label.textContent = 'Export';
     if (document.activeElement === document.body) {
       button.focus();

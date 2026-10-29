@@ -351,12 +351,14 @@ pintura presentations/example --export-html deck.html
 `--export-html` writes one HTML file that shows the presentation with no server, for sending to someone with only a browser.
 The renderer, its stylesheet and its font, the slides, every picture, and the theme's `fonts/` are inlined, so the slides draw in the theme's fonts whatever the reader has installed.
 A PNG or JPEG goes in as WebP when that's smaller: lossless where that costs at most twice the lossy size, as for a chart or a diagram, and lossy otherwise, as for a photograph or a screenshot.
+Each encoding is kept in the user's cache folder (`~/.cache/pintura/pictures` on Linux) by a hash of the picture and of Pintura's build, so exporting again encodes only the pictures that changed, and a new build encodes them all afresh; one unused for a month is deleted.
 It opens on one slide at fit, with a sidebar of thumbnails by section that `\` or its button shows; the arrow keys, the mouse wheel, a click on the slide, or a thumbnail move between slides, and `P` or F5 presents.
-Each book the presentation reads is inlined too, as `libreta --export` writes it, so the export needs Libreta and fails when it can't export a book.
+Each book the presentation reads is inlined too, as `libreta --export` writes it while the pictures encode, so the export needs Libreta and fails when it can't export a book.
+A preview server keeps each book's page until a file in the book changes, so exporting again doesn't export an unchanged book again.
 Clicking a linked number slides the book in over the whole window at that cell, with its calculation and source, and the button naming the slide, Escape, or the browser's back goes back to it.
 The reader gets the whole book, not only the numbers the slides quote.
 
-The page's Export button downloads the presentation, named for its folder, as the files on disk have it, and counts a `.pptx` export's progress against about five calls a slide; it keeps its last `.pptx` in that folder's `exports`, so pressing it again exports incrementally too.
+The page's Export button downloads the presentation, named for its folder, as the files on disk have it, and shows a spinner and the step it is on while it waits: a web page's pictures as a share encoded, then its books, and a `.pptx` export's progress counted against about five calls a slide; it keeps its last `.pptx` in that folder's `exports`, so pressing it again exports incrementally too.
 PowerPoint is `--export`'s deck, which takes about a second a slide; Web page is `--export-html`'s file.
 PDF is a page per slide at the slide's size in points, printed by the headless browser, so its text can be selected and searched.
 An export that fails says why in the page.
