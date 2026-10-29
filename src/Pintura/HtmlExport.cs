@@ -124,8 +124,9 @@ public static class HtmlExport
       : $"data:{contentType};base64,{Convert.ToBase64String(original)}";
   }
 
-  /// <summary>Lossless when that costs at most twice the lossy size, as a screenshot's flat colors and hard edges do,
-  /// so its text stays sharp; lossy otherwise, as for a photograph, where lossless is often ten times the size.</summary>
+  /// <summary>Lossless when that costs at most twice the lossy size, as flat colors and hard edges such as a chart's
+  /// do; lossy otherwise, as for a photograph or a page of small text. Skia encodes lossless at libwebp's fastest
+  /// method, which a detailed picture outgrows.</summary>
   private static byte[]? WebP(byte[] picture)
   {
     using SKCodec? codec = SKCodec.Create(new SKMemoryStream(picture));
