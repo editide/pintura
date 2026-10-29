@@ -15,6 +15,9 @@ Pintura includes or ships with the following, each under its own license:
   under the MIT License.
 - YamlDotNet, copyright Antoine Aubry and contributors, under the MIT License.
 - Microsoft.Playwright for .NET, copyright Microsoft Corporation, under the MIT License.
+- SkiaSharp, copyright Xamarin, Inc. and Microsoft Corporation, under the MIT License, and the Skia library it
+  carries, copyright Google LLC, under the BSD 3-Clause License, with the libraries Skia builds in, such as libwebp,
+  libpng, and libjpeg-turbo, each under its own license.
 - System.Security.Cryptography.ProtectedData, Microsoft.Bcl.AsyncInterfaces, and System.ComponentModel.Annotations,
   copyright the .NET Foundation and Contributors, under the MIT License.
 - Playwright and Node.js, which Microsoft.Playwright installs beside the program in .playwright, each with its own
