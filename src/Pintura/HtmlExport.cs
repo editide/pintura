@@ -11,7 +11,7 @@ namespace Pintura;
 /// and every picture inlined, for sending to someone who has only a browser.</summary>
 public static class HtmlExport
 {
-  private static readonly string[] Scripts = ["shapes.js", "render.js", "charts.js", "book.js", "export.js"];
+  private static readonly string[] Scripts = ["shapes.js", "render.js", "charts.js", "book.js", "navigation.js", "export.js"];
   private static readonly string[] Stylesheets = ["app.css", "export.css"];
   // Fonts every Windows, Mac, and iPhone has, though Android and Linux may draw a lookalike.
   private static readonly string[] Everywhere =
@@ -22,6 +22,15 @@ public static class HtmlExport
 
   private const string BackIcon = "<svg class=\"icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\">"
     + "<path d=\"M16 10H4.5M9 5l-5 5 5 5\"></path></svg>";
+
+  private const string PreviousIcon = "<svg class=\"icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\">"
+    + "<path d=\"M12.5 4.5 7 10l5.5 5.5\"></path></svg>";
+
+  private const string NextIcon = "<svg class=\"icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\">"
+    + "<path d=\"M7.5 4.5 13 10l-5.5 5.5\"></path></svg>";
+
+  private const string CloseIcon = "<svg class=\"icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\">"
+    + "<path d=\"M5 5l10 10M15 5 5 15\"></path></svg>";
 
   /// <summary>The page, reporting what it is doing to <paramref name="progress"/> with how far it is, when it can
   /// tell.</summary>
@@ -75,7 +84,7 @@ public static class HtmlExport
     html.AppendLine("<html lang=\"en\">");
     html.AppendLine("<head>");
     html.AppendLine("<meta charset=\"utf-8\">");
-    html.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+    html.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">");
     html.AppendLine($"<title>{WebUtility.HtmlEncode(presentation.Name)}</title>");
     foreach (string stylesheet in Stylesheets)
     {
@@ -92,10 +101,18 @@ public static class HtmlExport
     html.AppendLine("<main id=\"view\"><div class=\"export-bar\">"
       + "<button type=\"button\" class=\"icon-button\" id=\"nav-show\" title=\"Show slides (\\)\" "
       + $"aria-label=\"Show slides\">{SidebarIcon}</button>"
+      + "<div class=\"export-turn\"><button type=\"button\" class=\"icon-button\" id=\"previous\" "
+      + $"title=\"Previous slide (\u2190)\" aria-label=\"Previous slide\">{PreviousIcon}</button>"
+      + "<span id=\"counter\" aria-live=\"polite\"></span>"
+      + "<button type=\"button\" class=\"icon-button\" id=\"next\" title=\"Next slide (\u2192)\" "
+      + $"aria-label=\"Next slide\">{NextIcon}</button></div>"
       + "<button type=\"button\" id=\"present-button\" title=\"Present (P)\">Present</button></div>"
       + "<div class=\"export-slide\" id=\"slide\"></div></main>");
     html.AppendLine("</div>");
-    html.AppendLine("<div class=\"present\" id=\"present\" hidden></div>");
+    html.AppendLine("<div class=\"present\" id=\"present\" hidden>"
+      + "<button type=\"button\" class=\"icon-button\" id=\"present-exit\" title=\"Stop presenting (Esc)\" "
+      + $"aria-label=\"Stop presenting\">{CloseIcon}</button>"
+      + "<p class=\"present-hint\">Turn your phone sideways for a larger slide</p></div>");
     if (pages.Count > 0)
     {
       html.AppendLine("<div class=\"book\" id=\"book\"><div class=\"book-bar\">"

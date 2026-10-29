@@ -19,6 +19,25 @@ body.exported #view {
   border-bottom: 1px solid var(--rule);
 }
 
+.export-turn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.export-turn .icon-button:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+#counter {
+  min-width: 4.5em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 .export-bar #present-button {
   margin-left: auto;
 }
@@ -46,6 +65,12 @@ body.exported #view {
   margin: 24px;
 }
 
+/* Pinching still zooms; a double tap doesn't, so two quick taps turn two slides. */
+.export-slide,
+body.exported .present {
+  touch-action: manipulation;
+}
+
 .export-slide .slide-frame {
   overflow: hidden;
   user-select: none;
@@ -59,4 +84,71 @@ body.tracing .export-slide [data-trace] {
 /* A run's inline style sets its own decoration. */
 body.tracing .export-slide [data-trace]:hover {
   text-decoration: underline dotted !important;
+}
+
+#present-exit {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / .55);
+  color: #fff;
+}
+
+.present-hint {
+  position: absolute;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / .55);
+  color: #fff;
+  font-size: 13px;
+}
+
+#present-exit,
+.present-hint {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s;
+}
+
+body.exported .present.controls {
+  cursor: auto;
+}
+
+.present.controls #present-exit {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+  .present.controls .present-hint {
+    opacity: 1;
+  }
+}
+
+/* A phone has no room beside the slide, so the sidebar opens over it. */
+@media (max-width: 52rem) {
+  body.exported .layout {
+    --nav-column: 0px;
+  }
+
+  body.exported .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 5;
+    width: min(var(--sidebar-width), 85vw);
+    box-shadow: 0 0 24px rgb(0 0 0 / .25);
+  }
+
+  .export-bar {
+    padding: 6px 8px;
+  }
+
+  .export-slide {
+    margin: 8px;
+  }
 }

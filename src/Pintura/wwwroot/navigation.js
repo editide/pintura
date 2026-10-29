@@ -1,7 +1,7 @@
 'use strict';
 
-// How the preview moves: turning slides with the wheel, and zooming by steps or by the wheel about the pointer. Pure,
-// given the page's state, so app.js wires it to events and node --test checks it.
+// How the preview and the exported page move: turning slides with the wheel or a touch, and zooming by steps or by the
+// wheel about the pointer. Pure, given the page's state, so the pages wire it to events and node --test checks it.
 
 // Zooms as multiples of the slide at fit.
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
@@ -41,6 +41,17 @@ function anchoredScroll(scroll, pointer, before, after) {
   };
 }
 
+// The slide a swipe from start to end turns to: left advances, right goes back, and 0 for a tap or a vertical drag.
+function swipeStep(start, end) {
+  const dx = end.x - start.x;
+  return Math.abs(dx) >= 40 && Math.abs(dx) > 2 * Math.abs(end.y - start.y) ? -Math.sign(dx) : 0;
+}
+
+// The slide a tap at x turns to, going back on the left third of the frame as most viewers do.
+function tapStep(x, frame) {
+  return x - frame.left < frame.width / 3 ? -1 : 1;
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { wheelStep, zoomStep, wheelZoom, anchoredScroll };
+  module.exports = { wheelStep, zoomStep, wheelZoom, anchoredScroll, swipeStep, tapStep };
 }
