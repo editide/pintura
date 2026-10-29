@@ -208,7 +208,7 @@ public static partial class PreviewServer
     });
   }
 
-  /// <summary>The presentation as a download, named for its folder and built from the files as they are now, as the
+  /// <summary>The presentation as a download, named for its title and built from the files as they are now, as the
   /// command line's exports build it. A failure answers with its message for the page to show.</summary>
   private static async Task<IResult> Export(HttpContext context, PresentationStore store, HeadlessBrowser headless,
     string assets, string format, ExportProgress progress)
@@ -222,7 +222,8 @@ public static partial class PreviewServer
     {
       return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
     }
-    string name = $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(presentation.Root))}.{format}";
+    string name = $"{DownloadStem(presentation.Name,
+      Path.GetFileName(Path.TrimEndingDirectorySeparator(presentation.Root)))}.{format}";
     try
     {
       if (format == "html")
@@ -254,6 +255,14 @@ public static partial class PreviewServer
     {
       return Refused(exception.Message, StatusCodes.Status500InternalServerError);
     }
+  }
+
+  /// <summary>A download's name before its extension: the title's words joined by hyphens, keeping only letters and
+  /// digits, so it reads the same on every system, or the folder's name for a title with no words.</summary>
+  public static string DownloadStem(string title, string folder)
+  {
+    string stem = string.Join('-', Regex.Split(Regex.Replace(title, "['’]", ""), @"[^\p{L}\p{N}]+").Where(word => word.Length > 0));
+    return stem.Length > 0 ? stem : folder;
   }
 
   /// <summary>What the export couldn't carry over, for the page to list beside the download.</summary>

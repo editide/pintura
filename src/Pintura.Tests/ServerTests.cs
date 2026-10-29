@@ -1180,7 +1180,7 @@ public class ServerTests
   }
 
   [Fact]
-  public async Task Exporting_to_html_downloads_the_presentation_as_one_page_named_for_its_folder()
+  public async Task Exporting_to_html_downloads_the_presentation_as_one_page_named_for_its_title()
   {
     // Arrange
     using var deck = new DeckFixture();
@@ -1191,11 +1191,26 @@ public class ServerTests
 
     // Assert
     response.StatusCode.ShouldBe(HttpStatusCode.OK);
-    response.Content.Headers.ContentDisposition.ShouldNotBeNull().FileName.ShouldBe("deck.html");
+    response.Content.Headers.ContentDisposition.ShouldNotBeNull().FileName.ShouldBe("Test-deck.html");
     string html = await response.Content.ReadAsStringAsync();
     html.ShouldContain("<title>Test deck</title>");
     html.ShouldNotContain("<script src=");
     response.Headers.Contains("Pintura-Findings").ShouldBeFalse();
+  }
+
+  [Theory]
+  [InlineData("Q3 Board Update", "deck", "Q3-Board-Update")]
+  [InlineData("Revenue: 2026 / 2027?", "deck", "Revenue-2026-2027")]
+  [InlineData("Acme’s Year", "deck", "Acmes-Year")]
+  [InlineData("  ", "deck", "deck")]
+  public void A_download_is_named_for_the_title_with_hyphens_between_words(string title, string folder,
+    string expected)
+  {
+    // Act
+    string stem = PreviewServer.DownloadStem(title, folder);
+
+    // Assert
+    stem.ShouldBe(expected);
   }
 
   [Fact]
@@ -1227,7 +1242,7 @@ public class ServerTests
 
     // Assert
     response.StatusCode.ShouldBe(HttpStatusCode.OK);
-    response.Content.Headers.ContentDisposition.ShouldNotBeNull().FileName.ShouldBe("deck.pdf");
+    response.Content.Headers.ContentDisposition.ShouldNotBeNull().FileName.ShouldBe("Test-deck.pdf");
     string pdf = Encoding.Latin1.GetString(await response.Content.ReadAsByteArrayAsync());
     pdf.ShouldStartWith("%PDF-");
     pdf.ShouldContain("/Count 2");
