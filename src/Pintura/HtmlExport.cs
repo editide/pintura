@@ -13,6 +13,9 @@ public static class HtmlExport
 {
   private static readonly string[] Scripts = ["shapes.js", "render.js", "charts.js", "book.js", "export.js"];
   private static readonly string[] Stylesheets = ["app.css", "export.css"];
+  // Fonts every Windows, Mac, and iPhone has, though Android and Linux may draw a lookalike.
+  private static readonly string[] Everywhere =
+    ["Arial", "Courier New", "Georgia", "Times New Roman", "Trebuchet MS", "Verdana"];
 
   private const string SidebarIcon = "<svg class=\"icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\">"
     + "<rect x=\"2.5\" y=\"3\" width=\"15\" height=\"14\" rx=\"1.5\"></rect><path d=\"M7.5 3v14\"></path></svg>";
@@ -111,6 +114,28 @@ public static class HtmlExport
     html.AppendLine("</body>");
     html.AppendLine("</html>");
     return html.ToString();
+  }
+
+  /// <summary>Each font the slides draw in that the theme's <c>fonts/</c> doesn't carry into the page, so the reader
+  /// sees it only if they have it installed. Fonts every Windows, Mac, and iPhone has go unmentioned.</summary>
+  public static List<string> Warnings(Presentation presentation)
+  {
+    DeckPayload deck = PayloadBuilder.Build(presentation, 0, (path, _) => path);
+    HashSet<string> shipped = presentation.Theme.Faces.Select(face => face.Family)
+      .Concat(Everywhere).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    return deck.Slides.SelectMany(slide => slide.Items ?? [])
+      .SelectMany(item => (item.Chart is null ? [] : new[] { item.Chart.Text.Font })
+        .Concat(new[] { item.Text }.Concat(item.Table?.Cells.Select(cell => cell.Text) ?? [])
+          .SelectMany(text => text?.Paragraphs ?? [])
+          .SelectMany(paragraph => paragraph.Runs.Prepend(paragraph.Mark))
+          .Select(run => run.Font)))
+      .OfType<string>()
+      .Where(family => !shipped.Contains(family))
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .Order(StringComparer.Ordinal)
+      .Select(family => $"{family} isn't in the theme's fonts/, so readers without it installed see the text in it " +
+        "in another font")
+      .ToList();
   }
 
   // "</" would end the script element early, and "<!--<script" would keep the real end from ending it; JSON has "<"

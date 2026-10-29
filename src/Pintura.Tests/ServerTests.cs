@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Shouldly;
 using Xunit;
@@ -1194,6 +1195,24 @@ public class ServerTests
     string html = await response.Content.ReadAsStringAsync();
     html.ShouldContain("<title>Test deck</title>");
     html.ShouldNotContain("<script src=");
+    response.Headers.Contains("Pintura-Findings").ShouldBeFalse();
+  }
+
+  [Fact]
+  public async Task Exporting_to_html_lists_the_fonts_the_theme_doesnt_ship()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("theme/theme.yaml", DeckFixture.Theme.Replace("heading: Georgia", "heading: DM Sans"));
+    await using Served served = await Served.Start(deck, Served.Interface());
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsync($"{served.Url}/api/export/html", null);
+
+    // Assert
+    response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    JsonSerializer.Deserialize<string[]>(Uri.UnescapeDataString(response.Headers.GetValues("Pintura-Findings")
+      .Single())).ShouldBe(HtmlExport.Warnings(deck.Load()));
   }
 
   [Fact]

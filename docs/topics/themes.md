@@ -61,6 +61,7 @@ areas:
 
 A `.ttf` or `.otf` in `fonts/` draws in the preview, screenshots, checks, PDF, and HTML export whether or not the machine has it installed.
 Each file answers to its family at its weight, and to the family Windows and PowerPoint list it under, such as `IBM Plex Sans Medm` for IBM Plex Sans Medium.
+A font the theme doesn't ship draws only where it is installed, so the HTML export lists it, leaving out those every Windows, Mac, and iPhone has, such as Arial and Georgia.
 A `.pptx` doesn't embed them, so PowerPoint still needs the font installed.
 
 ## Usual mistakes
