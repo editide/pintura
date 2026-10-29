@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using SkiaSharp;
 
 namespace Pintura;
 
@@ -20,7 +22,14 @@ public static class HtmlExport
 
   public static string Build(Presentation presentation, string assets, IBookReader? books = null)
   {
-    DeckPayload deck = PayloadBuilder.Build(presentation, 0, DataUri);
+    // Encoding the pictures is the slow part of the export, so each is encoded once, all at the same time, however
+    // many slides draw it.
+    ConcurrentDictionary<(string, string?), string> uris = new(PresentationStore.Media(presentation)
+      .Where(path => PresentationStore.ServedType(path) is "image/png" or "image/jpeg")
+      .AsParallel()
+      .Select(path => KeyValuePair.Create<(string, string?), string>((path, null), DataUri(path, null))));
+    DeckPayload deck = PayloadBuilder.Build(presentation, 0,
+      (path, fill) => uris.GetOrAdd((path, fill), key => DataUri(key.Item1, key.Item2)));
     // What the preview needs to write edits back names the files on this machine, and a sent file has no use for it;
     // the reviewers' comments are for the authors, not whoever the file is sent to.
     deck = deck with
@@ -101,10 +110,42 @@ public static class HtmlExport
   private static string DataUri(string path, string? fill)
   {
     string contentType = PresentationStore.ServedType(path) ?? "application/octet-stream";
-    byte[] bytes = fill is null || !PresentationLoader.Svg(path)
-      ? File.ReadAllBytes(path)
-      : Encoding.UTF8.GetBytes(SvgPaint.Recolor(File.ReadAllText(path), fill));
-    return $"data:{contentType};base64,{Convert.ToBase64String(bytes)}";
+    if (PresentationLoader.Svg(path))
+    {
+      byte[] svg = fill is null
+        ? File.ReadAllBytes(path)
+        : Encoding.UTF8.GetBytes(SvgPaint.Recolor(File.ReadAllText(path), fill));
+      return $"data:{contentType};base64,{Convert.ToBase64String(svg)}";
+    }
+    byte[] original = File.ReadAllBytes(path);
+    byte[]? webp = contentType is "image/png" or "image/jpeg" ? WebP(original) : null;
+    return webp is not null && webp.Length < original.Length
+      ? $"data:image/webp;base64,{Convert.ToBase64String(webp)}"
+      : $"data:{contentType};base64,{Convert.ToBase64String(original)}";
+  }
+
+  /// <summary>Lossless when that costs at most twice the lossy size, as a screenshot's flat colors and hard edges do,
+  /// so its text stays sharp; lossy otherwise, as for a photograph, where lossless is often ten times the size.</summary>
+  private static byte[]? WebP(byte[] picture)
+  {
+    using SKCodec? codec = SKCodec.Create(new SKMemoryStream(picture));
+    // Browsers turn a photo by its EXIF orientation and draw a wide-gamut one in its own colors, and WebP would keep
+    // neither.
+    if (codec is null || codec.EncodedOrigin != SKEncodedOrigin.TopLeft || codec.Info.ColorSpace is { IsSrgb: false })
+    {
+      return null;
+    }
+    // Unpremultiplied, so lossless keeps a translucent pixel's color exactly.
+    using SKBitmap? bitmap = SKBitmap.Decode(codec, codec.Info.WithAlphaType(
+      codec.Info.AlphaType == SKAlphaType.Opaque ? SKAlphaType.Opaque : SKAlphaType.Unpremul));
+    if (bitmap is null)
+    {
+      return null;
+    }
+    using SKPixmap pixmap = bitmap.PeekPixels();
+    using SKData lossless = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossless, 25));
+    using SKData lossy = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossy, 80));
+    return (lossless.Size <= 2 * lossy.Size ? lossless : lossy).ToArray();
   }
 
 

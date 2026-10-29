@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Shouldly;
+using SkiaSharp;
 using Xunit;
 
 namespace Pintura.Tests;
@@ -161,6 +162,121 @@ public class HtmlExportTests
     // Assert
     Books(html).ShouldBeNull();
     books.Exported.ShouldBeEmpty();
+  }
+
+  [Fact]
+  public void A_photograph_is_carried_as_lossy_webp()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    using SKBitmap photograph = Photograph();
+    byte[] photo = Encode(photograph, SKEncodedImageFormat.Png, 100);
+    Place(fixture, "photo.png", photo);
+
+    // Act
+    string html = HtmlExport.Build(fixture.Load(), Assets);
+
+    // Assert
+    byte[] carried = Carried(html, "image/webp");
+    carried.Length.ShouldBeLessThan(photo.Length / 4);
+    using SKBitmap decoded = SKBitmap.Decode(carried);
+    (decoded.Width, decoded.Height).ShouldBe((400, 300));
+  }
+
+  [Fact]
+  public void A_screenshot_is_carried_as_webp_with_every_pixel_kept()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    using SKBitmap screenshot = Screenshot();
+    byte[] png = Encode(screenshot, SKEncodedImageFormat.Png, 100);
+    Place(fixture, "filing.png", png);
+
+    // Act
+    string html = HtmlExport.Build(fixture.Load(), Assets);
+
+    // Assert
+    byte[] carried = Carried(html, "image/webp");
+    carried.Length.ShouldBeLessThan(png.Length);
+    using SKBitmap decoded = SKBitmap.Decode(carried);
+    decoded.Pixels.ShouldBe(screenshot.Pixels);
+  }
+
+  [Fact]
+  public void A_picture_smaller_than_its_webp_is_carried_as_it_is()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    using SKBitmap photograph = Photograph();
+    byte[] jpeg = Encode(photograph, SKEncodedImageFormat.Jpeg, 10);
+    Place(fixture, "photo.jpg", jpeg);
+
+    // Act
+    string html = HtmlExport.Build(fixture.Load(), Assets);
+
+    // Assert
+    Carried(html, "image/jpeg").ShouldBe(jpeg);
+  }
+
+  private static void Place(DeckFixture fixture, string name, byte[] picture)
+  {
+    fixture.Write($"deck/media/{name}", "");
+    File.WriteAllBytes(fixture.Folder.PathTo($"deck/media/{name}"), picture);
+    fixture.Write("deck/slides/two.yaml",
+      $"layout: content\nelements:\n  - id: picture\n    picture: ../media/{name}\n    frame: [40, 100, 400, 300]");
+  }
+
+  private static byte[] Carried(string html, string type)
+  {
+    string picture = Pictures(Deck(html)).Single();
+    picture.ShouldStartWith($"data:{type};base64,");
+    return Convert.FromBase64String(picture[picture.IndexOf(',')..][1..]);
+  }
+
+  /// <summary>Smooth color with grain, which a lossy encoding shrinks far more than a lossless one.</summary>
+  private static SKBitmap Photograph()
+  {
+    var bitmap = new SKBitmap(400, 300);
+    var random = new Random(7);
+    for (int y = 0; y < bitmap.Height; y++)
+    {
+      for (int x = 0; x < bitmap.Width; x++)
+      {
+        int grain = random.Next(-12, 13);
+        bitmap.SetPixel(x, y, new SKColor(Channel(x * 255 / 400 + grain), Channel(y * 255 / 300 + grain),
+          Channel(160 + grain)));
+      }
+    }
+    return bitmap;
+  }
+
+  /// <summary>Flat colors and hard edges, like a page of a filing, which a lossless encoding keeps exactly.</summary>
+  private static SKBitmap Screenshot()
+  {
+    var bitmap = new SKBitmap(400, 300);
+    using var canvas = new SKCanvas(bitmap);
+    canvas.Clear(SKColors.White);
+    using var ink = new SKPaint { Color = new SKColor(0x22, 0x22, 0x22) };
+    var random = new Random(7);
+    for (int line = 0; line < 20; line++)
+    {
+      for (int x = 10; x < 390; x += random.Next(3, 9))
+      {
+        canvas.DrawRect(x, 10 + line * 14, random.Next(1, 3), random.Next(4, 9), ink);
+      }
+    }
+    return bitmap;
+  }
+
+  private static byte Channel(int value)
+  {
+    return (byte)Math.Clamp(value, 0, 255);
+  }
+
+  private static byte[] Encode(SKBitmap bitmap, SKEncodedImageFormat format, int quality)
+  {
+    using SKData data = bitmap.Encode(format, quality);
+    return data.ToArray();
   }
 
   private static JsonElement? Books(string html)

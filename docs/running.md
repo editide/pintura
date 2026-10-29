@@ -352,6 +352,7 @@ pintura presentations/example --export-html deck.html
 
 `--export-html` writes one HTML file that shows the presentation with no server, for sending to someone with only a browser.
 The renderer, its stylesheet and its font, the slides, every picture, and the theme's `fonts/` are inlined, so the slides draw in the theme's fonts whatever the reader has installed.
+A PNG or JPEG goes in as WebP when that's smaller: lossless where that costs at most twice the lossy size, as for a screenshot, so its text stays sharp, and lossy otherwise, as for a photograph.
 It opens on one slide at fit, with a sidebar of thumbnails by section that `\` or its button shows; the arrow keys, the mouse wheel, a click on the slide, or a thumbnail move between slides, and `P` or F5 presents.
 Each book the presentation reads is inlined too, as `libreta --export` writes it, so the export needs Libreta and fails when it can't export a book.
 Clicking a linked number slides the book in over the whole window at that cell, with its calculation and source, and the button naming the slide, Escape, or the browser's back goes back to it.
