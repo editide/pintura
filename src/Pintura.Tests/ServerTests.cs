@@ -751,38 +751,6 @@ public class ServerTests
   }
 
   [Fact]
-  public async Task A_text_box_added_on_a_slide_goes_last_and_its_undo_takes_it_out()
-  {
-    // Arrange
-    using var deck = new DeckFixture();
-    deck.Folder.Write("deck/slides/one.yaml", """
-      layout: cover
-      elements:
-        - id: box
-          shape: rectangle
-          frame: [400, 400, 100, 40]
-
-      """);
-    string before = File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml"));
-    await using Served served = await Served.Start(deck);
-    var edit = new { slide = "one", edits = new[] { new { path = "elements.text", add = true,
-      numbers = new[] { 100.0, 120, 200, 40 } } } };
-
-    // Act
-    HttpResponseMessage added = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", edit);
-    string written = File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml"));
-    System.Text.Json.JsonElement undo = (await added.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
-      .GetProperty("undo");
-    HttpResponseMessage undone = await served.Client.PostAsJsonAsync($"{served.Url}/api/edit", new { slide = "one", edits = undo });
-
-    // Assert
-    added.StatusCode.ShouldBe(HttpStatusCode.OK);
-    written.ShouldBe(before + "  - id: text\n    text: \"\"\n    frame: [100, 120, 200, 40]\n");
-    undone.StatusCode.ShouldBe(HttpStatusCode.OK);
-    File.ReadAllText(deck.Folder.PathTo("deck/slides/one.yaml")).ShouldBe(before);
-  }
-
-  [Fact]
   public async Task A_style_and_alignments_picked_for_a_text_box_are_written_on_it()
   {
     // Arrange

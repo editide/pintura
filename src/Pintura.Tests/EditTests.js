@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { snapTargets, moveBox, resizeBox, movePoint, moveLine, moveGroup, boxPicks, valueEdits, drawBox, freshId } = require(
+const { snapTargets, moveBox, resizeBox, movePoint, moveLine, moveGroup, boxPicks, valueEdits } = require(
   path.join(__dirname, '..', 'Pintura', 'wwwroot', 'edit.js'));
 
 const { alignmentPick } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'paint.js'));
@@ -225,34 +225,6 @@ test('items moved together snap by the box around them all and shift by the same
   assert.deepEqual(changes, [{ frame: [40, 110, 50, 50] }, { from: [240, 130], to: [340, 230] }]);
   assert.deepEqual(lines, [{ axis: 'x', at: 40 }]);
 });
-test('a text box drawn up and to the left spans from the pointer to where the press began', () => {
-  // Act
-  const { box } = drawBox([300.4, 200.6], -100.2, -50, null, 6);
-
-  // Assert
-  assert.deepEqual(box, [200, 151, 100, 50]);
-});
-
-test('a text box drawn near an area snaps its corners onto the area\'s edges', () => {
-  // Arrange
-  const targets = snapTargets(slide, [960, 540], []);
-
-  // Act
-  const { box, lines } = drawBox([43, 104], 425, 150, targets, 6);
-
-  // Assert
-  assert.deepEqual(box, [40, 100, 430, 154]);
-  assert.deepEqual(lines, [{ axis: 'x', at: 40 }, { axis: 'y', at: 100 }, { axis: 'x', at: 470 }]);
-});
-
-test('a new text box takes the first id no item on the slide has', () => {
-  // Act
-  const ids = [freshId([]), freshId([{ id: 'text' }, { id: 'text2' }, { id: 'text4' }])];
-
-  // Assert
-  assert.deepEqual(ids, ['text', 'text3']);
-});
-
 test('picking a place for the text writes only the alignment that changes', () => {
   // Arrange
   const item = {

@@ -1386,16 +1386,6 @@ body.moving * {
   cursor: crosshair;
 }
 
-.drawn {
-  position: absolute;
-  border: calc(1px / var(--scale, 1)) dashed var(--accent);
-}
-
-body.drawing #slide-view,
-body.drawing #slide-view * {
-  cursor: crosshair !important;
-}
-
 .snap {
   position: absolute;
   background: #ff4fa3;

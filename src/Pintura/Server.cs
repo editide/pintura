@@ -546,27 +546,18 @@ public static partial class PreviewServer
     }
   }
 
-  /// <summary>Only what a mouse edit changes: a frame, a line's ends, and the text of an element, the title, or a
-  /// placeholder, the source an undo restores in one of them, a whole element deleted or put back, and a whole file
-  /// as a revert or its undo restores it.</summary>
   /// <summary>Whether the mouse may write the edit: on a slide, frames, line ends, text, fills, outlines, an
-  /// element's style, the alignments of its text, the title's, or a placeholder's, adding a text box, and deleting
-  /// elements; on the theme or a layout, the frames of its title, placeholders, areas, and elements, its elements'
-  /// fills and outlines, and deleting its elements.</summary>
+  /// element's style, the alignments of its text, the title's, or a placeholder's, and deleting elements; on the
+  /// theme or a layout, the frames of its title, placeholders, areas, and elements, its elements' fills and outlines,
+  /// and deleting its elements.</summary>
   private static bool Writable(ValueEdit edit, bool theme)
   {
     if (edit.Path.Length == 0)
     {
       return !theme && edit.Source is not null && edit.Restore is not null && edit.Numbers is null &&
-        edit.Paragraphs is null && !edit.Delete && edit.Value is null && !edit.Add;
+        edit.Paragraphs is null && !edit.Delete && edit.Value is null;
     }
     string[] parts = edit.Path.Split('.');
-    if (edit.Add)
-    {
-      return !theme && parts[0] == "elements" && parts.Length == 2 && edit.Source is null &&
-        edit.Numbers is { Length: 4 } && edit.Paragraphs is null && edit.Restore is null && !edit.Delete &&
-        edit.Value is null;
-    }
     if (edit.Delete)
     {
       return parts[0] == "elements" && parts.Length > 1 && edit.Numbers is null &&
@@ -592,7 +583,7 @@ public static partial class PreviewServer
   private static bool Renamed(ValueEdit edit)
   {
     return SectionOrField().IsMatch(edit.Path) && edit.Source is not null && (edit.Value is not null ^
-      edit.Restore is not null) && edit.Numbers is null && edit.Paragraphs is null && !edit.Delete && !edit.Add &&
+      edit.Restore is not null) && edit.Numbers is null && edit.Paragraphs is null && !edit.Delete &&
       edit.Format is null;
   }
 
