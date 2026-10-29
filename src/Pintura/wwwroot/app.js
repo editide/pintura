@@ -1124,7 +1124,9 @@ function showExportFindings(name, findings) {
   const panel = document.getElementById('export-findings');
   panel.hidden = findings.length === 0;
   const count = findings.length === 1 ? 'one thing' : `${findings.length} things`;
-  panel.querySelector('p').textContent = `${name} is downloaded, with ${count} it couldn't carry over:`;
+  const file = document.createElement('strong');
+  file.textContent = name;
+  panel.querySelector('p').replaceChildren(file, ` is downloaded, with ${count} it couldn't carry over:`);
   panel.querySelector('ul').replaceChildren(...findings.map((finding) => {
     const item = document.createElement('li');
     item.textContent = finding;
