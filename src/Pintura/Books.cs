@@ -95,7 +95,7 @@ public class LibretaReader : IBookReader
 
     public string Page(string root)
     {
-      return reader.Page(root);
+      return reader.Page(root, stamps.GetOrAdd(root, Stamp));
     }
 
 
@@ -113,17 +113,25 @@ public class LibretaReader : IBookReader
 
   public string Page(string root)
   {
-    string file = Temporary.Folder("books", $"{Guid.NewGuid():N}.html");
-    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-    try
+    return Page(root, Stamp(root));
+  }
+
+  private string Page(string root, string stamp)
+  {
+    return Cached(root, stamp, "page", () =>
     {
-      Run(root, "--export", file);
-      return File.ReadAllText(file);
-    }
-    finally
-    {
-      File.Delete(file);
-    }
+      string file = Temporary.Folder("books", $"{Guid.NewGuid():N}.html");
+      Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+      try
+      {
+        Run(root, "--export", file);
+        return File.ReadAllText(file);
+      }
+      finally
+      {
+        File.Delete(file);
+      }
+    });
   }
 
   private IReadOnlyDictionary<string, BookLine> Lines(string root, string stamp)

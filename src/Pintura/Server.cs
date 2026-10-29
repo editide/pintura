@@ -182,7 +182,7 @@ public static partial class PreviewServer
         "image/png"));
     });
     var progress = new ExportProgress();
-    app.MapGet("/api/export/progress", () => Results.Json(new { fraction = progress.Fraction }));
+    app.MapGet("/api/export/progress", () => Results.Json(new { stage = progress.Stage, fraction = progress.Fraction }));
     // A POST, since a .pptx export is billed, and any page can make a browser GET.
     app.MapPost("/api/export/{format}", (HttpContext context, string format) =>
       Export(context, store, headless, app.Environment.WebRootPath, format, progress));
@@ -227,7 +227,7 @@ public static partial class PreviewServer
     {
       if (format == "html")
       {
-        string html = await Task.Run(() => HtmlExport.Build(presentation, assets));
+        string html = await Task.Run(() => Html(presentation, assets, progress));
         return Results.File(Encoding.UTF8.GetBytes(html), "text/html; charset=utf-8", name);
       }
       if (format == "pptx")
@@ -255,6 +255,26 @@ public static partial class PreviewServer
       UnauthorizedAccessException or ArgumentException or InvalidOperationException or BookException)
     {
       return Refused(exception.Message, StatusCodes.Status500InternalServerError);
+    }
+  }
+
+  private static string Html(Presentation presentation, string assets, ExportProgress progress)
+  {
+    lock (progress)
+    {
+      try
+      {
+        return HtmlExport.Build(presentation, assets, progress: (stage, fraction) =>
+        {
+          progress.Stage = stage;
+          progress.Fraction = fraction;
+        });
+      }
+      finally
+      {
+        progress.Stage = null;
+        progress.Fraction = null;
+      }
     }
   }
 
@@ -1014,9 +1034,10 @@ public class Comparison
 
 }
 
-/// <summary>How far the running <c>.pptx</c> export is, for the page to show while it waits; null when none runs.
-/// </summary>
+/// <summary>What the running export is doing, when it names a step, and how far it is, when it can tell, for the page
+/// to show while it waits; null when none runs.</summary>
 public sealed class ExportProgress
 {
+  public string? Stage { get; set; }
   public double? Fraction { get; set; }
 }

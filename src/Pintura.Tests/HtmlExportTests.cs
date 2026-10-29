@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Shouldly;
@@ -147,6 +148,55 @@ public class HtmlExportTests
     // Assert
     Books(html)!.Value.GetProperty("acme").GetString().ShouldBe(PagedBooks.Page);
     ((PagedBooks)fixture.Books).Exported.ShouldBe([fixture.Folder.PathTo("book")]);
+  }
+
+  [Fact]
+  public void The_export_reports_the_pictures_as_it_encodes_them_then_the_books_it_waits_on()
+  {
+    // Arrange
+    using var fixture = new DeckFixture { Books = new PagedBooks() };
+    using var cache = new TempFolder();
+    using SKBitmap flat = Flat();
+    Place(fixture, "filing.png", Encode(flat, SKEncodedImageFormat.Png, 100));
+    fixture.Write("book/book.yaml", "name: Acme");
+    fixture.Write("deck/presentation.yaml", """
+      name: Test deck
+      theme: ../theme
+      books:
+        - id: acme
+          path: ../book
+      slides:
+        - one
+        - two
+      """);
+    var reports = new ConcurrentQueue<(string Stage, double? Fraction)>();
+
+    // Act
+    HtmlExport.Build(fixture.Load(), Assets, fixture.Books, new PictureCache(cache.Root),
+      (stage, fraction) => reports.Enqueue((stage, fraction)));
+
+    // Assert
+    reports.ShouldContain(("Exporting pictures", 1.0));
+    reports.Select(report => report.Stage).Distinct().ShouldBe(["Exporting pictures", "Exporting the book"]);
+  }
+
+  [Fact]
+  public void A_picture_encoded_for_one_export_is_read_from_the_cache_by_the_next()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    using var cache = new TempFolder();
+    using SKBitmap photograph = Photograph();
+    Place(fixture, "photo.png", Encode(photograph, SKEncodedImageFormat.Png, 100));
+    string first = HtmlExport.Build(fixture.Load(), Assets, pictures: new PictureCache(cache.PathTo("pictures")));
+    string entry = Directory.GetFiles(cache.PathTo("pictures")).ShouldHaveSingleItem();
+    File.WriteAllBytes(entry, Carried(first, "image/webp")[..^1]);
+
+    // Act
+    string again = HtmlExport.Build(fixture.Load(), Assets, pictures: new PictureCache(cache.PathTo("pictures")));
+
+    // Assert
+    Carried(again, "image/webp").ShouldBe(Carried(first, "image/webp")[..^1]);
   }
 
   [Fact]
