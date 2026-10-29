@@ -152,17 +152,10 @@ function renderToolbar() {
     inspector: state.inspector,
     before: state.before,
     changes: state.changes,
-    present: state.presenting,
-    textbox: editing.drawing
+    present: state.presenting
   };
   for (const button of document.querySelectorAll('.toolbar [data-action]')) {
     button.setAttribute('aria-pressed', String(pressed[button.dataset.action]));
-  }
-  const drawable = state.view === 'slide' && !state.layout && !reviewing();
-  document.getElementById('textbox-button').hidden = !drawable;
-  if (!drawable && editing.drawing) {
-    editing.drawing = false;
-    document.body.classList.remove('drawing');
   }
   renderSaving();
   renderStatus();
@@ -990,8 +983,7 @@ document.querySelector('.toolbar').addEventListener('click', (event) => {
     inspector: () => toggle('inspector'),
     before: flipBefore,
     changes: () => toggle('changes'),
-    present: startPresenting,
-    textbox: () => toggleDrawing()
+    present: startPresenting
   };
   actions[button.dataset.action]();
 });
@@ -1037,7 +1029,7 @@ document.addEventListener('keydown', (event) => {
     Home: () => (state.layout ? stepLayout(-Infinity) : select(state.deck.slides[0].id)),
     End: () => (state.layout ? stepLayout(Infinity) : select(state.deck.slides[state.deck.slides.length - 1].id)),
     Enter: () => state.view === 'grid' && setView('slide'),
-    Escape: () => (state.presenting ? stopPresenting() : editing.drawing ? toggleDrawing(false) : selectItem(null)),
+    Escape: () => (state.presenting ? stopPresenting() : selectItem(null)),
     s: () => setView('slide'),
     g: () => setView('grid'),
     t: () => setView('theme'),
@@ -1053,7 +1045,6 @@ document.addEventListener('keydown', (event) => {
     ']': () => !document.getElementById('history-newer').disabled &&
       !document.getElementById('slide-history').hidden && stepSlideChanges(1),
     p: () => !state.presenting && startPresenting(),
-    x: () => state.view === 'slide' && toggleDrawing(),
     F5: () => !state.presenting && startPresenting(),
     '\\': () => toggle('nav'),
     '|': toggleStrip,

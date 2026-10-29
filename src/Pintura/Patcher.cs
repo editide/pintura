@@ -26,11 +26,11 @@ public class PatchException : Exception
 /// <see cref="Patcher.FieldMark"/> where a field sits, a scalar <paramref name="Value"/> such as a color or a width, or
 /// the source to restore, as an undo writes back. A delete removes the element at the path; a restore without a
 /// source puts one back after the element named by <paramref name="After"/>, or first. A format applies to the
-/// paragraphs once reworded. An add writes an empty text box at the path, last on the slide, framed by the numbers.
+/// paragraphs once reworded.
 /// </summary>
 public record ValueEdit(string Path, string? Source, double[]? Numbers = null, List<string>? Paragraphs = null,
   string? Restore = null, bool Delete = false, string? After = null, TextFormat? Format = null, string? Value = null,
-  string? File = null, bool Add = false);
+  string? File = null);
 
 /// <summary>Bold, italic, or underline turned on or off over stretches of paragraphs, in characters of the text the
 /// page reads back, with <see cref="Patcher.FieldMark"/> for a field.</summary>
@@ -136,19 +136,6 @@ public static partial class Patcher
       {
         (text, ValueEdit restore) = Delete(text, edit);
         undo.Insert(0, restore);
-        continue;
-      }
-      if (edit.Add)
-      {
-        string unadded = text;
-        bool listed = Parse(text) is YamlMappingNode map && Value(map, "elements") is not null;
-        bool ended = text.EndsWith('\n');
-        text = Add(text, edit);
-        // Deleting leaves the list the add started, or the line break it ended the file with, so those go back with
-        // the whole file.
-        undo.Insert(0, listed && ended
-          ? new ValueEdit(edit.Path, SourceAt(text, edit.Path), Delete: true)
-          : new ValueEdit("", text, Restore: unadded));
         continue;
       }
       if (edit.Restore is not null && edit.Source is null &&
@@ -485,60 +472,6 @@ public static partial class Patcher
     return (First(edit, Deleted, Splice(text, start, end, "")),
       new ValueEdit(edit.Path, null, Restore: text[start..end], After: after));
   }
-
-  /// <summary>An empty text box last in the slide's elements, so in front of the rest, indented as the list's entries
-  /// are, starting the list where the slide has none.</summary>
-  private static string Add(string text, ValueEdit edit)
-  {
-    string id = edit.Path["elements.".Length..];
-    if (edit.Source is not null || edit.Numbers is not { Length: 4 } || !PlainId().IsMatch(id))
-    {
-      throw new PatchException("a new text box takes a plain id and a frame of four numbers");
-    }
-    YamlNode root = Parse(text);
-    if (root is not YamlMappingNode map || Locate(root, edit.Path).Node is not null)
-    {
-      throw Conflict(edit);
-    }
-    IEnumerable<string> numbers = edit.Numbers.Select(number => Round(number).ToString(CultureInfo.InvariantCulture));
-    string frame = $"[{string.Join(", ", numbers)}]";
-    List<string?> ids = [.. Ids(root), id];
-
-    bool Added(string candidate)
-    {
-      YamlNode written = Parse(candidate);
-      return Locate(written, $"{edit.Path}.frame").Node is YamlSequenceNode && Ids(written).SequenceEqual(ids);
-    }
-
-    string Entry(string dash, string keys)
-    {
-      return $"{dash}- id: {id}\n{keys}text: \"\"\n{keys}frame: {frame}";
-    }
-
-    string ended = text.Length == 0 || text.EndsWith('\n') ? text : $"{text}\n";
-    switch (Value(map, "elements"))
-    {
-      case null:
-        return First(edit, Added, $"{ended}{(ended.Length == 0 ? "" : "\n")}elements:\n{Entry("  ", "    ")}\n");
-      case YamlSequenceNode { Children.Count: 0 } empty:
-        (YamlSequenceNode _, YamlScalarNode key) = Elements(root, edit);
-        int colon = text.IndexOf(':', (int)key.End.Index) + 1;
-        return First(edit, Added, Splice(text, colon, Node.Extent(text, empty).End, $"\n{Entry("  ", "    ")}"));
-      case YamlSequenceNode { Style: not SequenceStyle.Flow } list:
-        YamlNode last = list.Children[^1];
-        (int start, int end) = EntryLines(text, last);
-        string dash = new string(' ', text.IndexOf('-', start) - start);
-        string entry = $"{Entry(dash, Indent(last))}\n";
-        return First(edit, Added, end == text.Length && !text.EndsWith('\n')
-          ? $"{text}\n{entry}"
-          : Splice(text, end, end, entry));
-      default:
-        throw new PatchException("elements isn't a block list; add the text box in the file");
-    }
-  }
-
-  [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9_-]*$")]
-  private static partial Regex PlainId();
 
   /// <summary>Puts back the lines a delete removed: after the element they followed, before the first, or in place
   /// of the empty list the last one left.</summary>
