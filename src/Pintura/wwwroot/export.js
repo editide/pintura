@@ -5,16 +5,23 @@
 // Each book the deck reads is inlined as Libreta's own exported page, which a traced number opens over the deck.
 
 const THUMBNAIL_WIDTH = 170;
+// Below this width the sidebar opens over the slide rather than beside it, as app.css's breakpoint does.
+const NARROW = matchMedia('(max-width: 52rem)');
+// How long the presenter's controls stay after the last touch or move of the pointer.
+const CONTROLS_MS = 3000;
 
 const deck = JSON.parse(document.getElementById('deck').textContent);
 const layout = document.querySelector('.layout');
 const thumbnails = document.getElementById('thumbnails');
 const slideArea = document.getElementById('slide');
 const present = document.getElementById('present');
+const counter = document.getElementById('counter');
 const state = { current: 0, presenting: false };
 const books = JSON.parse(document.getElementById('books')?.textContent ?? '{}');
 const bookUrls = {};
 let wheelTotal = 0;
+let touchStart = null;
+let controlsTimer = 0;
 
 function indexOf(id) {
   return Math.max(0, deck.slides.findIndex((slide) => slide.id === id));
@@ -35,13 +42,21 @@ function renderSidebar() {
       button.title = slide.title || id;
       element('span', 'number', button).textContent = slide.number;
       mountStage(element('div', 'preview', button), slide, deck.size, THUMBNAIL_WIDTH);
-      button.addEventListener('click', () => go(indexOf(id)));
+      button.addEventListener('click', () => {
+        go(indexOf(id));
+        if (NARROW.matches) {
+          setNav(false);
+        }
+      });
     }
   }
 }
 
 function renderCurrent() {
   const id = deck.slides[state.current].id;
+  counter.textContent = `${state.current + 1} / ${deck.slides.length}`;
+  document.getElementById('previous').disabled = state.current === 0;
+  document.getElementById('next').disabled = state.current === deck.slides.length - 1;
   for (const button of thumbnails.querySelectorAll('.thumbnail')) {
     const current = button.dataset.slide === id;
     button.classList.toggle('current', current);
@@ -67,7 +82,7 @@ function renderSlide() {
       openBook(trace);
       return;
     }
-    step(1);
+    step(tapStep(event.clientX, frame.getBoundingClientRect()));
   });
 }
 
@@ -87,7 +102,8 @@ function renderPresent() {
   }
   const [width, height] = deck.size;
   const frame = element('div', 'present-frame');
-  present.replaceChildren(frame);
+  present.querySelector('.present-frame')?.remove();
+  present.prepend(frame);
   mountStage(frame, deck.slides[state.current], deck.size, Math.min(innerWidth, innerHeight * width / height));
 }
 
@@ -129,6 +145,29 @@ function step(offset) {
   go(state.current + offset);
 }
 
+function startTouch(event) {
+  touchStart = event.touches.length === 1 ? { x: event.touches[0].clientX, y: event.touches[0].clientY } : null;
+}
+
+// A pinch-zoomed page leaves a sideways drag to pan it.
+function turnOnSwipe(event) {
+  const touch = event.changedTouches[0];
+  if (touchStart && event.touches.length === 0 && !(visualViewport?.scale > 1.01)) {
+    const offset = swipeStep(touchStart, { x: touch.clientX, y: touch.clientY });
+    if (offset) {
+      step(offset);
+    }
+  }
+  touchStart = null;
+}
+
+// The presenter hides the pointer and the exit button until the pointer moves or a finger touches.
+function showControls() {
+  present.classList.add('controls');
+  clearTimeout(controlsTimer);
+  controlsTimer = setTimeout(() => present.classList.remove('controls'), CONTROLS_MS);
+}
+
 // Each notch of a mouse wheel turns a slide; a trackpad's small deltas add up to one.
 function turnOnWheel(event) {
   // Firefox counts a mouse's notches in lines rather than pixels.
@@ -142,9 +181,12 @@ function turnOnWheel(event) {
 function startPresenting() {
   state.presenting = true;
   present.hidden = false;
+  // iPhones have no fullscreen for a page, so the exit button is the way out there. Where fullscreen works, a phone
+  // held upright turns the slide sideways.
   if (present.requestFullscreen) {
-    present.requestFullscreen().catch(() => {});
+    present.requestFullscreen().then(() => screen.orientation?.lock?.('landscape')).catch(() => {});
   }
+  showControls();
   renderPresent();
 }
 
@@ -156,9 +198,30 @@ function stopPresenting() {
   }
 }
 
-present.addEventListener('click', () => step(1));
+present.addEventListener('click', (event) => {
+  const frame = present.querySelector('.present-frame');
+  if (frame && !event.target.closest('button')) {
+    step(tapStep(event.clientX, frame.getBoundingClientRect()));
+  }
+});
 present.addEventListener('wheel', turnOnWheel, { passive: true });
+present.addEventListener('pointermove', showControls);
+present.addEventListener('pointerdown', showControls);
 document.getElementById('view').addEventListener('wheel', turnOnWheel, { passive: true });
+// On a narrow page the sidebar lies over the slide, so a tap beside it closes it rather than turning the slide.
+document.getElementById('view').addEventListener('click', (event) => {
+  if (NARROW.matches && !layout.classList.contains('nav-hidden') && !event.target.closest('#nav-show')) {
+    event.stopPropagation();
+    setNav(false);
+  }
+}, { capture: true });
+for (const target of [present, slideArea]) {
+  target.addEventListener('touchstart', startTouch, { passive: true });
+  target.addEventListener('touchend', turnOnSwipe, { passive: true });
+}
+document.getElementById('present-exit').addEventListener('click', stopPresenting);
+document.getElementById('previous').addEventListener('click', () => step(-1));
+document.getElementById('next').addEventListener('click', () => step(1));
 document.getElementById('present-button').addEventListener('click', startPresenting);
 document.getElementById('nav-hide').addEventListener('click', () => setNav(false));
 document.getElementById('nav-show').addEventListener('click', () => setNav(true));
