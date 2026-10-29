@@ -101,13 +101,13 @@ public static class HtmlExport
     html.AppendLine("<main id=\"view\"><div class=\"export-bar\">"
       + "<button type=\"button\" class=\"icon-button\" id=\"nav-show\" title=\"Show slides (\\)\" "
       + $"aria-label=\"Show slides\">{SidebarIcon}</button>"
+      + "<button type=\"button\" id=\"present-button\" title=\"Present (P)\">Present</button></div>"
+      + "<div class=\"export-slide\" id=\"slide\"></div>"
       + "<div class=\"export-turn\"><button type=\"button\" class=\"icon-button\" id=\"previous\" "
       + $"title=\"Previous slide (\u2190)\" aria-label=\"Previous slide\">{PreviousIcon}</button>"
       + "<span id=\"counter\" aria-live=\"polite\"></span>"
       + "<button type=\"button\" class=\"icon-button\" id=\"next\" title=\"Next slide (\u2192)\" "
-      + $"aria-label=\"Next slide\">{NextIcon}</button></div>"
-      + "<button type=\"button\" id=\"present-button\" title=\"Present (P)\">Present</button></div>"
-      + "<div class=\"export-slide\" id=\"slide\"></div></main>");
+      + $"aria-label=\"Next slide\">{NextIcon}</button></div></main>");
     html.AppendLine("</div>");
     html.AppendLine("<div class=\"present\" id=\"present\" hidden>"
       + "<button type=\"button\" class=\"icon-button\" id=\"present-exit\" title=\"Stop presenting (Esc)\" "

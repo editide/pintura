@@ -22,8 +22,9 @@ body.exported #view {
 .export-turn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  margin-left: auto;
+  padding: 10px 16px max(12px, env(safe-area-inset-bottom));
 }
 
 .export-turn .icon-button:disabled {
@@ -62,7 +63,7 @@ body.exported #view {
   align-items: center;
   justify-content: center;
   min-height: 0;
-  margin: 24px;
+  margin: 24px 24px 0;
 }
 
 /* Pinching still zooms; a double tap doesn't, so two quick taps turn two slides. */
@@ -149,6 +150,10 @@ body.exported .present.controls {
   }
 
   .export-slide {
-    margin: 8px;
+    margin: 8px 8px 0;
+  }
+
+  .export-turn {
+    padding-top: 6px;
   }
 }
