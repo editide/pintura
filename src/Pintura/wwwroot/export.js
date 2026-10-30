@@ -29,7 +29,7 @@ const bookUrls = {};
 // The pointer pressed on the slide, which decides what its click does.
 let press = null;
 const hintSlides = new Set();
-let hintDone = false;
+let hintDone = stored('traceHint') === 'done';
 let wheelTotal = 0;
 let touchStart = null;
 let controlsTimer = 0;
@@ -81,10 +81,27 @@ function renderHint() {
     : 'Click an underlined number to see where it comes from, or hold Ctrl to underline them later';
 }
 
+// A reader who has traced a number or closed the hint has no need of it in any deck again.
 function endHint() {
   hintDone = true;
+  store('traceHint', 'done');
   document.getElementById('trace-hint').hidden = true;
   document.body.classList.remove('hinting');
+}
+
+// A file opened from disk may have no storage, which leaves the hint to show again next time.
+function stored(key) {
+  try {
+    return localStorage.getItem(`pintura.${key}`);
+  } catch {
+    return null;
+  }
+}
+
+function store(key, value) {
+  try {
+    localStorage.setItem(`pintura.${key}`, value);
+  } catch {}
 }
 
 function renderCurrent() {
