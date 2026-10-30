@@ -120,8 +120,7 @@ function renderSidebar() {
         button.type = 'button';
         button.dataset.slide = id;
         element('span', 'number', button);
-        mountStage(element('div', 'preview', button), slide, deck.size, width);
-        markPick(button.querySelector('.preview'), slide);
+        mountThumbnail(element('div', 'preview', button), slide, deck.size, width);
         button.dataset.pick = slide.pick || '';
         button.addEventListener('click', () => pickSlide(id));
         thumbnail = { drawn, button };
@@ -130,7 +129,7 @@ function renderSidebar() {
       const { button } = thumbnail;
       container.append(button);
       button.querySelector('.number').textContent = slide.number;
-      button.title = slide.title || id;
+      button.title = thumbnailTitle(slide) || id;
       delete button.dataset.change;
       markThumbnail(button, id);
       markComments(button.querySelector('.preview'), id);
@@ -334,15 +333,15 @@ function renderGrid() {
       const shown = shownSlide(slide);
       const frame = element('div', 'grid-frame', cell);
       if (shown) {
-        mountStage(frame, shown, deck.size, GRID_WIDTH * state.gridZoom);
+        mountThumbnail(frame, shown, deck.size, GRID_WIDTH * state.gridZoom);
       } else {
         mountAbsent(frame, deck.size, GRID_WIDTH * state.gridZoom);
       }
       markThumbnail(cell, id);
       markComments(frame, id);
-      markPick(frame, slide);
       cell.dataset.pick = slide.pick || '';
-      element('div', 'grid-caption', cell).textContent = `${slide.number} · ${slide.title || words(slide.id)}`;
+      element('div', 'grid-caption', cell).textContent =
+        `${slide.number} · ${thumbnailTitle(slide) || words(slide.id)}`;
       cell.addEventListener('click', () => {
         select(id);
         setView('slide');

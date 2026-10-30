@@ -33,7 +33,8 @@ Offer three at most, since a fourth isn't worth the reading time, and two when y
 Which variant you expect the reviewer to keep stays outside the presentation, so the preview never shows it.
 Commit the variants, `picks.yaml`, and `presentation.yaml` together at the end of the round, as with any change.
 
-A pick takes one place and one slide number, drawn as its first variant wherever the deck is drawn whole: the slide list, the grid, presenting, and every export.
+A pick takes one place and one slide number.
+The slide list and the grid show it as a card saying how many variants wait, so none is seen before the others; presenting and every export draw its first variant.
 Every variant is checked as any slide is, and `--slide`, `--element`, and `--screenshot` take a variant's stem.
 Check each variant clean before offering it: the reviewer is choosing between takes, not spotting overflow.
 
