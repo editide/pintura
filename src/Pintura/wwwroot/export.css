@@ -77,62 +77,13 @@ body.exported .present {
   box-shadow: var(--shadow-slide);
 }
 
-/* A finger turns slides and a long press shows a number's cell, so a phone's slide selects nothing and opens no menu. */
+/* A finger turns slides and a long press opens a number's book, so a phone's slide selects nothing and has no menu. */
 @media (pointer: coarse) {
   .export-slide .slide-frame {
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
   }
-}
-
-/* A number's cell, held on a phone, rises from the bottom over the slide. */
-.cell-sheet {
-  position: fixed;
-  inset: 0;
-  z-index: 11;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  background: rgb(0 0 0 / .3);
-}
-
-.cell-sheet[hidden] {
-  display: none;
-}
-
-.cell-card {
-  width: min(100%, 28rem);
-  padding: 20px 20px max(20px, env(safe-area-inset-bottom));
-  border-radius: 12px 12px 0 0;
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: 0 -8px 24px rgb(0 0 0 / .12);
-}
-
-.cell-label,
-.cell-source {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.cell-value {
-  margin: 4px 0 2px;
-  font-size: 28px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-#cell-open {
-  width: 100%;
-  margin-top: 16px;
-  padding: 10px;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
 }
 
 body.tracing .export-slide [data-trace] {

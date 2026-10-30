@@ -358,7 +358,7 @@ The slide's text selects with a drag, which turns no slide, nor does the click t
 Each book the presentation reads is inlined too, as `libreta --export` writes it while the pictures encode, so the export needs Libreta and fails when it can't export a book.
 A preview server keeps each book's page until a file in the book changes, so exporting again doesn't export an unchanged book again.
 Clicking a linked number slides the book in over the whole window at that cell, with its calculation and source, and the button naming the slide, Escape, or the browser's back goes back to it.
-On a phone, a tap on a linked number turns the slide like a tap anywhere else, since a thumb turning slides lands on numbers by accident; a long press shows the number's line, period, value, and units in a sheet from the bottom, whose button opens the book, which is too wide to read there unasked.
+On a phone, a tap on a linked number turns the slide like a tap anywhere else, since a thumb turning slides lands on numbers by accident, and a long press opens the book, which on a phone shows the cell's inspector over the whole screen.
 The reader gets the whole book, not only the numbers the slides quote.
 
 The page's Export button downloads the presentation, named for its folder, as the files on disk have it, and shows a spinner and the step it is on while it waits: a web page's pictures as a share encoded, then its books, and a `.pptx` export's progress counted against about five calls a slide; it keeps its last `.pptx` in that folder's `exports`, so pressing it again exports incrementally too.

@@ -20,12 +20,7 @@ public class HtmlExportTests
 
     public IReadOnlyDictionary<string, BookLine> Lines(string root)
     {
-      return new Dictionary<string, BookLine>
-      {
-        ["segments.revenue"] = new BookLine("segments.revenue", "Connectivity revenue", "millions", ["2024", "2025"],
-          ["7599", "11387"], ["7,599", "11,387"]),
-        ["segments.margin"] = new BookLine("segments.margin", "Margin", null, ["2025"], ["0.4"], ["40%"])
-      };
+      return new Dictionary<string, BookLine>();
     }
 
     public BookView View(string root, string id)
@@ -156,39 +151,6 @@ public class HtmlExportTests
   }
 
   [Fact]
-  public void The_page_carries_each_traced_cells_label_and_value_but_no_other_line()
-  {
-    // Arrange
-    using var fixture = new DeckFixture { Books = new PagedBooks() };
-    fixture.Write("book/book.yaml", "name: Acme");
-    fixture.Write("deck/presentation.yaml", """
-      name: Test deck
-      theme: ../theme
-      books:
-        - id: acme
-          path: ../book
-      slides:
-        - one
-      """);
-    fixture.Write("deck/slides/one.yaml", """
-      layout: content
-      title: Revenue was ${acme::segments.revenue["2025"]}
-      """);
-
-    // Act
-    string html = HtmlExport.Build(fixture.Load(), Assets, fixture.Books);
-
-    // Assert
-    JsonElement cells = Cells(html)!.Value.GetProperty("acme");
-    cells.EnumerateObject().Select(line => line.Name).ShouldBe(["segments.revenue"]);
-    JsonElement revenue = cells.GetProperty("segments.revenue");
-    revenue.GetProperty("label").GetString().ShouldBe("Connectivity revenue");
-    revenue.GetProperty("units").GetString().ShouldBe("millions");
-    revenue.GetProperty("values").EnumerateObject().Select(value => (value.Name, value.Value.GetString()))
-      .ShouldBe([("2025", "11,387")]);
-  }
-
-  [Fact]
   public void The_export_reports_the_pictures_as_it_encodes_them_then_the_books_it_waits_on()
   {
     // Arrange
@@ -249,7 +211,6 @@ public class HtmlExportTests
 
     // Assert
     Books(html).ShouldBeNull();
-    Cells(html).ShouldBeNull();
     books.Exported.ShouldBeEmpty();
   }
 
@@ -370,17 +331,7 @@ public class HtmlExportTests
 
   private static JsonElement? Books(string html)
   {
-    return Script(html, "books");
-  }
-
-  private static JsonElement? Cells(string html)
-  {
-    return Script(html, "cells");
-  }
-
-  private static JsonElement? Script(string html, string id)
-  {
-    Match match = Regex.Match(html, $"<script type=\"application/json\" id=\"{id}\">(.*?)</script>",
+    Match match = Regex.Match(html, "<script type=\"application/json\" id=\"books\">(.*?)</script>",
       RegexOptions.Singleline);
     return match.Success ? JsonDocument.Parse(match.Groups[1].Value).RootElement : null;
   }
