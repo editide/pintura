@@ -55,6 +55,7 @@ body.exported #view {
 
 #trace-hint-text {
   text-align: center;
+  text-wrap: balance;
 }
 
 #trace-hint-close {
@@ -237,7 +238,12 @@ body.exported .present.controls {
   }
 }
 
+/* A phone's slide is small enough that every point of margin costs its text, so it runs edge to edge. */
 @media (pointer: coarse) and (orientation: portrait) {
+  .export-slide {
+    margin: 8px 0 0;
+  }
+
   .export-turn {
     justify-content: space-between;
     padding: 16px 24px max(32px, calc(env(safe-area-inset-bottom) + 16px));
@@ -250,7 +256,11 @@ body.exported .present.controls {
 
 @media (pointer: coarse) and (orientation: landscape) {
   .export-slide {
-    margin: 8px 96px 0;
+    margin: 4px 96px 0;
+  }
+
+  .export-turn {
+    padding: 2px 16px max(6px, env(safe-area-inset-bottom));
   }
 
   .export-turn .icon-button {
