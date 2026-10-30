@@ -58,15 +58,27 @@ function shuffled(items, random = Math.random) {
   return copy;
 }
 
-// The marks a thumbnail or grid cell of a pick carries: how many variants wait to be picked from.
-function markPick(node, slide) {
+// A thumbnail or grid cell draws a pick as a card saying how many variants wait, rather than the first variant, which
+// would show one of them before the others and favour it.
+function mountThumbnail(frame, slide, size, width) {
   const pick = pickOf(slide);
-  node.querySelector(':scope > .pick-mark')?.remove();
-  if (pick) {
-    const mark = element('span', 'pick-mark', node);
-    mark.textContent = `${pick.variants.length} variants`;
-    mark.title = `Keep one of ${pick.variants.length} variants`;
+  if (!pick) {
+    return mountStage(frame, slide, size, width);
   }
+  frame.replaceChildren();
+  frame.style.width = `${width}px`;
+  frame.style.height = `${width * size[1] / size[0]}px`;
+  const card = element('div', 'pick-card', frame);
+  card.style.fontSize = `${Math.max(10, width / 14)}px`;
+  element('div', 'pick-card-count', card).textContent = `${pick.variants.length} variants`;
+  element('div', 'pick-card-ask', card).textContent = 'Keep one';
+  return card;
+}
+
+// A pick's caption, which names none of its variants.
+function thumbnailTitle(slide) {
+  const pick = pickOf(slide);
+  return pick ? `Keep one of ${pick.variants.length} variants` : slide.title;
 }
 
 function enlargedIndex(pick) {

@@ -165,7 +165,7 @@ A comment whose element is gone shows as a grey pin, and one on a slide that is 
 ## Pick between variants
 
 An agent unsure which of a few takes on a slide reads best can offer them as a pick, which `pintura --docs picks` describes.
-A pick takes one place in the slides, its thumbnail marked with how many variants it has, and opening it shows them side by side in a shuffled order, each under one line on what it tries to show, with Keep beneath each and None below them all.
+A pick takes one place in the slides, its thumbnail and grid cell a card saying how many variants wait rather than any one of them, and opening it shows them side by side in a shuffled order, each under one line on what it tries to show, with Keep beneath each and None below them all.
 Clicking a variant enlarges it; ← and → or the mouse wheel flip through the others, and Escape or × returns to all of them.
 Keep and None ask why in a dialog with its box focused, where Enter confirms: why is optional for Keep and needed for None, which keeps the first variant in place.
 Keep writes the kept slide in the pick's place in `presentation.yaml`, deletes the other variants, and records the offer, the order you saw it in, what was kept, and why in `picks-resolved.yaml`; Ctrl+Z puts it all back.
