@@ -27,8 +27,6 @@ const state = {
   current: null,
   // The layout whose specimen the slide view shows for its frames, areas, and elements to be moved.
   layout: null,
-  // Whether a pick's variant shows alone, rather than the pick showing all of them side by side.
-  alone: false,
   view: ['grid', 'theme'].includes(saved.view) ? saved.view : 'slide',
   guides: Boolean(saved.guides),
   inspector: saved.inspector ?? false,
@@ -217,7 +215,6 @@ function renderSlide() {
     renderPick(slide);
     return;
   }
-  renderVariantBar(slide);
   view.classList.toggle('zoomed', state.zoom > 1);
   const available = slideWidth(view);
   const shown = shownSlide(slide);
@@ -371,8 +368,7 @@ function renderCurrent() {
   document.title = `Pintura | ${state.deck.name}`;
 }
 
-// A pick's first variant shows the pick unless <alone> asks for it by itself, and a later variant always shows alone.
-function select(id, alone = laterVariant(id)) {
+function select(id) {
   flushNudge();
   if (state.layout) {
     state.layout = null;
@@ -384,9 +380,9 @@ function select(id, alone = laterVariant(id)) {
     state.selected = null;
     state.group = null;
     state.detail = null;
+    picking.pick = null;
   }
   state.current = id;
-  state.alone = alone;
   history.replaceState(null, '', `#${encodeURIComponent(id)}`);
   unflipUnchanged();
   if (state.view === 'slide') {
@@ -428,7 +424,9 @@ function installWheelNavigation(container) {
     const offset = wheelStep(event, state, editing, container);
     if (offset) {
       event.preventDefault();
-      step(offset);
+      if (!flipVariant(offset)) {
+        step(offset);
+      }
     }
   }, { passive: false });
 }
@@ -866,7 +864,6 @@ async function loadOnce() {
   state.deck = shownDeck(deck, compare.after);
   if (!state.current) {
     state.current = decodeURIComponent(location.hash.slice(1)) || null;
-    state.alone = laterVariant(state.current);
   }
   reselect();
   unflipUnchanged();
@@ -977,6 +974,7 @@ document.getElementById('book-pop-out').addEventListener('click', () => {
 });
 
 installEditing(document.getElementById('slide-frame'), document.getElementById('slide-view'));
+installPicks();
 installReordering(document.getElementById('thumbnails'), {
   draggable: '.thumbnail',
   picture: '.preview',
@@ -1036,6 +1034,10 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if (event.ctrlKey || event.metaKey || event.altKey || document.getElementById('shortcuts').open) {
+    return;
+  }
+  if (pickKey(event)) {
+    event.preventDefault();
     return;
   }
   // A focused button already answers Space and Enter.

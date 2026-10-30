@@ -1,13 +1,18 @@
 'use strict';
 
-// A pick in the slide view: its variants side by side in the slide's place, each under its intent with Keep beneath
-// it, and None, which needs a reason, below them all. Clicking a variant opens it alone, to comment on or edit as any
-// slide; nothing here says which variant the agent expects kept.
+// A pick in the slide view: its variants side by side in the slide's place, in an order shuffled once per pick so
+// position can't favour one, each under its intent with Keep beneath it, and None below them all. Clicking a variant
+// enlarges it, to flip through them with the arrows; Keep or None then asks why in a dialog. Nothing here says which
+// variant the agent expects kept.
 
 const PICK_GAP = 20;
+const PICK_ORDERS = 'pintura.picks';
+// Beside an enlarged variant, room for the arrows either side, and above and below it, for its intent and Keep.
+const ENLARGED_SIDES = 136;
+const ENLARGED_ENDS = 150;
 
-// What the reviewer has typed as why, by pick, kept while the page redraws.
-const pickReasons = new Map();
+// The variant enlarged, by pick, or null for the overview.
+const picking = { pick: null, index: null };
 
 function pickOf(slide) {
   return slide?.pick ? state.deck.picks.find((pick) => pick.id === slide.pick) || null : null;
@@ -22,17 +27,35 @@ function offeredSlide(id) {
   return state.deck.slides.find((slide) => slide.id === id) || state.deck.variants.find((slide) => slide.id === id);
 }
 
-// A later variant is only ever shown alone; the first is the pick's place in the deck, which shows them all.
-function laterVariant(id) {
-  return state.deck.variants.some((slide) => slide.id === id);
-}
-
 function variantLetter(index) {
   return String.fromCharCode(65 + index);
 }
 
 function showingPick(slide) {
-  return state.view === 'slide' && !state.layout && !state.alone && !state.presenting && Boolean(pickOf(slide));
+  return state.view === 'slide' && !state.layout && !state.presenting && Boolean(pickOf(slide));
+}
+
+// The variants as shown, shuffled the first time the pick is, and kept so in this browser so the order recorded is
+// the order seen however often the page redraws.
+function shownVariants(pick) {
+  const orders = JSON.parse(localStorage.getItem(PICK_ORDERS) || '{}');
+  const slides = pick.variants.map((variant) => variant.slide);
+  let order = orders[pick.id];
+  if (!order || order.length !== slides.length || !slides.every((slide) => order.includes(slide))) {
+    order = shuffled(slides);
+    orders[pick.id] = order;
+    localStorage.setItem(PICK_ORDERS, JSON.stringify(orders));
+  }
+  return order.map((slide) => pick.variants.find((variant) => variant.slide === slide));
+}
+
+function shuffled(items, random = Math.random) {
+  const copy = [...items];
+  for (let index = copy.length - 1; index > 0; index--) {
+    const other = Math.floor(random() * (index + 1));
+    [copy[index], copy[other]] = [copy[other], copy[index]];
+  }
+  return copy;
 }
 
 // The marks a thumbnail or grid cell of a pick carries: how many variants wait to be picked from.
@@ -46,108 +69,164 @@ function markPick(node, slide) {
   }
 }
 
+function enlargedIndex(pick) {
+  return picking.pick === pick.id ? picking.index : null;
+}
+
 function renderPick(slide) {
   const pick = pickOf(slide);
   const view = document.getElementById('pick-view');
   const size = state.deck.size;
-  const count = pick.variants.length;
-  const width = Math.max(160, Math.floor((view.clientWidth - 48 - PICK_GAP * (count - 1)) / count));
-  const variants = pick.variants.map((variant) => offeredSlide(variant.slide) || null);
-  const drawn = JSON.stringify([size, width, pick, variants, pick.variants.map((variant) =>
-    commentsOn(variant.slide)), state.comments]);
+  const variants = shownVariants(pick);
+  const enlarged = enlargedIndex(pick);
+  const width = enlarged === null
+    ? Math.max(160, Math.floor((view.clientWidth - 48 - PICK_GAP * (variants.length - 1)) / variants.length))
+    : Math.max(200, Math.floor(Math.min(view.clientWidth - 2 * ENLARGED_SIDES,
+      (view.clientHeight - ENLARGED_ENDS) * size[0] / size[1])));
+  const slides = variants.map((variant) => offeredSlide(variant.slide) || null);
+  const drawn = JSON.stringify([size, width, pick, variants, slides, enlarged]);
   if (view.dataset.drawn === drawn) {
     return;
   }
-  const focused = document.activeElement?.classList.contains('pick-why') ? document.activeElement : null;
-  const selection = focused && [focused.selectionStart, focused.selectionEnd];
   view.dataset.drawn = drawn;
   view.replaceChildren();
-  element('div', 'pick-head', view).textContent = `${slide.number} of ${state.deck.slides.length} · Keep one of ` +
-    `${count} variants${pick.by ? `, offered by ${pick.by}` : ''}`;
-  const row = element('div', 'pick-variants', view);
-  row.style.gap = `${PICK_GAP}px`;
-  pick.variants.forEach((variant, index) => {
-    const shown = variants[index];
-    const column = element('div', 'pick-variant', row);
-    column.style.width = `${width}px`;
-    const intent = element('div', 'pick-intent', column);
-    element('span', 'pick-letter', intent).textContent = variantLetter(index);
-    element('span', null, intent).textContent = variant.intent;
-    const frame = element('button', 'pick-frame', column);
-    frame.type = 'button';
-    frame.dataset.slide = variant.slide;
-    frame.title = `Open ${variant.slide} alone, to comment on or edit it`;
-    if (shown && !shown.error) {
-      mountStage(frame, shown, size, width);
-    } else {
-      const stage = mountStage(frame, { items: [], background: '#fff' }, size, width);
-      element('div', 'absent', stage).textContent = shown?.error || `No slides/${variant.slide}.yaml`;
-    }
-    if (state.comments) {
-      markComments(frame, variant.slide);
-    }
-    frame.addEventListener('click', () => select(variant.slide, true));
-    const keep = element('button', 'tool primary pick-keep', column);
-    keep.type = 'button';
-    keep.textContent = `Keep ${variantLetter(index)}`;
-    keep.title = `Keep ${variant.slide} and delete the other variants`;
-    keep.addEventListener('click', () => resolvePick(pick, variant.slide));
-  });
-  const foot = element('div', 'pick-foot', view);
-  const why = element('textarea', 'pick-why', foot);
-  why.rows = 2;
-  why.placeholder = 'Why: optional for Keep, needed for None';
-  why.setAttribute('aria-label', 'Why');
-  why.value = pickReasons.get(pick.id) || '';
-  const none = element('button', 'tool pick-none', foot);
-  none.type = 'button';
-  none.textContent = 'None';
-  none.title = 'None of these will do: keep the first in place and record why';
-  none.disabled = why.value.trim().length === 0;
-  why.addEventListener('input', () => {
-    pickReasons.set(pick.id, why.value);
-    none.disabled = why.value.trim().length === 0;
-  });
-  // Typing stays in the box: the page shouldn't treat its keys as shortcuts.
-  why.addEventListener('keydown', (event) => event.stopPropagation());
-  none.addEventListener('click', () => resolvePick(pick, null));
-  element('div', 'pick-hint', foot).textContent = 'Click a variant to see it alone, comment on it, or edit it.';
-  if (focused) {
-    why.focus();
-    why.setSelectionRange(...selection);
-  }
-}
-
-// Above a variant shown alone: which it is, what it tries to show, and the way back to all of them.
-function renderVariantBar(slide) {
-  const bar = document.getElementById('variant-bar');
-  const pick = state.alone && !state.layout ? pickOf(slide) : null;
-  bar.hidden = !pick;
-  if (!pick) {
+  view.classList.toggle('enlarged', enlarged !== null);
+  if (enlarged === null) {
+    const row = element('div', 'pick-variants', view);
+    row.style.gap = `${PICK_GAP}px`;
+    variants.forEach((variant, index) => {
+      const column = renderVariant(row, pick, variant, index, slides[index], width);
+      const frame = column.querySelector('.pick-frame');
+      frame.title = 'Enlarge, to flip through the variants';
+      frame.addEventListener('click', () => enlarge(pick, index));
+    });
+    const none = element('button', 'tool pick-none', view);
+    none.type = 'button';
+    none.textContent = 'None of these';
+    none.addEventListener('click', () => askWhy(pick, null));
     return;
   }
-  const index = pick.variants.findIndex((variant) => variant.slide === slide.id);
-  bar.replaceChildren();
-  element('span', 'pick-letter', bar).textContent = variantLetter(index);
-  element('span', 'variant-intent', bar).textContent = pick.variants[index].intent;
-  const back = element('button', 'tool', bar);
-  back.type = 'button';
-  back.textContent = `All ${pick.variants.length} variants`;
-  back.title = 'Show the variants side by side, to keep one';
-  back.addEventListener('click', () => select(deckSlide(slide).id));
+  const stage = element('div', 'pick-enlarged', view);
+  const back = arrowButton(stage, '‹', 'Previous variant (←)', () => flipVariant(-1));
+  renderVariant(stage, pick, variants[enlarged], enlarged, slides[enlarged], width);
+  const next = arrowButton(stage, '›', 'Next variant (→)', () => flipVariant(1));
+  back.disabled = enlarged === 0;
+  next.disabled = enlarged === variants.length - 1;
+  const close = element('button', 'icon-button pick-close', view);
+  close.type = 'button';
+  close.textContent = '×';
+  close.title = 'Back to all the variants (Escape)';
+  close.setAttribute('aria-label', close.title);
+  close.addEventListener('click', () => enlarge(pick, null));
 }
 
-// Keeps a variant, or with none, the first in place, and shows the slide kept.
-function resolvePick(pick, keep) {
+// A variant under its letter and intent, with Keep beneath it.
+function renderVariant(parent, pick, variant, index, shown, width) {
+  const size = state.deck.size;
+  const column = element('div', 'pick-variant', parent);
+  column.style.width = `${width}px`;
+  const intent = element('div', 'pick-intent', column);
+  element('span', 'pick-letter', intent).textContent = variantLetter(index);
+  element('span', null, intent).textContent = variant.intent;
+  const frame = element('button', 'pick-frame', column);
+  frame.type = 'button';
+  frame.dataset.slide = variant.slide;
+  if (shown && !shown.error) {
+    mountStage(frame, shown, size, width);
+  } else {
+    const stage = mountStage(frame, { items: [], background: '#fff' }, size, width);
+    element('div', 'absent', stage).textContent = shown?.error || `No slides/${variant.slide}.yaml`;
+  }
+  const keep = element('button', 'tool primary pick-keep', column);
+  keep.type = 'button';
+  keep.textContent = `Keep ${variantLetter(index)}`;
+  keep.addEventListener('click', () => askWhy(pick, variant.slide));
+  return column;
+}
+
+function arrowButton(parent, text, title, action) {
+  const button = element('button', 'icon-button pick-arrow', parent);
+  button.type = 'button';
+  button.textContent = text;
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  button.addEventListener('click', action);
+  return button;
+}
+
+function enlarge(pick, index) {
+  picking.pick = index === null ? null : pick.id;
+  picking.index = index;
+  renderSlide();
+}
+
+// Steps the enlarged variant, stopping at either end. Returns whether a variant was enlarged to step.
+function flipVariant(offset) {
+  const slide = currentSlide();
+  const pick = pickOf(slide);
+  const index = pick && showingPick(slide) ? enlargedIndex(pick) : null;
+  if (index === null) {
+    return false;
+  }
+  enlarge(pick, Math.min(Math.max(index + offset, 0), pick.variants.length - 1));
+  return true;
+}
+
+// Arrows flip the enlarged variant and Escape returns to all of them. Returns whether the key was one of them.
+function pickKey(event) {
+  const offsets = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+  if (event.key in offsets) {
+    return flipVariant(offsets[event.key]);
+  }
+  const pick = pickOf(currentSlide());
+  if (event.key === 'Escape' && pick && enlargedIndex(pick) !== null) {
+    enlarge(pick, null);
+    return true;
+  }
+  return false;
+}
+
+// Keep or None asks why in a dialog, its box focused: optional for Keep, needed for None.
+function askWhy(pick, keep) {
   if (editingActive()) {
     return;
   }
-  const why = (pickReasons.get(pick.id) || '').trim();
-  if (!keep && !why) {
-    return;
-  }
+  const variants = shownVariants(pick);
+  const letter = keep && variantLetter(variants.findIndex((variant) => variant.slide === keep));
+  const dialog = document.getElementById('pick-why');
+  const why = dialog.querySelector('textarea');
+  const confirm = dialog.querySelector('.pick-confirm');
+  dialog.querySelector('h2').textContent = keep ? `Keep ${letter}` : 'None of these';
+  why.placeholder = keep ? 'Why this one? (optional)' : 'Why none of them?';
+  why.value = '';
+  confirm.textContent = keep ? `Keep ${letter}` : 'Keep none';
+  confirm.disabled = !keep;
+  why.oninput = () => {
+    confirm.disabled = !keep && why.value.trim().length === 0;
+  };
+  why.onkeydown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      confirm.click();
+    }
+  };
+  confirm.onclick = () => {
+    if (confirm.disabled) {
+      return;
+    }
+    dialog.close();
+    resolvePick(pick, keep, why.value.trim(), variants.map((variant) => variant.slide));
+  };
+  dialog.showModal();
+  why.focus();
+}
+
+// Keeps a variant, or with none, the first in place, and shows the slide kept.
+function resolvePick(pick, keep, why, shown) {
+  picking.pick = null;
+  picking.index = null;
   select(keep || pick.variants[0].slide);
-  sendPick({ pick: pick.id, keep, why: why || null }, pick.variants[0].slide);
+  sendPick({ pick: pick.id, keep, why: why || null, shown }, pick.variants[0].slide);
 }
 
 // Undoing a keep shows the pick reopened, in its first variant's place, and redoing it the slide kept.
@@ -156,6 +235,11 @@ function sendPick(change, first, kind = 'edit') {
     (undo) => (undo ? { slide: undo.reopen ? first : undo.keep || first, first, pick: undo } : null), kind);
 }
 
+function installPicks() {
+  const dialog = document.getElementById('pick-why');
+  dialog.querySelector('.pick-cancel').addEventListener('click', () => dialog.close());
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { variantLetter };
+  module.exports = { variantLetter, shuffled };
 }

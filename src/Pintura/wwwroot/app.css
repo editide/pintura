@@ -1158,15 +1158,9 @@ main {
   flex-direction: column;
   align-items: safe center;
   justify-content: safe center;
-  gap: 16px;
+  gap: 24px;
   padding: 24px;
   overflow: auto;
-}
-
-.pick-head,
-.pick-hint {
-  color: var(--muted);
-  font-size: 12.5px;
 }
 
 .pick-variants {
@@ -1177,11 +1171,11 @@ main {
 .pick-variant {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
 }
 
-.pick-intent,
-.variant-bar {
+.pick-intent {
   display: flex;
   gap: 8px;
   align-items: baseline;
@@ -1202,36 +1196,85 @@ main {
 
 .pick-frame {
   position: relative;
+  display: block;
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
   background: none;
   box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  transition: border-color var(--ease);
+  cursor: zoom-in;
 }
 
-.pick-frame:hover {
-  border-color: var(--accent);
+/* A button centres what it holds, which a stage scaled up from a smaller box would sit below the top of. */
+.pick-frame > .stage {
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
-.pick-keep {
-  align-self: flex-start;
+.pick-enlarged .pick-frame {
+  cursor: default;
 }
 
-.pick-variant .pick-keep {
+/* .tool.primary sets a margin for the toolbar, which here would shift Keep on hover. */
+.pick-view .tool.primary,
+.pick-view .tool.primary:hover {
   margin-left: 0;
 }
 
-.pick-foot {
-  display: grid;
-  grid-template-columns: minmax(16rem, 32rem) auto;
-  gap: 6px 10px;
+.pick-none {
+  border: 1px solid var(--rule);
+  color: var(--ink);
+}
+
+.pick-enlarged {
+  display: flex;
+  gap: 16px;
   align-items: center;
 }
 
+.pick-arrow {
+  width: 44px;
+  height: 44px;
+  font-size: 28px;
+}
+
+.pick-arrow:disabled {
+  visibility: hidden;
+}
+
+.pick-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 22px;
+}
+
 .pick-why {
+  width: min(440px, calc(100vw - 32px));
+  padding: 18px 22px 18px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-pop);
+}
+
+.pick-why::backdrop {
+  background: color-mix(in oklab, var(--shadow-tint) 35%, transparent);
+}
+
+.pick-why h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.pick-why textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--rule);
   border-radius: var(--radius-md);
@@ -1241,32 +1284,25 @@ main {
   resize: vertical;
 }
 
-.pick-why:focus {
+.pick-why textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
 
-.pick-none {
-  border: 1px solid var(--rule);
-  color: var(--ink);
+.pick-why-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
 }
 
-.pick-none:disabled {
-  color: var(--faint);
+.pick-why .tool.primary {
+  margin-left: 0;
+}
+
+.pick-why .tool.primary:disabled {
+  opacity: 0.5;
   cursor: default;
-}
-
-.pick-hint {
-  grid-column: 1 / -1;
-}
-
-.variant-bar {
-  align-self: center;
-  margin-bottom: 10px;
-}
-
-.variant-intent {
-  color: var(--muted);
 }
 
 .slide-frame {

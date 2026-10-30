@@ -1020,8 +1020,8 @@ public static class Checks
 
   #region Picks
 
-  /// <summary>Every open pick, which waits on the reviewer, or offers too few variants to choose between, and a picks
-  /// file git doesn't track.</summary>
+  /// <summary>Every open pick, which waits on the reviewer, or offers too few variants to choose between or more than
+  /// are worth reading, and a picks file git doesn't track.</summary>
   public static List<Finding> Picks(Presentation presentation)
   {
     List<Finding> findings = Untracked(presentation, "picks",
@@ -1034,7 +1034,10 @@ public static class Checks
       Slide? placed = presentation.Slides.FirstOrDefault(slide => slide.Pick == pick.Id);
       string variants = string.Join(", ", PickFile.Slides(pick));
       (string level, string problem) = pick.Variants.Count < 2
-        ? ("error", $"pick {pick.Id} offers only {variants}; offer two to four variants, or list the slide in slides")
+        ? ("error", $"pick {pick.Id} offers only {variants}; offer two or three variants, or list the slide in slides")
+        : pick.Variants.Count > 3
+        ? ("error", $"pick {pick.Id} offers {pick.Variants.Count} variants, {variants}; offer the three most " +
+          "different at most")
         : placed is null
           ? ("warning", $"pick {pick.Id} isn't in slides; write - pick: {pick.Id} where its slide goes")
           : ("warning", $"pick {pick.Id} waits on the reviewer to keep one of {variants}; the export draws " +
