@@ -105,19 +105,23 @@ public class PickTests
       "export draws two in deck/picks.yaml:1; see pintura --docs picks");
   }
 
-  [Fact]
-  public void A_pick_of_one_variant_is_an_error()
+  [Theory]
+  [InlineData("two", "pick p4kx offers only two; offer two or three variants, or list the slide in slides")]
+  [InlineData("two,stacked,waterfall,four",
+    "pick p4kx offers 4 variants, two, stacked, waterfall, four; offer the three most different at most")]
+  public void A_pick_of_one_variant_or_more_than_three_is_an_error(string slides, string problem)
   {
     // Arrange
     using DeckFixture deck = Offering();
-    deck.Write("deck/picks.yaml", "- id: p4kx\n  variants:\n    - { slide: two, intent: Alone }");
+    deck.Write("deck/slides/four.yaml", "layout: content");
+    IEnumerable<string> variants = slides.Split(',').Select(slide => $"    - {{ slide: {slide}, intent: It }}");
+    deck.Write("deck/picks.yaml", $"- id: p4kx\n  variants:\n{string.Join("\n", variants)}");
 
     // Act
     Finding finding = Checks.Picks(deck.Load()).ShouldHaveSingleItem();
 
     // Assert
-    (finding.Level, finding.Message).ShouldBe(("error",
-      "pick p4kx offers only two; offer two to four variants, or list the slide in slides"));
+    (finding.Level, finding.Message).ShouldBe(("error", problem));
   }
 
   [Fact]
@@ -229,8 +233,8 @@ public class PickTests
     deck.Write("deck/comments.yaml", "- id: c1\n  slide: waterfall\n  at: [0, 0]\n  text: Too busy");
 
     // Act
-    (PickChange undo, _) = PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", "One chart says it"),
-      "Daniel", Now, Seen);
+    (PickChange undo, _) = PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", "One chart says it",
+      Shown: ["waterfall", "two", "stacked"]), "Daniel", Now, Seen);
     Presentation kept = deck.Load();
 
     // Assert
@@ -242,8 +246,9 @@ public class PickTests
     File.Exists(deck.Folder.PathTo("deck/picks.yaml")).ShouldBeFalse();
     File.Exists(deck.Folder.PathTo("deck/slides/two.yaml")).ShouldBeFalse();
     File.Exists(deck.Folder.PathTo("deck/slides/waterfall.yaml")).ShouldBeFalse();
-    File.ReadAllText(deck.Folder.PathTo("deck/picks-resolved.yaml")).ShouldBe(Picks + "\n  resolved: { by: Daniel, " +
-      "date: 2026-11-02 18:40, rev: 8b21d07, chosen: stacked, why: One chart says it }\n");
+    File.ReadAllText(deck.Folder.PathTo("deck/picks-resolved.yaml")).ShouldBe(Picks + "\n  resolved:\n" +
+      "    by: Daniel\n    date: 2026-11-02 18:40\n    rev: 8b21d07\n    shown: [waterfall, two, stacked]\n" +
+      "    chosen: stacked\n    why: One chart says it\n");
     PickFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root)[0].Resolved!.Chosen.ShouldBe("stacked");
     CommentFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root)[0].Resolved!.Outcome.ShouldBe("removed");
     undo.Reopen!.Comments.ShouldBe(["c1"]);
@@ -257,7 +262,8 @@ public class PickTests
     deck.Write("deck/comments.yaml", "- id: c1\n  slide: waterfall\n  at: [0, 0]\n  text: Too busy");
     string[] files = ["presentation.yaml", "picks.yaml", "comments.yaml", "slides/two.yaml", "slides/waterfall.yaml"];
     string[] before = [.. files.Select(file => File.ReadAllText(deck.Folder.PathTo($"deck/{file}")))];
-    (PickChange undo, _) = PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", null), "Daniel", Now, Seen);
+    (PickChange undo, _) = PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", null,
+      Shown: ["two", "waterfall", "stacked"]), "Daniel", Now, Seen);
 
     // Act
     (PickChange redo, _) = PickFile.Apply(deck.Load(), undo, "Daniel", Now, Seen);
@@ -266,7 +272,24 @@ public class PickTests
     files.Select(file => File.ReadAllText(deck.Folder.PathTo($"deck/{file}"))).ShouldBe(before);
     File.Exists(deck.Folder.PathTo("deck/picks-resolved.yaml")).ShouldBeFalse();
     File.Exists(deck.Folder.PathTo("deck/comments-resolved.yaml")).ShouldBeFalse();
-    redo.ShouldBe(new PickChange("p4kx", "stacked", ""));
+    redo.Pick.ShouldBe("p4kx");
+    redo.Keep.ShouldBe("stacked");
+    redo.Shown.ShouldBe(["two", "waterfall", "stacked"]);
+  }
+
+  [Fact]
+  public void An_order_shown_that_isnt_the_picks_variants_is_refused()
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+
+    // Act
+    PatchException refused = Should.Throw<PatchException>(() => PickFile.Apply(deck.Load(),
+      new PickChange("p4kx", "two", null, Shown: ["two", "stacked"]), "Daniel", Now, Seen));
+
+    // Assert
+    refused.Message.ShouldBe("pick p4kx's variants changed since they were shown");
+    File.Exists(deck.Folder.PathTo("deck/picks-resolved.yaml")).ShouldBeFalse();
   }
 
   [Fact]
@@ -284,7 +307,7 @@ public class PickTests
     refused.Message.ShouldBe("say why none of the variants will do");
     deck.Load().Slides.Select(slide => slide.Id).ShouldBe(["one", "two"]);
     PickFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root)[0].Resolved
-      .ShouldBe(new PickResolution("Daniel", "2026-11-02 18:40", "8b21d07", "none", "None of them shows the gap"));
+      .ShouldBe(new PickResolution("Daniel", "2026-11-02 18:40", "8b21d07", null, "none", "None of them shows the gap"));
   }
 
   [Fact]

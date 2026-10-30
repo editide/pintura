@@ -178,7 +178,6 @@
     <main id="view" tabindex="-1">
       <div class="slide-view" id="slide-view">
         <div class="slide-canvas">
-          <div class="variant-bar" id="variant-bar" hidden></div>
           <div class="slide-frame" id="slide-frame"></div>
           <div class="slide-caption" id="slide-caption"></div>
         </div>
@@ -220,6 +219,14 @@
     <button type="button" role="menuitem" data-format="pdf">PDF<span>.pdf</span></button>
     <button type="button" role="menuitem" data-format="html">Web page<span>.html</span></button>
   </div>
+  <dialog class="pick-why" id="pick-why" aria-labelledby="pick-why-title">
+    <h2 id="pick-why-title"></h2>
+    <textarea rows="3" aria-label="Why"></textarea>
+    <div class="pick-why-actions">
+      <button type="button" class="tool pick-cancel">Cancel</button>
+      <button type="button" class="tool primary pick-confirm"></button>
+    </div>
+  </dialog>
   <dialog class="shortcuts" id="shortcuts" aria-labelledby="shortcuts-title">
     <div class="shortcuts-head">
       <h2 id="shortcuts-title">Keyboard shortcuts</h2>
@@ -227,7 +234,7 @@
     </div>
     <h3>Navigate</h3>
     <dl>
-      <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></dt><dd>Previous or next slide, or layout while editing one</dd>
+      <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>Space</kbd></dt><dd>Previous or next slide, or layout while editing one, or variant with one of a pick's enlarged</dd>
       <dt><kbd>Home</kbd> <kbd>End</kbd></dt><dd>First or last slide, or layout while editing one</dd>
       <dt>Mouse wheel</dt><dd>Previous or next slide or layout over the slide or in present mode, or scroll a zoomed slide</dd>
       <dt><kbd>S</kbd> <kbd>G</kbd> <kbd>T</kbd></dt><dd>One slide, every slide, or the theme</dd>

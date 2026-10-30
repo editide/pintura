@@ -21,13 +21,15 @@ public record Pick
 /// <summary>A slide offered in a pick, with one neutral line on what it tries to show.</summary>
 public record Variant(string Slide, string Intent);
 
-/// <summary>Who resolved a pick, when, the commit the deck was then at, the slide kept or <c>none</c>, and why.
-/// </summary>
-public record PickResolution(string? By, string? Date, string? Rev, string Chosen, string? Why);
+/// <summary>Who resolved a pick, when, the commit the deck was then at, the order the variants were shown in, the
+/// slide kept or <c>none</c>, and why.</summary>
+public record PickResolution(string? By, string? Date, string? Rev, List<string>? Shown, string Chosen, string? Why);
 
 /// <summary>A reviewer resolving a pick: keeping <paramref name="Keep"/>, or none of its variants when it is null,
-/// for the reason in <paramref name="Why"/>; or with <paramref name="Reopen"/>, undoing that.</summary>
-public record PickChange(string? Pick = null, string? Keep = null, string? Why = null, PickUndo? Reopen = null);
+/// for the reason in <paramref name="Why"/>, having seen the variants in the order <paramref name="Shown"/>; or with
+/// <paramref name="Reopen"/>, undoing that.</summary>
+public record PickChange(string? Pick = null, string? Keep = null, string? Why = null, PickUndo? Reopen = null,
+  List<string>? Shown = null);
 
 /// <summary>What resolving a pick removed, for an undo to put back: the slide its entry in <c>slides</c> became, the
 /// open pick it went before, the other variants' files by stem, and the comments on them it resolved.</summary>
@@ -133,9 +135,17 @@ public static class PickFile
   {
     MapNode map = node.AsMap();
     Node chosenNode = map.Require("chosen");
-    var resolution = new PickResolution(map.Take("by")?.AsString(), map.Take("date")?.AsString(),
-      map.Take("rev")?.AsString(), chosenNode.AsString(), map.Take("why")?.AsString());
+    string? by = map.Take("by")?.AsString();
+    string? date = map.Take("date")?.AsString();
+    string? rev = map.Take("rev")?.AsString();
+    Node? shownNode = map.Take("shown");
+    var resolution = new PickResolution(by, date, rev, shownNode?.AsList().Select(each => each.AsString()).ToList(),
+      chosenNode.AsString(), map.Take("why")?.AsString());
     map.Done();
+    if (resolution.Shown is not null && !Shuffled(pick, resolution.Shown))
+    {
+      throw shownNode!.Error($"shown is the variants, {string.Join(", ", Slides(pick))}, in the order shown");
+    }
     if (resolution.Chosen != None && pick.Variants.All(variant => variant.Slide != resolution.Chosen))
     {
       throw chosenNode.Error($"chosen is one of the variants, {string.Join(", ", Slides(pick))}, or {None}");
@@ -146,6 +156,12 @@ public static class PickFile
   public static IEnumerable<string> Slides(Pick pick)
   {
     return pick.Variants.Select(variant => variant.Slide);
+  }
+
+  /// <summary>Whether <paramref name="shown"/> is the pick's variants, each once, in any order.</summary>
+  private static bool Shuffled(Pick pick, List<string> shown)
+  {
+    return shown.Order(StringComparer.Ordinal).SequenceEqual(Slides(pick).Order(StringComparer.Ordinal));
   }
 
   /// <summary>What an export says of each placed pick still open: that it drew the first variant in its place.
@@ -174,14 +190,14 @@ public static class PickFile
       return Reopen(presentation, reopen, now);
     }
     return Resolve(presentation, change.Pick ?? throw new PatchException("name the pick to resolve"), change.Keep,
-      change.Why, author, now, seen);
+      change.Why, change.Shown, author, now, seen);
   }
 
   /// <summary>Keeps one variant of a pick, or none of them, which keeps the first in place so the deck still draws:
   /// the pick's entry in <c>slides</c> becomes the slide kept, the other variants' files go with their open comments,
   /// and the pick moves to the end of <c>picks-resolved.yaml</c>. Every file is written or none is.</summary>
   private static (PickChange Undo, Dictionary<string, string?> Wrote) Resolve(Presentation presentation, string id,
-    string? keep, string? why, string author, DateTime now, Snapshot? seen)
+    string? keep, string? why, List<string>? shown, string author, DateTime now, Snapshot? seen)
   {
     why = string.IsNullOrWhiteSpace(why) ? null : why.Trim().ReplaceLineEndings(" ");
     if (keep is null && why is null)
@@ -203,6 +219,10 @@ public static class PickFile
       {
         throw new PatchException($"{keep} isn't one of pick {id}'s variants");
       }
+      if (shown is not null && !Shuffled(pick, shown))
+      {
+        throw new PatchException($"pick {id}'s variants changed since they were shown", true);
+      }
       string kept = keep ?? pick.Variants[0].Slide;
       List<string> dropped = [.. Slides(pick).Where(slide => slide != kept)];
       string? before = at + 1 < entries.Count ? entries[at + 1].Pick.Id : null;
@@ -211,7 +231,7 @@ public static class PickFile
       try
       {
         files.Write(files.List, Patcher.Settle(files.Read(files.List)!, id, kept));
-        var resolution = new PickResolution(author, Stamp(now), seen?.Rev, keep ?? None, why);
+        var resolution = new PickResolution(author, Stamp(now), seen?.Rev, shown, keep ?? None, why);
         files.Write(files.PicksPath, Without(live, entries, at));
         files.Write(files.ResolvedPath, Append(archive, archived, Archived(live, entries[at], resolution)));
         foreach (string slide in dropped)
@@ -287,7 +307,7 @@ public static class PickFile
         files.Restore();
         throw;
       }
-      return (new PickChange(undo.Pick, keep, why ?? ""), files.Before);
+      return (new PickChange(undo.Pick, keep, why ?? "", Shown: pick.Resolved.Shown), files.Before);
     }
   }
 
@@ -312,6 +332,10 @@ public static class PickFile
     if (resolution.Rev is not null)
     {
       map["rev"] = resolution.Rev;
+    }
+    if (resolution.Shown is not null)
+    {
+      map["shown"] = resolution.Shown.Cast<object?>().ToList();
     }
     map["chosen"] = resolution.Chosen;
     if (resolution.Why is not null)
@@ -533,6 +557,10 @@ public static class PickList
       string kept = resolution.Chosen == PickFile.None ? "kept none" : $"kept {resolution.Chosen}";
       output.WriteLine($"{pick.Id}  {kept}{by}{at}");
       WriteVariants(pick, output);
+      if (resolution.Shown is not null)
+      {
+        output.WriteLine($"    shown: {string.Join(", ", resolution.Shown)}");
+      }
       if (resolution.Why is not null)
       {
         output.WriteLine($"    why: {resolution.Why}");
