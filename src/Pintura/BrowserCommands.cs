@@ -62,7 +62,7 @@ public static class BrowserCommands
     await File.WriteAllBytesAsync(path, png);
     output.WriteLine(path);
 
-    if (slide == "theme" || (slide != "all" && presentation.Slides.All(candidate => candidate.Id != slide)))
+    if (slide == "theme" || (slide != "all" && presentation.Find(slide) is null))
     {
       return 0;
     }
@@ -102,7 +102,8 @@ public static class BrowserCommands
     {
       return findings;
     }
-    HashSet<string> picked = [.. only.Pick(presentation.Slides, slide => slide.Id).Select(slide => slide.Id)];
+    HashSet<string> picked = [.. presentation.WithVariants(only.Pick(presentation.Slides, slide => slide.Id))
+      .Select(slide => slide.Id)];
     return [.. findings.Where(finding => finding.Slide is null || picked.Contains(finding.Slide))];
   }
 

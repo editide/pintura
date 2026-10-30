@@ -25,7 +25,8 @@ async function settle() {
 
 async function showSlide(id) {
   const deck = await fetchDeck();
-  root.replaceChildren(renderStage(deck.slides.find((slide) => slide.id === id), deck.size));
+  const slide = [...deck.slides, ...deck.variants].find((candidate) => candidate.id === id);
+  root.replaceChildren(renderStage(slide, deck.size));
   await settle();
 }
 
@@ -79,13 +80,14 @@ function families(deck) {
       }
     }
   };
-  deck.slides.forEach((slide) => visit(slide.items));
+  [...deck.slides, ...deck.variants].forEach((slide) => visit(slide.items));
   return [...found].sort();
 }
 
 async function measure(ids) {
   const deck = await fetchDeck();
-  const slides = deck.slides.filter((slide) => !ids || ids.includes(slide.id));
+  // A pick's later variants are measured too, so the checks reach every slide the reviewer is offered.
+  const slides = [...deck.slides, ...deck.variants].filter((slide) => !ids || ids.includes(slide.id));
   const stages = slides.map((slide) => [slide.id, renderStage(slide, deck.size)]);
   root.replaceChildren(...stages.map(([, stage]) => stage));
   await settle();

@@ -42,8 +42,9 @@ public record FormatRange(int Paragraph, int Start, int End);
 /// </summary>
 public record Patched(string Text, List<ValueEdit> Undo);
 
-/// <summary>An entry in a presentation's <c>slides</c>: a slide by file stem, or a section by name.</summary>
-public record ListEntry(string? Slide = null, string? Section = null);
+/// <summary>An entry in a presentation's <c>slides</c>: a slide by file stem, a section by name, or a pick by id.
+/// </summary>
+public record ListEntry(string? Slide = null, string? Section = null, string? Pick = null);
 
 /// <summary>A slide's line in <c>slides</c> moved from after <paramref name="From"/> to after <paramref name="To"/>,
 /// either null for the top of the list. A delete removes the line after <paramref name="From"/>, with the slide's
@@ -718,6 +719,40 @@ public static partial class Patcher
     return (written, new SlideMove(move.Slide, move.To, null, Delete: true));
   }
 
+  /// <summary>Writes the slide kept from a pick in place of the pick's entry in <c>slides</c>.</summary>
+  public static string Settle(string text, string pick, string slide)
+  {
+    return Replace(text, new ListEntry(Pick: pick), YamlWriter.Text(slide));
+  }
+
+  /// <summary>Writes a pick's entry back in place of the slide kept from it.</summary>
+  public static string Unsettle(string text, string slide, string pick)
+  {
+    return Replace(text, new ListEntry(slide), $"pick: {YamlWriter.Text(pick)}");
+  }
+
+  private static string Replace(string text, ListEntry entry, string line)
+  {
+    YamlSequenceNode list = Parse(text) is YamlMappingNode map && Value(map, "slides") is YamlSequenceNode found
+      ? found
+      : throw new PatchException("presentation.yaml has no slides", true);
+    int index = list.Children.Select(Entry).ToList().IndexOf(entry);
+    string named = entry.Pick is null ? entry.Slide! : $"pick {entry.Pick}";
+    if (index < 0)
+    {
+      throw new PatchException($"{named} isn't in slides any more", true);
+    }
+    if (list.Style == SequenceStyle.Flow)
+    {
+      throw new PatchException($"slides is written as a flow list; change {named} in the file");
+    }
+    (int start, int end) = EntryLines(text, list.Children[index]);
+    string indent = text[start..text.IndexOf('-', start)];
+    string newline = text[start..end].EndsWith("\r\n", StringComparison.Ordinal) ? "\r\n"
+      : text[start..end].EndsWith('\n') ? "\n" : "";
+    return string.Concat(text[..start], indent, "- ", line, newline, text[end..]);
+  }
+
   private static YamlSequenceNode SlideList(YamlNode root, SlideMove move)
   {
     return root is YamlMappingNode map && Value(map, "slides") is YamlSequenceNode list
@@ -732,6 +767,7 @@ public static partial class Patcher
       YamlScalarNode { Value: string stem } => new ListEntry(stem),
       YamlMappingNode map when Value(map, "section") is YamlScalarNode { Value: string name } =>
         new ListEntry(Section: name),
+      YamlMappingNode map when Value(map, "pick") is YamlScalarNode { Value: string id } => new ListEntry(Pick: id),
       _ => null
     };
   }

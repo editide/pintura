@@ -259,7 +259,7 @@ public static class Saves
     }
     string subject = string.IsNullOrWhiteSpace(message) ? Draft(root, current, only) : message.Trim();
     List<string> files = [.. pending.All.Where(path => path == scope.CommentFile || path == scope.ResolvedFile ||
-      pending.Wrote.ContainsKey(path))];
+      path == scope.PickFile || path == scope.ResolvedPickFile || pending.Wrote.ContainsKey(path))];
     List<string> paths = [.. files.Select(path => $":(literal){path}")];
     Check(Revisions.Run(scope.Top, ["add", "-A", "--", .. paths]));
     // Naming the paths commits them alone, leaving whatever else is staged staged.

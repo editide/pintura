@@ -22,9 +22,32 @@ public class Presentation
   public Dictionary<string, Table> Tables { get; init; } = new Dictionary<string, Table>();
   /// <summary>What reviewers wrote on the slides, from <c>comments.yaml</c>, in file order.</summary>
   [JsonIgnore] public List<Comment> Comments { get; init; } = new List<Comment>();
+  /// <summary>The picks waiting on the reviewer, from <c>picks.yaml</c>, in file order.</summary>
+  [JsonIgnore] public List<Pick> Picks { get; init; } = new List<Pick>();
+  /// <summary>Each placed pick's variants after its first, which <see cref="Slides"/> draws in the pick's place.
+  /// </summary>
+  [JsonIgnore] public List<Slide> Variants { get; init; } = new List<Slide>();
   [JsonIgnore] public string Root { get; init; } = "";
   [JsonIgnore] public Origin Origin { get; init; } = new Origin("", 0, 0);
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
+
+  /// <summary>Every slide in deck order, each pick's later variants after its first.</summary>
+  [JsonIgnore] public IEnumerable<Slide> Offered => WithVariants(Slides);
+
+  /// <summary>The slides with every variant offered in their place.</summary>
+  public IEnumerable<Slide> WithVariants(IEnumerable<Slide> slides)
+  {
+    return slides.SelectMany(slide => Variants.Where(variant => slide.Pick is not null && variant.Pick == slide.Pick)
+      .Prepend(slide));
+  }
+
+  /// <summary>The slide with the stem, whether the deck draws it or a pick offers it as a later variant.</summary>
+  public Slide? Find(string id)
+  {
+    return Slides.FirstOrDefault(slide => slide.Id == id) ?? Variants.FirstOrDefault(slide => slide.Id == id);
+  }
+
+
 }
 
 public class Field
@@ -122,6 +145,8 @@ public class Slide
   public List<Stacked> Stacked { get; init; } = new List<Stacked>();
   /// <summary>Ids of the layout's elements the slide leaves out.</summary>
   public List<string> Hide { get; init; } = new List<string>();
+  /// <summary>The open pick offering the slide as one of its variants.</summary>
+  [JsonIgnore] public string? Pick { get; init; }
   /// <summary>Set when the slide's file failed to load; the rest of the presentation still renders.</summary>
   [JsonIgnore] public LoadException? Error { get; init; }
   [JsonIgnore] public Origin Origin { get; init; } = new Origin("", 0, 0);

@@ -143,7 +143,7 @@ public static class HtmlExport
     DeckPayload deck = PayloadBuilder.Build(presentation, 0, (path, _) => path);
     HashSet<string> shipped = presentation.Theme.Faces.Select(face => face.Family)
       .Concat(Everywhere).ToHashSet(StringComparer.OrdinalIgnoreCase);
-    return deck.Slides.SelectMany(slide => slide.Items ?? [])
+    return PickFile.Warnings(presentation).Concat(deck.Slides.SelectMany(slide => slide.Items ?? [])
       .SelectMany(item => (item.Chart is null ? [] : new[] { item.Chart.Text.Font })
         .Concat(new[] { item.Text }.Concat(item.Table?.Cells.Select(cell => cell.Text) ?? [])
           .SelectMany(text => text?.Paragraphs ?? [])
@@ -154,7 +154,7 @@ public static class HtmlExport
       .Distinct(StringComparer.OrdinalIgnoreCase)
       .Order(StringComparer.Ordinal)
       .Select(family => $"{family} isn't in the theme's fonts/, so readers without it installed see the text in it " +
-        "in another font")
+        "in another font"))
       .ToList();
   }
 

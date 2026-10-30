@@ -2,7 +2,7 @@ namespace Pintura;
 
 public enum HeadlessCommand
 {
-  List, Slide, Element, Screenshot, Check, Url, Export, ExportHtml, ExportPptx, Diff, Comments, Resolve
+  List, Slide, Element, Screenshot, Check, Url, Export, ExportHtml, ExportPptx, Diff, Comments, Resolve, Picks
 }
 
 public enum AccountCommand { Login, Logout, WhoAmI }
@@ -24,7 +24,7 @@ public class CommandLineOptions
   /// or <c>--export</c> writes.</summary>
   public string? Output { get; private init; }
   public bool Json { get; private init; }
-  /// <summary>Makes <c>--comments</c> list the resolved comments instead of the open ones.</summary>
+  /// <summary>Makes <c>--comments</c> or <c>--picks</c> list the resolved ones instead of the open ones.</summary>
   public bool Resolved { get; private init; }
   /// <summary>The comments <c>--resolve</c> resolves.</summary>
   public List<string>? Ids { get; private init; }
@@ -126,6 +126,10 @@ public class CommandLineOptions
         case "--comments":
           RequireNoCommand(command, argument);
           command = HeadlessCommand.Comments;
+          break;
+        case "--picks":
+          RequireNoCommand(command, argument);
+          command = HeadlessCommand.Picks;
           break;
         case "--resolved":
           resolved = true;
@@ -258,21 +262,22 @@ public class CommandLineOptions
     if (command is not null && portSpecified)
     {
       throw new ArgumentException("--port cannot be combined with --list, --slide, --element, --screenshot, " +
-        "--check, --comments, --url, --export, --export-json, --export-html or --diff.");
+        "--check, --comments, --picks, --url, --export, --export-json, --export-html or --diff.");
     }
     if (noOpen && (command is not null || documentation is not null || import is not null))
     {
       throw new ArgumentException("--no-open leaves the server's page to the caller, so it cannot be combined with a " +
         "command that starts no server.");
     }
-    if (resolved && command is not HeadlessCommand.Comments)
+    if (resolved && command is not (HeadlessCommand.Comments or HeadlessCommand.Picks))
     {
-      throw new ArgumentException("--resolved requires --comments.");
+      throw new ArgumentException("--resolved requires --comments or --picks.");
     }
     if ((command is null or HeadlessCommand.Screenshot or HeadlessCommand.Url or HeadlessCommand.Export or
       HeadlessCommand.ExportHtml or HeadlessCommand.ExportPptx or HeadlessCommand.Resolve) && json)
     {
-      throw new ArgumentException("--json requires --list, --slide, --element, --check, --comments or --diff.");
+      throw new ArgumentException("--json requires --list, --slide, --element, --check, --comments, --picks or " +
+        "--diff.");
     }
     if (command is not HeadlessCommand.Check && export)
     {
@@ -352,6 +357,9 @@ public class CommandLineOptions
       "thread ended)");
     writer.WriteLine("  pintura [<presentation>] --resolve <id>[,<id>...]   (moves the comments the reviewer names " +
       "to comments-resolved.yaml, with how each thread ended)");
+    writer.WriteLine("  pintura [<presentation>] --picks [--resolved] [--json]   (the picks waiting on the reviewer, " +
+      "each with its variants and what each tries to show; --resolved the resolved ones instead, in the order they " +
+      "were resolved, with what was kept and why)");
     writer.WriteLine("  pintura [<presentation>] --url   (the address of the server already running it)");
     writer.WriteLine("  pintura [<presentation>] --export <deck.pptx> [--slides <list>]   (a PowerPoint deck written " +
       "on editide, with what it can't reproduce; --slides takes ids, numbers, and ranges such as cover,3-5)");

@@ -61,6 +61,7 @@ public static partial class PreviewServer
     app.MapPost("/api/edit", (EditRequest request) => Edit(store, request));
     app.MapPost("/api/move", (SlideMove move) => Move(store, move));
     app.MapPost("/api/comments", (CommentChange change) => Comment(store, change));
+    app.MapPost("/api/picks", (PickChange change) => Pick(store, change));
     app.MapPost("/api/trace", (TracePayload trace) => Trace(store, trace));
     var comparison = new Comparison(store);
     app.MapGet("/api/compare", (string? @base, string? head) => comparison.Answer(@base, head));
@@ -174,7 +175,7 @@ public static partial class PreviewServer
       {
         return await Headless(async () => Results.File(await headless.ThemeScreenshot(), "image/png"));
       }
-      if (slide != "all" && store.Deck.Slides.All(candidate => candidate.Id != slide))
+      if (slide != "all" && store.Deck.Slides.Concat(store.Deck.Variants).All(candidate => candidate.Id != slide))
       {
         return Results.Text($"no slide '{slide}'", statusCode: StatusCodes.Status404NotFound);
       }
@@ -241,9 +242,10 @@ public static partial class PreviewServer
           return Refused($"{string.Join(", ", broken)} doesn't load; fix it first", StatusCodes.Status409Conflict);
         }
         (byte[] bytes, ExportReport report) = await Task.Run(() => Pptx(presentation, name, progress));
-        Findings(context, report.Gaps);
+        Findings(context, [.. PickFile.Warnings(presentation), .. report.Gaps]);
         return Results.File(bytes, PptxType, name);
       }
+      Findings(context, PickFile.Warnings(presentation));
       return Results.File(await headless.Print(store.Deck.Size), "application/pdf", name);
     }
     catch (PlaywrightException exception)
@@ -336,7 +338,7 @@ public static partial class PreviewServer
       bool listing = group.Key == presentation.Origin.File;
       string? path = listing ? Path.Combine(presentation.Root, "presentation.yaml")
         : group.Key is not null ? ThemeFile(presentation.Theme, group.Key)
-        : presentation.Slides.Any(slide => slide.Id == request.Slide) ? SlideFile(presentation, request.Slide!)
+        : presentation.Find(request.Slide!) is not null ? SlideFile(presentation, request.Slide!)
         : null;
       if (path is null)
       {
@@ -560,6 +562,38 @@ public static partial class PreviewServer
     catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
     {
       return Unwritten(store, exception);
+    }
+    store.Refresh();
+    return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
+  }
+
+  /// <summary>Keeps a variant of a pick, or none, or reopens one, and reloads, answering with the change that undoes
+  /// it.</summary>
+  private static IResult Pick(PresentationStore store, PickChange change)
+  {
+    if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+    {
+      return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
+    }
+    if ((change.Pick is null) == (change.Reopen is null) ||
+      change.Reopen?.Files.Keys.Any(slide => !PresentationLoader.IsSlideStem(slide)) == true)
+    {
+      return Refused("a change resolves a pick or reopens one", StatusCodes.Status400BadRequest);
+    }
+    PickChange undo;
+    Dictionary<string, string?> wrote;
+    try
+    {
+      (undo, wrote) = PickFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
+        Saves.Snapshot(presentation.Root));
+    }
+    catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
+    {
+      return Unwritten(store, exception);
+    }
+    foreach ((string path, string? before) in wrote)
+    {
+      PageEdits.Wrote(presentation.Root, path, before);
     }
     store.Refresh();
     return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);

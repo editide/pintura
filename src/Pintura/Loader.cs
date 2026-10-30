@@ -113,13 +113,54 @@ public partial class PresentationLoader
     }
     Theme theme = LoadTheme(themeRoot);
 
+    List<Pick> picks = PickFile.Load(root, displayBase);
+    // Which pick offers each slide, so one listed in slides as well is caught whichever comes first.
+    var offered = new Dictionary<string, string>(StringComparer.Ordinal);
+    foreach (Pick pick in picks)
+    {
+      foreach (Variant variant in pick.Variants)
+      {
+        if (!offered.TryAdd(variant.Slide, pick.Id))
+        {
+          throw new LoadException($"slide {variant.Slide} is offered in picks {offered[variant.Slide]} and {pick.Id}",
+            pick.Origin, "picks");
+        }
+      }
+    }
     var sections = new List<Section>();
     var slides = new List<Slide>();
+    var variants = new List<Slide>();
     var seen = new HashSet<string>(StringComparer.Ordinal);
+    var placed = new HashSet<string>(StringComparer.Ordinal);
     Section current = new Section();
     sections.Add(current);
     foreach (Node entry in slidesNode.AsList())
     {
+      if (entry.IsMap && entry.AsMap().Has("pick"))
+      {
+        MapNode pickMap = entry.AsMap();
+        Node pickNode = pickMap.Require("pick");
+        pickMap.Done();
+        string id = pickNode.AsString();
+        Pick pick = picks.FirstOrDefault(candidate => candidate.Id == id)
+          ?? throw pickNode.Error($"no open pick {id} in {PickFile.Name}", "picks");
+        if (!placed.Add(id))
+        {
+          throw pickNode.Error($"pick {id} is listed twice", "picks");
+        }
+        int number = slides.Count + 1;
+        foreach (Variant variant in pick.Variants)
+        {
+          if (!seen.Add(variant.Slide))
+          {
+            throw pickNode.Error($"slide {variant.Slide} is both in slides and offered in pick {id}", "picks");
+          }
+          Slide slide = LoadSlide(theme, variant.Slide, number, current.Name, entry, id);
+          (variant == pick.Variants[0] ? slides : variants).Add(slide);
+        }
+        current.Slides.Add(pick.Variants[0].Slide);
+        continue;
+      }
       if (entry.IsMap)
       {
         MapNode sectionMap = entry.AsMap();
@@ -134,6 +175,10 @@ public partial class PresentationLoader
       {
         string written = Path.GetFileNameWithoutExtension(stem.Replace('\\', '/').Split('/')[^1]);
         throw entry.Error($"list slides by file stem: write {written}");
+      }
+      if (offered.TryGetValue(stem, out string? offering))
+      {
+        throw entry.Error($"slide {stem} is both in slides and offered in pick {offering}", "picks");
       }
       if (!seen.Add(stem))
       {
@@ -160,6 +205,8 @@ public partial class PresentationLoader
       Charts = charts,
       Tables = tables,
       Comments = CommentFile.Load(root, displayBase),
+      Picks = picks,
+      Variants = variants,
       Root = root,
       Origin = document.Origin,
       Origins = origins
@@ -1205,7 +1252,7 @@ public partial class PresentationLoader
 
   #region Slides
 
-  private Slide LoadSlide(Theme theme, string stem, int number, string? section, Node entry)
+  private Slide LoadSlide(Theme theme, string stem, int number, string? section, Node entry, string? pick = null)
   {
     string path = Path.Combine(root, "slides", $"{stem}.yaml");
     Origin origin = new Origin(File(path).Display, 1, 1);
@@ -1215,21 +1262,23 @@ public partial class PresentationLoader
       {
         throw entry.Error($"no slide file slides/{stem}.yaml");
       }
-      return ReadSlide(theme, File(path).Load("slides"), stem, number, section);
+      return ReadSlide(theme, File(path).Load("slides"), stem, number, section, pick);
     }
     catch (LoadException exception)
     {
-      return new Slide { Id = stem, Number = number, Section = section, Error = exception, Origin = origin };
+      return new Slide { Id = stem, Number = number, Section = section, Pick = pick, Error = exception,
+        Origin = origin };
     }
     // What the loader didn't foresee still stays on its slide, rather than taking every other slide with it.
     catch (Exception exception) when (exception is not OperationCanceledException)
     {
       var error = new LoadException($"couldn't load the slide ({exception.Message.TrimEnd('.')})", origin, "slides");
-      return new Slide { Id = stem, Number = number, Section = section, Error = error, Origin = origin };
+      return new Slide { Id = stem, Number = number, Section = section, Pick = pick, Error = error,
+        Origin = origin };
     }
   }
 
-  private Slide ReadSlide(Theme theme, Node document, string stem, int number, string? section)
+  private Slide ReadSlide(Theme theme, Node document, string stem, int number, string? section, string? pick)
   {
     MapNode map = document.AsMap();
     Node layoutNode = map.Require("layout");
@@ -1357,6 +1406,7 @@ public partial class PresentationLoader
       Elements = elements,
       Stacked = stacked,
       Hide = hide,
+      Pick = pick,
       Origin = document.Origin
     };
   }

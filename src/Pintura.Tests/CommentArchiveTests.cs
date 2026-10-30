@@ -436,7 +436,7 @@ public class CommentArchiveTests
     list.Resolved.ShouldBeTrue();
     list.Json.ShouldBeTrue();
     Should.Throw<ArgumentException>(() => CommandLineOptions.Parse(["deck", "--check", "--resolved"]))
-      .Message.ShouldBe("--resolved requires --comments.");
+      .Message.ShouldBe("--resolved requires --comments or --picks.");
   }
 
 

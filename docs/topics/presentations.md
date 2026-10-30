@@ -6,6 +6,7 @@ A presentation is a folder holding `presentation.yaml`.
 q3-board-update/
   presentation.yaml
   comments.yaml  reviewers' comments, if any; see pintura --docs comments
+  picks.yaml     variants of a slide offered to the reviewer, if any; see pintura --docs picks
   slides/        one file per slide
   charts/        chart files and their CSV
   tables/        table files and their CSV
@@ -26,7 +27,7 @@ Paths are relative to the file that names them.
 | `size` | `[width, height]` in points; `[960, 540]` is 16:9. |
 | `fields` | Text any slide or layout shows as `${name}`. |
 | `books` | Libreta books the slides quote; see `pintura --docs books`. |
-| `slides` | The slides in order, by file stem, with `section:` entries between them. |
+| `slides` | The slides in order, by file stem, with `section:` entries between them, and `pick:` entries where a pick's variants wait on the reviewer. |
 
 ## Example
 
