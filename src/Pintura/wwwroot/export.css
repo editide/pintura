@@ -254,13 +254,40 @@ body.exported .present.controls {
   }
 }
 
+/* Held sideways, height is what the slide lacks, so the bar's buttons and the counter move into the margins beside it,
+   which the round buttons need anyway, clear of the notch on whichever side it sits. */
 @media (pointer: coarse) and (orientation: landscape) {
+  body.exported #view {
+    --gutter-left: max(16px, env(safe-area-inset-left));
+    --gutter-right: max(16px, env(safe-area-inset-right));
+  }
+
+  .export-bar {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 1;
+    min-height: 0;
+    padding: max(12px, env(safe-area-inset-top)) var(--gutter-right) 0 var(--gutter-left);
+    border: 0;
+    pointer-events: none;
+  }
+
+  .export-bar button {
+    pointer-events: auto;
+  }
+
+  .export-bar .icon-button {
+    width: 64px;
+    height: 40px;
+  }
+
   .export-slide {
-    margin: 4px 96px 0;
+    margin: max(8px, env(safe-area-inset-top)) calc(var(--gutter-right) + 80px) max(8px, env(safe-area-inset-bottom))
+      calc(var(--gutter-left) + 80px);
   }
 
   .export-turn {
-    padding: 2px 16px max(6px, env(safe-area-inset-bottom));
+    padding: 0;
   }
 
   .export-turn .icon-button {
@@ -269,15 +296,24 @@ body.exported .present.controls {
   }
 
   #previous {
-    left: max(16px, env(safe-area-inset-left));
+    left: var(--gutter-left);
   }
 
   #next {
-    right: max(16px, env(safe-area-inset-right));
+    right: var(--gutter-right);
+  }
+
+  #counter {
+    position: absolute;
+    top: 50%;
+    right: var(--gutter-right);
+    width: 64px;
+    min-width: 0;
+    transform: translateY(-50%);
   }
 
   .trace-hint {
+    bottom: 24px;
     max-width: calc(100% - 208px);
   }
-
 }
