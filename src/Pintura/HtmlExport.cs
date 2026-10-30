@@ -78,6 +78,7 @@ public static class HtmlExport
     }
     // A number traced to a book opens it beside the slide, so the reader can follow it without Libreta.
     Dictionary<string, string> pages = exporting.GetAwaiter().GetResult();
+    Dictionary<string, Dictionary<string, TracedLine>> cells = Cells(presentation, deck, reader);
 
     var html = new StringBuilder();
     html.AppendLine("<!doctype html>");
@@ -118,11 +119,17 @@ public static class HtmlExport
       html.AppendLine("<div class=\"book\" id=\"book\"><div class=\"book-bar\">"
         + $"<button type=\"button\" id=\"book-back\">{BackIcon}<span id=\"book-back-label\"></span></button></div>"
         + "<iframe id=\"book-frame\" title=\"Book\"></iframe></div>");
+      html.AppendLine("<div class=\"cell-sheet\" id=\"cell-sheet\" hidden><div class=\"cell-card\" role=\"dialog\" "
+        + "aria-labelledby=\"cell-label\"><div class=\"cell-label\" id=\"cell-label\"></div>"
+        + "<div class=\"cell-value\" id=\"cell-value\"></div>"
+        + "<div class=\"cell-source\" id=\"cell-source\"></div>"
+        + "<button type=\"button\" id=\"cell-open\">Open in the book</button></div></div>");
     }
     html.AppendLine($"<script type=\"application/json\" id=\"deck\">{json}</script>");
     if (pages.Count > 0)
     {
       html.AppendLine($"<script type=\"application/json\" id=\"books\">{ScriptJson(pages)}</script>");
+      html.AppendLine($"<script type=\"application/json\" id=\"cells\">{ScriptJson(cells)}</script>");
     }
     foreach (string script in Scripts)
     {
@@ -131,6 +138,45 @@ public static class HtmlExport
     html.AppendLine("</body>");
     html.AppendLine("</html>");
     return html.ToString();
+  }
+
+  /// <summary>Each line a slide traces to, by book, with the values of only the cells traced: a phone shows a
+  /// number's cell on its own, since the book's page is too wide for it.</summary>
+  private static Dictionary<string, Dictionary<string, TracedLine>> Cells(Presentation presentation, DeckPayload deck,
+    IBookReader reader)
+  {
+    IEnumerable<TracePayload> traces = deck.Slides.SelectMany(slide => slide.Items ?? [])
+      .SelectMany(item => new[] { item.Text }.Concat(item.Table?.Cells.Select(cell => cell.Text) ?? [])
+          .SelectMany(text => text?.Paragraphs ?? [])
+          .SelectMany(paragraph => paragraph.Runs)
+          .Select(run => run.Trace)
+        .Concat(item.Table?.Cells.Select(cell => cell.Trace) ?? [])
+        .Concat(item.Chart?.Series.SelectMany(series => series.Traces ?? []) ?? []))
+      .OfType<TracePayload>();
+    var cells = new Dictionary<string, Dictionary<string, TracedLine>>(StringComparer.Ordinal);
+    foreach (TracePayload trace in traces)
+    {
+      if (presentation.Books.GetValueOrDefault(trace.Book) is not Book book
+        || reader.Lines(book.Root).GetValueOrDefault(trace.Line) is not BookLine line)
+      {
+        continue;
+      }
+      int column = line.Columns.IndexOf(trace.Column);
+      if (column < 0)
+      {
+        continue;
+      }
+      if (!cells.TryGetValue(trace.Book, out Dictionary<string, TracedLine>? lines))
+      {
+        lines = cells[trace.Book] = new Dictionary<string, TracedLine>(StringComparer.Ordinal);
+      }
+      if (!lines.TryGetValue(trace.Line, out TracedLine? traced))
+      {
+        traced = lines[trace.Line] = new TracedLine(line.Label, line.Units, new Dictionary<string, string>());
+      }
+      traced.Values[trace.Column] = line.Display[column];
+    }
+    return cells;
   }
 
   /// <summary>Each font the slides draw in that the theme's <c>fonts/</c> doesn't carry into the page, so the reader
@@ -161,6 +207,8 @@ public static class HtmlExport
   {
     return JsonSerializer.Serialize(value, PayloadJson.Options).Replace("<", "\\u003c");
   }
+
+  private record TracedLine(string Label, string? Units, Dictionary<string, string> Values);
 
   private static string InlineFonts(string css, string assets)
   {

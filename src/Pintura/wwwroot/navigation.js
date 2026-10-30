@@ -52,6 +52,16 @@ function tapStep(x, frame) {
   return x - frame.left < frame.width / 3 ? -1 : 1;
 }
 
+// What a click on the exported slide does: 'trace' a number to its book, 'step' to the slide tapStep picks, or 'none'
+// for a drag that selected text or a click that clears a selection. A finger turning slides on a phone lands on
+// numbers by accident, so a touch traces only by a long press.
+function clickAction({ pointer, traced, selecting, dragged }) {
+  if (selecting || dragged) {
+    return 'none';
+  }
+  return traced && pointer !== 'touch' ? 'trace' : 'step';
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { wheelStep, zoomStep, wheelZoom, anchoredScroll, swipeStep, tapStep };
+  module.exports = { wheelStep, zoomStep, wheelZoom, anchoredScroll, swipeStep, tapStep, clickAction };
 }

@@ -2,13 +2,17 @@
 
 // The viewer of a presentation exported to one HTML file: the deck is inlined beside this script, so it needs no
 // server, and it only shows: a sidebar of thumbnails beside one slide at fit, or the slides presented full screen.
-// Each book the deck reads is inlined as Libreta's own exported page, which a traced number opens over the deck.
+// Each book the deck reads is inlined as Libreta's own exported page, which a traced number opens over the deck. On a
+// phone, a long press on the number shows its cell first, since the book's page is too wide to read there.
 
 const THUMBNAIL_WIDTH = 170;
 // Below this width the sidebar opens over the slide rather than beside it, as app.css's breakpoint does.
 const NARROW = matchMedia('(max-width: 52rem)');
 // How long the presenter's controls stay after the last touch or move of the pointer.
 const CONTROLS_MS = 3000;
+const LONG_PRESS_MS = 500;
+// How far a pointer moves before its press is a drag rather than a click or a long press.
+const DRAG_PX = 6;
 
 const deck = JSON.parse(document.getElementById('deck').textContent);
 const layout = document.querySelector('.layout');
@@ -19,6 +23,11 @@ const counter = document.getElementById('counter');
 const state = { current: 0, presenting: false };
 const books = JSON.parse(document.getElementById('books')?.textContent ?? '{}');
 const bookUrls = {};
+const cells = JSON.parse(document.getElementById('cells')?.textContent ?? '{}');
+const cellSheet = document.getElementById('cell-sheet');
+let cellTrace = null;
+// The pointer pressed on the slide, which decides what its click does.
+let press = null;
 let wheelTotal = 0;
 let touchStart = null;
 let controlsTimer = 0;
@@ -73,17 +82,73 @@ function renderSlide() {
   const [width, height] = deck.size;
   mountStage(frame, deck.slides[state.current], deck.size, Math.min(room.width, room.height * width / height));
   frame.addEventListener('click', (event) => {
-    if (event.target.closest('a')) {
+    // A long press has already shown its cell.
+    if (event.target.closest('a') || press?.held) {
       return;
     }
-    const traced = event.target.closest('[data-trace]');
-    const trace = traced && JSON.parse(traced.dataset.trace);
-    if (trace && trace.book in books) {
+    const trace = traceAt(event.target);
+    const action = clickAction({
+      pointer: press?.pointer ?? 'mouse',
+      traced: Boolean(trace),
+      selecting: Boolean(press?.selecting) || !getSelection().isCollapsed,
+      dragged: Boolean(press?.dragged)
+    });
+    if (action === 'trace') {
       openBook(trace);
-      return;
+    } else if (action === 'step') {
+      step(tapStep(event.clientX, frame.getBoundingClientRect()));
     }
-    step(tapStep(event.clientX, frame.getBoundingClientRect()));
   });
+}
+
+function traceAt(target) {
+  const traced = target.closest('[data-trace]');
+  const trace = traced && JSON.parse(traced.dataset.trace);
+  return trace && trace.book in books ? trace : null;
+}
+
+// Read before the press's default action, which collapses the selection a click would only clear.
+function startPress(event) {
+  press = { pointer: event.pointerType, x: event.clientX, y: event.clientY, selecting: !getSelection().isCollapsed };
+  const trace = event.pointerType === 'touch' && traceAt(event.target);
+  if (trace) {
+    const pressed = press;
+    pressed.timer = setTimeout(() => {
+      pressed.held = true;
+      showCell(trace);
+    }, LONG_PRESS_MS);
+  }
+}
+
+function movePress(event) {
+  if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > DRAG_PX) {
+    press.dragged = true;
+    clearTimeout(press.timer);
+  }
+}
+
+function endPress() {
+  clearTimeout(press?.timer);
+}
+
+function showCell(trace) {
+  const line = cells[trace.book]?.[trace.line];
+  if (!line) {
+    openBook(trace);
+    return;
+  }
+  cellTrace = trace;
+  document.getElementById('cell-label').textContent = line.label;
+  document.getElementById('cell-value').textContent = line.values[trace.column] ?? '';
+  document.getElementById('cell-source').textContent = [trace.column, line.units].filter(Boolean).join(' · ');
+  cellSheet.hidden = false;
+  if (!bookFrame.dataset.page?.startsWith(bookUrl(trace.book))) {
+    showInBook(bookUrl(trace.book));
+  }
+}
+
+function hideCell() {
+  cellSheet.hidden = true;
 }
 
 // A presentation with no slides shows only its name.
@@ -125,6 +190,9 @@ function bookUrl(name) {
 
 // A book takes a moment to read, so it starts on a hover over its numbers, and the click that follows only moves it.
 function preloadBook(event) {
+  if (event.pointerType === 'touch') {
+    return;
+  }
   const traced = event.target.closest('[data-trace]');
   const name = traced && JSON.parse(traced.dataset.trace).book;
   if (name in books && !bookFrame.dataset.page?.startsWith(bookUrl(name))) {
@@ -236,6 +304,13 @@ document.addEventListener('keydown', (event) => {
   if (event.ctrlKey || event.metaKey || event.altKey) {
     return;
   }
+  if (cellSheet && !cellSheet.hidden) {
+    if (event.key === 'Escape') {
+      hideCell();
+      event.preventDefault();
+    }
+    return;
+  }
   // The deck lies hidden under an open book, so only closing it applies.
   if (bookShown()) {
     if (event.key === 'Escape') {
@@ -268,6 +343,25 @@ window.addEventListener('resize', render);
 if (book) {
   document.body.classList.add('tracing');
   slideArea.addEventListener('pointerover', preloadBook);
+  slideArea.addEventListener('pointerdown', startPress);
+  slideArea.addEventListener('pointermove', movePress);
+  slideArea.addEventListener('pointerup', endPress);
+  slideArea.addEventListener('pointercancel', endPress);
+  // Android's long press would open the browser's menu over the cell.
+  slideArea.addEventListener('contextmenu', (event) => {
+    if (press?.pointer === 'touch' && traceAt(event.target)) {
+      event.preventDefault();
+    }
+  });
+  cellSheet.addEventListener('click', (event) => {
+    if (event.target === cellSheet) {
+      hideCell();
+    }
+  });
+  document.getElementById('cell-open').addEventListener('click', () => {
+    hideCell();
+    openBook(cellTrace);
+  });
 }
 
 state.current = indexOf(decodeURIComponent(location.hash.slice(1)));
