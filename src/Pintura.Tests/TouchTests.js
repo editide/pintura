@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { swipeStep, tapStep } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'navigation.js'));
+const { swipeStep, tapStep, clickAction } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'navigation.js'));
 
 test('a swipe left advances and a swipe right goes back', () => {
   // Arrange
@@ -39,4 +39,29 @@ test('a tap on the left third goes back and elsewhere advances', () => {
 
   // Assert
   assert.deepEqual([left, middle, right], [-1, 1, 1]);
+});
+
+test('a click on a number traces it, but a tap on one turns the slide', () => {
+  // Arrange
+  const click = { pointer: 'mouse', traced: true, selecting: false, dragged: false };
+
+  // Act
+  const mouse = clickAction(click);
+  const touch = clickAction({ ...click, pointer: 'touch' });
+  const elsewhere = clickAction({ ...click, traced: false });
+
+  // Assert
+  assert.deepEqual([mouse, touch, elsewhere], ['trace', 'step', 'step']);
+});
+
+test('a click that selects text or clears a selection does nothing', () => {
+  // Arrange
+  const click = { pointer: 'mouse', traced: true, selecting: false, dragged: false };
+
+  // Act
+  const dragged = clickAction({ ...click, dragged: true });
+  const selecting = clickAction({ ...click, traced: false, selecting: true });
+
+  // Assert
+  assert.deepEqual([dragged, selecting], ['none', 'none']);
 });
