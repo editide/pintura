@@ -107,7 +107,10 @@ public static class HtmlExport
       + $"title=\"Previous slide (\u2190)\" aria-label=\"Previous slide\">{PreviousIcon}</button>"
       + "<span id=\"counter\" aria-live=\"polite\"></span>"
       + "<button type=\"button\" class=\"icon-button\" id=\"next\" title=\"Next slide (\u2192)\" "
-      + $"aria-label=\"Next slide\">{NextIcon}</button></div></main>");
+      + $"aria-label=\"Next slide\">{NextIcon}</button></div>"
+      + "<div class=\"trace-hint\" id=\"trace-hint\" hidden><span id=\"trace-hint-text\"></span>"
+      + "<button type=\"button\" id=\"trace-hint-close\" aria-label=\"Close hint\">"
+      + $"{CloseIcon}</button></div></main>");
     html.AppendLine("</div>");
     html.AppendLine("<div class=\"present\" id=\"present\" hidden>"
       + "<button type=\"button\" class=\"icon-button\" id=\"present-exit\" title=\"Stop presenting (Esc)\" "

@@ -13,6 +13,9 @@ const CONTROLS_MS = 3000;
 const LONG_PRESS_MS = 500;
 // How far a pointer moves before its press is a drag rather than a click or a long press.
 const DRAG_PX = 6;
+// The hint that numbers trace stops once the reader has traced one, closed it, or seen it on this many slides.
+const HINT_SLIDES = 3;
+const COARSE = matchMedia('(pointer: coarse)');
 
 const deck = JSON.parse(document.getElementById('deck').textContent);
 const layout = document.querySelector('.layout');
@@ -25,6 +28,8 @@ const books = JSON.parse(document.getElementById('books')?.textContent ?? '{}');
 const bookUrls = {};
 // The pointer pressed on the slide, which decides what its click does.
 let press = null;
+const hintSlides = new Set();
+let hintDone = false;
 let wheelTotal = 0;
 let touchStart = null;
 let controlsTimer = 0;
@@ -56,6 +61,30 @@ function renderSidebar() {
       });
     }
   }
+}
+
+// Nothing marks a traced number until the pointer is over it, and a finger never hovers, so a pill says which
+// numbers trace, underlining them, until the reader has the idea. Typed numbers turn the slide like the rest of it.
+function renderHint() {
+  const hint = document.getElementById('trace-hint');
+  const id = deck.slides[state.current].id;
+  const traced = [...slideArea.querySelectorAll('[data-trace]')].some((node) => traceAt(node));
+  const shown = !hintDone && traced && (hintSlides.size < HINT_SLIDES || hintSlides.has(id));
+  hint.hidden = !shown;
+  document.body.classList.toggle('hinting', shown);
+  if (!shown) {
+    return;
+  }
+  hintSlides.add(id);
+  document.getElementById('trace-hint-text').textContent = COARSE.matches
+    ? 'Touch and hold an underlined number to see where it comes from'
+    : 'Click an underlined number to see where it comes from, or hold Ctrl to underline them later';
+}
+
+function endHint() {
+  hintDone = true;
+  document.getElementById('trace-hint').hidden = true;
+  document.body.classList.remove('hinting');
 }
 
 function renderCurrent() {
@@ -137,6 +166,7 @@ function render() {
   }
   renderSlide();
   renderCurrent();
+  renderHint();
   renderPresent();
 }
 
@@ -159,6 +189,7 @@ function setNav(shown) {
 
 // The book's page selects the cell its fragment names, and selects the next without reloading when only that changes.
 function openBook(trace) {
+  endHint();
   showInBook(`${bookUrl(trace.book)}#${new URLSearchParams({ line: trace.line, column: trace.column })}`);
   showBook(deck.slides[state.current]);
 }
@@ -281,6 +312,14 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 
+// Holding Ctrl underlines the numbers a click traces, as in the preview.
+for (const type of ['keydown', 'keyup']) {
+  document.addEventListener(type, (event) => {
+    document.body.classList.toggle('ctrl-held', event.ctrlKey || event.metaKey);
+  });
+}
+window.addEventListener('blur', () => document.body.classList.remove('ctrl-held'));
+
 document.addEventListener('keydown', (event) => {
   if (event.ctrlKey || event.metaKey || event.altKey) {
     return;
@@ -317,6 +356,7 @@ window.addEventListener('resize', render);
 if (book) {
   document.body.classList.add('tracing');
   slideArea.addEventListener('pointerover', preloadBook);
+  document.getElementById('trace-hint-close').addEventListener('click', endHint);
   slideArea.addEventListener('pointerdown', startPress);
   slideArea.addEventListener('pointermove', movePress);
   slideArea.addEventListener('pointerup', endPress);

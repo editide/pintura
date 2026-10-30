@@ -4,6 +4,7 @@ body.exported {
 }
 
 body.exported #view {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -25,6 +26,58 @@ body.exported #view {
   justify-content: center;
   gap: 4px;
   padding: 10px 16px max(12px, env(safe-area-inset-bottom));
+}
+
+/* Over the slide just above the arrows rather than in the column, so the slide keeps its size as it comes and goes. */
+.trace-hint {
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  /* As wide on the left as the close button on the right, so the text centres in the pill when it wraps. */
+  padding: 4px 4px 4px 36px;
+  border-radius: 18px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 13px;
+  line-height: 18px;
+  transform: translateX(-50%);
+  box-shadow: 0 4px 16px rgb(0 0 0 / .2);
+}
+
+.trace-hint[hidden] {
+  display: none;
+}
+
+#trace-hint-text {
+  text-align: center;
+}
+
+#trace-hint-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+#trace-hint-close:hover {
+  background: rgb(255 255 255 / .15);
+}
+
+/* A run's inline style sets its own decoration. */
+:is(body.hinting, body.ctrl-held) .export-slide [data-trace] {
+  text-decoration: underline dotted !important;
 }
 
 .export-turn .icon-button:disabled {
@@ -164,4 +217,57 @@ body.exported .present.controls {
   .export-turn {
     padding-top: 6px;
   }
+}
+
+/* Thumbs rest at a phone's lower corners, so the arrows grow into round buttons there: beside the counter held
+   upright, and in the margins beside the slide held sideways. */
+@media (pointer: coarse) {
+  .export-turn .icon-button {
+    width: 64px;
+    height: 64px;
+    border: 1px solid var(--rule);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--ink);
+  }
+
+  .export-turn .icon-button svg {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) {
+  .export-turn {
+    justify-content: space-between;
+    padding: 16px 24px max(32px, calc(env(safe-area-inset-bottom) + 16px));
+  }
+
+  .trace-hint {
+    bottom: 124px;
+  }
+}
+
+@media (pointer: coarse) and (orientation: landscape) {
+  .export-slide {
+    margin: 8px 96px 0;
+  }
+
+  .export-turn .icon-button {
+    position: absolute;
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  #previous {
+    left: max(16px, env(safe-area-inset-left));
+  }
+
+  #next {
+    right: max(16px, env(safe-area-inset-right));
+  }
+
+  .trace-hint {
+    max-width: calc(100% - 208px);
+  }
+
 }
