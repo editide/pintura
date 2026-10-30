@@ -174,7 +174,7 @@ function flipVariant(offset) {
 
 // Arrows flip the enlarged variant and Escape returns to all of them. Returns whether the key was one of them.
 function pickKey(event) {
-  const offsets = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+  const offsets = { ArrowRight: 1, ArrowDown: 1, ' ': 1, ArrowLeft: -1, ArrowUp: -1 };
   if (event.key in offsets) {
     return flipVariant(offsets[event.key]);
   }
