@@ -24,6 +24,11 @@ public record DeckPayload
   public string? Error { get; init; }
   public List<SectionPayload> Sections { get; init; } = new List<SectionPayload>();
   public List<SlidePayload> Slides { get; init; } = new List<SlidePayload>();
+  /// <summary>Each placed pick's variants after its first, which <see cref="Slides"/> draws in the pick's place.
+  /// </summary>
+  public List<SlidePayload> Variants { get; init; } = new List<SlidePayload>();
+  /// <summary>The placed picks waiting on the reviewer.</summary>
+  public List<PickPayload> Picks { get; init; } = new List<PickPayload>();
   public List<Comment> Comments { get; init; } = new List<Comment>();
   public List<FontFacePayload> Fonts { get; init; } = new List<FontFacePayload>();
 }
@@ -34,6 +39,10 @@ public record FontFacePayload(string Family, int Weight, string Style, string Ur
 
 public record SectionPayload(string? Name, List<string> Slides);
 
+/// <summary>A pick as the page offers it: who offered it, when, and its variants in order, each slide with its intent.
+/// </summary>
+public record PickPayload(string Id, string? By, string? Date, List<Variant> Variants);
+
 public record SlidePayload
 {
   public string Id { get; init; } = "";
@@ -41,6 +50,8 @@ public record SlidePayload
   public string? Title { get; init; }
   public string? Layout { get; init; }
   public string? Section { get; init; }
+  /// <summary>The open pick offering the slide as one of its variants.</summary>
+  public string? Pick { get; init; }
   public string? Background { get; init; }
   public string? Error { get; init; }
   public List<ItemPayload>? Items { get; init; }
@@ -271,6 +282,11 @@ public static class PayloadBuilder
       Version = version,
       Sections = presentation.Sections.Select(section => new SectionPayload(section.Name, section.Slides)).ToList(),
       Slides = presentation.Slides.Select(slide => Slide(presentation, slide, pictureUrl)).ToList(),
+      Variants = presentation.Variants.Select(slide => Slide(presentation, slide, pictureUrl)).ToList(),
+      Picks = presentation.Picks
+        .Where(pick => presentation.Slides.Any(slide => slide.Pick == pick.Id))
+        .Select(pick => new PickPayload(pick.Id, pick.By, pick.Date, pick.Variants))
+        .ToList(),
       Comments = presentation.Comments,
       Fonts = presentation.Theme.Faces
         .Select(face => new FontFacePayload(face.Family, face.Weight, face.Italic ? "italic" : "normal",
@@ -300,6 +316,7 @@ public static class PayloadBuilder
         Id = slide.Id,
         Number = slide.Number,
         Section = slide.Section,
+        Pick = slide.Pick,
         Error = exception.Message
       };
     }
@@ -312,6 +329,7 @@ public static class PayloadBuilder
       Title = title is null ? null : string.Concat(title.Paragraphs![0].Runs.Select(run => run.Text)),
       Layout = slide.Layout,
       Section = slide.Section,
+      Pick = slide.Pick,
       Background = Hex(scene.Background.Value, theme),
       Items = stage is null
         ? scene.Items.Select(item => Item(item, theme, pictureUrl) with { Edit = Edit(slide, item) }).ToList()

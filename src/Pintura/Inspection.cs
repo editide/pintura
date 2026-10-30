@@ -4,7 +4,10 @@ using System.Text.RegularExpressions;
 
 namespace Pintura;
 
-public record SlideEntry(int Number, string Id, string? Layout, string? Title, string? Section, string? Error);
+/// <summary>A slide as <c>--list</c> shows it; <paramref name="Pick"/> names the open pick offering it, in whose place
+/// every variant takes the same number.</summary>
+public record SlideEntry(int Number, string Id, string? Layout, string? Title, string? Section, string? Error,
+  string? Pick = null);
 
 public record ElementEntry(
   string Id,
@@ -67,6 +70,10 @@ public static class HeadlessRunner
     {
       return CommentList.WriteResolved(root, json, output);
     }
+    if (command == HeadlessCommand.Picks && resolved)
+    {
+      return PickList.WriteResolved(root, json, output);
+    }
     Presentation presentation = PresentationLoader.Load(root);
     return command switch
     {
@@ -76,6 +83,7 @@ public static class HeadlessRunner
       HeadlessCommand.Export => Export(presentation, output),
       HeadlessCommand.Comments => CommentList.Write(presentation, json, output, only),
       HeadlessCommand.Resolve => Resolve(presentation, ids!, output),
+      HeadlessCommand.Picks => PickList.Write(presentation, json, output),
       _ => throw new ArgumentOutOfRangeException(nameof(command), command, "not a console command")
     };
   }
@@ -110,9 +118,10 @@ public static class HeadlessRunner
 
   public static List<SlideEntry> Entries(Presentation presentation)
   {
-    return presentation.Slides
+    return presentation.Offered
       .Select(slide => new SlideEntry(slide.Number, slide.Id, slide.Error is null ? slide.Layout : null,
-        slide.Error is null ? PayloadBuilder.Title(presentation, slide) : null, slide.Section, slide.Error?.Message))
+        slide.Error is null ? PayloadBuilder.Title(presentation, slide) : null, slide.Section, slide.Error?.Message,
+        slide.Pick))
       .ToList();
   }
 
@@ -128,6 +137,7 @@ public static class HeadlessRunner
     int width = entries.Count == 0 ? 0 : entries.Max(entry => entry.Id.Length);
     int layoutWidth = entries.Count == 0 ? 0 : entries.Max(entry => entry.Layout?.Length ?? 0);
     string? section = null;
+    string? pick = null;
     foreach (SlideEntry entry in entries)
     {
       if (entry.Section != section)
@@ -135,6 +145,11 @@ public static class HeadlessRunner
         section = entry.Section;
         output.WriteLine($"   {section}");
       }
+      if (entry.Pick is not null && entry.Pick != pick)
+      {
+        output.WriteLine($"   pick {entry.Pick}, waiting on the reviewer to keep one of:");
+      }
+      pick = entry.Pick;
       string detail = entry.Error is null
         ? $"{(entry.Layout ?? "").PadRight(layoutWidth)}  {entry.Title}".TrimEnd()
         : $"error: {entry.Error}";
@@ -258,7 +273,7 @@ public static class HeadlessRunner
   /// no such item or fails to load.</summary>
   public static ElementDetail? Detail(Presentation presentation, string slideId, int index)
   {
-    Slide? slide = presentation.Slides.FirstOrDefault(candidate => candidate.Id == slideId);
+    Slide? slide = presentation.Find(slideId);
     if (slide is null || slide.Error is not null)
     {
       return null;
@@ -427,7 +442,7 @@ public static class HeadlessRunner
   public static Slide? SlideNamed(Presentation presentation, string id)
   {
     List<Slide> slides = presentation.Slides;
-    return slides.FirstOrDefault(candidate => candidate.Id == id)
+    return presentation.Find(id)
       ?? (int.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out int number) && number >= 1 &&
         number <= slides.Count ? slides[number - 1] : null);
   }

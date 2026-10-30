@@ -8,7 +8,7 @@ public static class Documentation
   public static readonly string[] Topics =
   [
     "presentations", "themes", "styles", "colors", "layouts", "slides", "text", "shapes", "charts", "tables", "books",
-    "checks", "comments"
+    "checks", "comments", "picks"
   ];
 
   public static void Write(string topic, TextWriter writer)

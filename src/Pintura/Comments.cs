@@ -521,7 +521,7 @@ public static class CommentFile
   private static Comment Draft(Presentation presentation, Comment draft, Texts files, string author, DateTime now,
     Snapshot? seen)
   {
-    Slide slide = presentation.Slides.FirstOrDefault(candidate => candidate.Id == draft.Slide)
+    Slide slide = presentation.Find(draft.Slide)
       ?? throw new PatchException($"no slide {draft.Slide}");
     // Putting back a comment whose element has since gone keeps it, for the check to report.
     if (draft.Id.Length == 0 && draft.Element is string element && slide.Error is null &&
@@ -577,7 +577,7 @@ public static class CommentFile
   /// </summary>
   private static int InDeckOrder(Presentation presentation, List<Entry> entries, string slide)
   {
-    List<string> order = presentation.Slides.Select(candidate => candidate.Id).ToList();
+    List<string> order = presentation.Offered.Select(candidate => candidate.Id).ToList();
     int place = order.IndexOf(slide);
     int later = entries.FindIndex(entry => order.IndexOf(entry.Comment.Slide) > place);
     return later < 0 ? entries.Count : later;
@@ -722,7 +722,7 @@ public static class CommentList
 {
   public static List<CommentEntry> Entries(Presentation presentation)
   {
-    List<string> order = presentation.Slides.Select(slide => slide.Id).ToList();
+    List<string> order = presentation.Offered.Select(slide => slide.Id).ToList();
     return presentation.Comments
       .OrderBy(comment => order.IndexOf(comment.Slide) is int place and >= 0 ? place : int.MaxValue)
       .Select(comment => Entry(presentation, comment))
@@ -740,7 +740,7 @@ public static class CommentList
   /// </summary>
   public static Origin? Target(Presentation presentation, Comment comment)
   {
-    Slide? slide = presentation.Slides.FirstOrDefault(candidate => candidate.Id == comment.Slide);
+    Slide? slide = presentation.Find(comment.Slide);
     if (slide is null)
     {
       return null;
@@ -758,7 +758,8 @@ public static class CommentList
     string named = "";
     if (only is not null)
     {
-      HashSet<string> picked = [.. only.Pick(presentation.Slides, slide => slide.Id).Select(slide => slide.Id)];
+      HashSet<string> picked = [.. presentation.WithVariants(only.Pick(presentation.Slides, slide => slide.Id))
+        .Select(slide => slide.Id)];
       entries = [.. entries.Where(entry => picked.Contains(entry.Slide))];
       named = " on the slides named";
     }

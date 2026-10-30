@@ -88,6 +88,7 @@ public static class Checks
     findings.AddRange(Geometry(presentation, measurement));
     findings.AddRange(Consistency(presentation));
     findings.AddRange(Comments(presentation));
+    findings.AddRange(Picks(presentation));
     if (export)
     {
       findings.AddRange(Export(presentation, measurement));
@@ -99,10 +100,10 @@ public static class Checks
 
   public static List<Finding> Structure(Presentation presentation)
   {
-    return presentation.Slides
+    return presentation.Offered
       .Where(slide => slide.Error is not null)
       .Select(slide => Structure(slide.Error!, slide.Id) with { Slide = slide.Id })
-      .Concat(presentation.Slides.Where(slide => slide.Error is null)
+      .Concat(presentation.Offered.Where(slide => slide.Error is null)
         .SelectMany(slide => Flattened(presentation, slide)))
       .ToList();
   }
@@ -142,10 +143,14 @@ public static class Checks
   /// and a comments file git doesn't track.</summary>
   public static List<Finding> Comments(Presentation presentation)
   {
-    List<Finding> findings = Untracked(presentation);
+    List<Finding> findings = Untracked(presentation, "comments",
+    [
+      (CommentFile.Name, "a thread resolved from it leaves no history"),
+      (CommentFile.ResolvedName, "the resolved threads in it have no history")
+    ]);
     foreach (Comment comment in presentation.Comments)
     {
-      Slide? slide = presentation.Slides.FirstOrDefault(candidate => candidate.Id == comment.Slide);
+      Slide? slide = presentation.Find(comment.Slide);
       string? problem = null;
       string where = comment.Slide;
       if (slide is null)
@@ -174,16 +179,12 @@ public static class Checks
     return findings;
   }
 
-  /// <summary>A comments file inside a repository that git doesn't track: a thread resolved out of it, or kept in the
-  /// resolved file, leaves no history for anyone to learn from.</summary>
-  private static List<Finding> Untracked(Presentation presentation)
+  /// <summary>A comments or picks file inside a repository that git doesn't track: what is resolved out of it, or
+  /// kept in the resolved file, leaves no history for anyone to learn from.</summary>
+  private static List<Finding> Untracked(Presentation presentation, string kind,
+    (string Name, string Problem)[] files)
   {
     var findings = new List<Finding>();
-    (string Name, string Problem)[] files =
-    [
-      (CommentFile.Name, "a thread resolved from it leaves no history"),
-      (CommentFile.ResolvedName, "the resolved threads in it have no history")
-    ];
     try
     {
       if (Revisions.Run(presentation.Root, "rev-parse", "--is-inside-work-tree").Exit != 0)
@@ -195,8 +196,8 @@ public static class Checks
         if (File.Exists(Path.Combine(presentation.Root, name)) &&
           Revisions.Run(presentation.Root, "ls-files", "--error-unmatch", "--", name).Exit != 0)
         {
-          findings.Add(new Finding("warning", "comments", "comments",
-            $"{name} isn't in git, so {problem}; commit it with the slides") { Topic = "comments" });
+          findings.Add(new Finding("warning", kind, kind,
+            $"{name} isn't in git, so {problem}; commit it with the slides") { Topic = kind });
         }
       }
     }
@@ -319,7 +320,7 @@ public static class Checks
       .GroupBy(picture => (picture.Slide, picture.Id))
       .ToDictionary(group => group.Key, group => group.First());
     var candidates = new List<Candidate>();
-    foreach (Slide slide in presentation.Slides.Where(slide => slide.Error is null))
+    foreach (Slide slide in presentation.Offered.Where(slide => slide.Error is null))
     {
       List<Placed> items = Place(presentation, slide, measured, pictures);
       List<Placed> areas = Areas(presentation.Theme, slide);
@@ -880,11 +881,13 @@ public static class Checks
   public static List<Finding> Consistency(Presentation presentation)
   {
     var findings = new List<Finding>();
+    // Only the deck as drawn sets what the rest of it agrees on, so variants of one slide don't outvote it.
     List<Slide> slides = presentation.Slides.Where(slide => slide.Error is null).ToList();
-    findings.AddRange(slides.SelectMany(slide => Moved(presentation, slide)));
+    List<Slide> offered = presentation.Offered.Where(slide => slide.Error is null).ToList();
+    findings.AddRange(offered.SelectMany(slide => Moved(presentation, slide)));
     findings.AddRange(Sizes(presentation, slides));
     findings.AddRange(RepeatedOneOffs(presentation, slides));
-    findings.AddRange(slides.SelectMany(slide => Totals(presentation, slide)));
+    findings.AddRange(offered.SelectMany(slide => Totals(presentation, slide)));
     return findings;
   }
 
@@ -1184,6 +1187,40 @@ public static class Checks
   private record Sized(string Kind, string Label, string Slide, string Id, double Size);
 
   private record OneOff(string Formatting, string? Style, string Slide, string Id);
+
+  #endregion
+
+  #region Picks
+
+  /// <summary>Every open pick, which waits on the reviewer, or offers too few variants to choose between, and a picks
+  /// file git doesn't track.</summary>
+  public static List<Finding> Picks(Presentation presentation)
+  {
+    List<Finding> findings = Untracked(presentation, "picks",
+    [
+      (PickFile.Name, "a pick resolved from it leaves no record"),
+      (PickFile.ResolvedName, "the picks resolved in it have no history")
+    ]);
+    foreach (Pick pick in presentation.Picks)
+    {
+      Slide? placed = presentation.Slides.FirstOrDefault(slide => slide.Pick == pick.Id);
+      string variants = string.Join(", ", PickFile.Slides(pick));
+      (string level, string problem) = pick.Variants.Count < 2
+        ? ("error", $"pick {pick.Id} offers only {variants}; offer two to four variants, or list the slide in slides")
+        : placed is null
+          ? ("warning", $"pick {pick.Id} isn't in slides; write - pick: {pick.Id} where its slide goes")
+          : ("warning", $"pick {pick.Id} waits on the reviewer to keep one of {variants}; the export draws " +
+            $"{pick.Variants[0].Slide}");
+      findings.Add(new Finding(level, "picks", placed?.Id ?? pick.Id, problem)
+      {
+        Slide = placed?.Id,
+        File = pick.Origin.File,
+        Line = pick.Origin.Line,
+        Topic = "picks"
+      });
+    }
+    return findings;
+  }
 
   #endregion
 

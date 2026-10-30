@@ -16,6 +16,7 @@ Run `pintura --docs <topic>` for one topic: its keys, a complete example, and th
 - `books`: including Libreta books, and references to them in text, charts, and tables.
 - `checks`: what `pintura --check` reports, and the theme's thresholds for it.
 - `comments`: reviewers' comments in `comments.yaml`, and working through them with `pintura --comments`.
+- `picks`: offering variants of a slide in `picks.yaml` for the reviewer to keep one of, and `pintura --picks`.
 
 Units are points everywhere; the slide is 960 × 540 unless `presentation.yaml` says otherwise.
 Unknown keys are errors.

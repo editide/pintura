@@ -216,6 +216,7 @@ try
         }
       }
     }
+    List("picks waiting on the reviewer:", PickFile.Warnings(presentation));
     List("what the deck can't reproduce:", report.Gaps);
 #if DEBUG
     List("workarounds:", report.Workarounds);

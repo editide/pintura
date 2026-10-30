@@ -22,6 +22,8 @@ public record VersionScope(string Top, string Presentation, List<string> Saved, 
 {
   public string CommentFile => InPresentation(Pintura.CommentFile.Name);
   public string ResolvedFile => InPresentation(Pintura.CommentFile.ResolvedName);
+  public string PickFile => InPresentation(Pintura.PickFile.Name);
+  public string ResolvedPickFile => InPresentation(Pintura.PickFile.ResolvedName);
   public string Manifest => InPresentation("presentation.yaml");
 
   /// <summary>Comments are about a version rather than part of one.</summary>
