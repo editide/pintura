@@ -57,7 +57,7 @@ function commentsOn(id) {
 
 // Comments on slides the presentation no longer lists, which no pin shows.
 function strayComments() {
-  const ids = new Set(state.deck.slides.map((slide) => slide.id));
+  const ids = new Set([...state.deck.slides, ...state.deck.variants].map((slide) => slide.id));
   return (state.deck.comments || []).filter((comment) => !ids.has(comment.slide));
 }
 

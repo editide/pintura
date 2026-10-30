@@ -162,6 +162,15 @@ An agent's unsaved changes don't ask, since Save leaves them to the agent; the c
 Ctrl+Z undoes adding, rewording, replying to, or resolving one, and deleting a slide resolves its comments as removed, which undoing it reopens.
 A comment whose element is gone shows as a grey pin, and one on a slide that is gone is listed at the foot of the sidebar to resolve; `--check` warns of both.
 
+## Pick between variants
+
+An agent unsure which of a few takes on a slide reads best can offer them as a pick, which `pintura --docs picks` describes.
+A pick takes one place in the slides, its thumbnail marked with how many variants it has, and opening it shows them side by side, each under one line on what it tries to show, with Keep beneath each.
+None, beside a box for why, keeps the first in place when none of them will do; why is optional for Keep and needed for None.
+Clicking a variant shows it alone, with a bar above it naming it and leading back to all of them, where it takes comments and the mouse's edits as any slide does.
+Keep writes the kept slide in the pick's place in `presentation.yaml`, deletes the other variants and resolves their comments as removed, and records the offer, what was kept, and why in `picks-resolved.yaml`; Ctrl+Z puts it all back.
+Until a pick is resolved, presenting and every export show its first variant, and an export lists it among its warnings.
+
 ## Numbers from a Libreta book
 
 A presentation quoting a Libreta book reads it with the `libreta` CLI, which must be on the path, or where `PINTURA_LIBRETA` points.
@@ -282,6 +291,7 @@ Add `--json` to any of the three for the same content as JSON.
 
 `pintura presentations/example --comments` lists reviewers' comments in slide order, each beside the file and line that writes what it points at; `--json` works here too.
 `--comments --slides 3-5` lists only those on the slides it names, `--comments --resolved` lists the resolved ones in the order they were resolved, each with how its thread ended, and `--resolve <id>,<id>` resolves the ones a reviewer names.
+`--picks` lists the picks waiting on the reviewer, each with its variants and their intents, and `--picks --resolved` the resolved ones, with what was kept and why.
 
 ## Look at the rendered slides
 
@@ -301,7 +311,7 @@ Without `--output`, the PNG goes to `screenshots/<presentation>/<slide>.png` in 
 
 `--screenshot` also prints the slide's findings.
 
-`--check` reports six kinds of finding, which `pintura --docs checks` lists: structure, such as a slide that fails to load; text, measured in every box; geometry; consistency across slides; comments on a slide or element that no longer exists, or in a file git doesn't track; and, with `--export`, what the PowerPoint export can't reproduce.
+`--check` reports seven kinds of finding, which `pintura --docs checks` lists: structure, such as a slide that fails to load; text, measured in every box; geometry; consistency across slides; comments on a slide or element that no longer exists, or in a file git doesn't track; picks waiting on the reviewer; and, with `--export`, what the PowerPoint export can't reproduce.
 It exits 1 when there are errors and 0 when there are only warnings, as Libreta's does, and `--json` prints the findings as JSON, a structure error with its `file`, `line`, and `topic`.
 A theme or layout element with a finding on several slides is one finding, named by its first slide.
 `--slides 3,revenue` still checks every slide, since consistency compares each with the rest, and reports the findings on those it names and on no slide.

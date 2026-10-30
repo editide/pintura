@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
 using Shouldly;
 using Xunit;
 
@@ -169,6 +172,53 @@ public class PickTests
     // Assert
     deck.Load().Comments.Select(comment => comment.Slide).ShouldBe(["one", "two", "waterfall"]);
     Checks.Comments(deck.Load()).ShouldBeEmpty();
+  }
+
+  [Fact]
+  public void A_pick_moves_in_slides_as_a_slide_does()
+  {
+    // Arrange
+    string list = List.Replace("pick: p4kx", "pick: p4kx\n  - three");
+    var move = new SlideMove("two", new ListEntry(Section: "Results"), null, Pick: "p4kx");
+
+    // Act
+    (string moved, SlideMove? undo) = Patcher.Move(list, move);
+    (string back, _) = Patcher.Move(moved, undo!);
+
+    // Assert
+    moved.ShouldContain("slides:\n  - pick: p4kx\n  - one\n");
+    undo.ShouldBe(new SlideMove("two", null, new ListEntry(Section: "Results"), Pick: "p4kx"));
+    back.ShouldBe(list);
+  }
+
+  [Fact]
+  public async Task The_preview_keeps_a_variant_and_its_undo_reopens_the_pick()
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    await using Served served = await Served.Start(deck);
+    string list = File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml"));
+    var delete = new { slide = "two", pick = "p4kx", from = new { section = "Results" }, delete = true };
+
+    // Act
+    HttpResponseMessage deleted = await served.Client.PostAsJsonAsync($"{served.Url}/api/move", delete);
+    DeckPayload offered = served.Store.Deck;
+    HttpResponseMessage kept = await served.Client.PostAsJsonAsync($"{served.Url}/api/picks",
+      new { pick = "p4kx", keep = "waterfall" });
+    string[] order = served.Store.Deck.Slides.Select(slide => slide.Id).ToArray();
+    JsonElement undo = (await kept.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("undo");
+    HttpResponseMessage reopened = await served.Client.PostAsJsonAsync($"{served.Url}/api/picks", undo);
+
+    // Assert
+    deleted.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    offered.Slides.Select(slide => (slide.Id, slide.Pick)).ShouldBe([("one", null), ("two", "p4kx")]);
+    offered.Variants.Select(slide => slide.Id).ShouldBe(["stacked", "waterfall"]);
+    offered.Picks.ShouldHaveSingleItem().Variants.Count.ShouldBe(3);
+    kept.StatusCode.ShouldBe(HttpStatusCode.OK);
+    order.ShouldBe(["one", "waterfall"]);
+    reopened.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml")).ShouldBe(list);
+    served.Store.Deck.Picks.ShouldHaveSingleItem();
   }
 
   [Fact]
