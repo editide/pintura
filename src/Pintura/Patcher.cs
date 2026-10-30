@@ -49,9 +49,10 @@ public record ListEntry(string? Slide = null, string? Section = null, string? Pi
 /// <summary>A slide's line in <c>slides</c> moved from after <paramref name="From"/> to after <paramref name="To"/>,
 /// either null for the top of the list. A delete removes the line after <paramref name="From"/>, with the slide's
 /// file and its comments; a restore puts the line back after <paramref name="To"/>, with the file's text and the
-/// comments it had.</summary>
+/// comments it had. With <paramref name="Pick"/>, the line moved is that pick's, whose first variant is the slide.
+/// </summary>
 public record SlideMove(string Slide, ListEntry? From, ListEntry? To, bool Delete = false, string? Restore = null,
-  List<Comment>? Comments = null);
+  List<Comment>? Comments = null, string? Pick = null);
 
 /// <summary>Writes mouse edits back as patches: each value's span of source is found again by its key path and
 /// replaced alone, so comments, formatting, and an agent's edits elsewhere in the file survive.</summary>
@@ -596,7 +597,7 @@ public static partial class Patcher
     }
     YamlSequenceNode list = SlideList(Parse(text), move);
     List<ListEntry?> entries = list.Children.Select(Entry).ToList();
-    var slide = new ListEntry(move.Slide);
+    ListEntry slide = move.Pick is null ? new ListEntry(move.Slide) : new ListEntry(Pick: move.Pick);
     int index = entries.IndexOf(slide);
     if (index < 0 || (index == 0 ? null : entries[index - 1]) != move.From)
     {
@@ -643,7 +644,7 @@ public static partial class Patcher
     }
     string written = First(new ValueEdit($"slides.{move.Slide}", null), candidate =>
       SlideList(Parse(candidate), move).Children.Select(Entry).SequenceEqual(order), moved);
-    return (written, new SlideMove(move.Slide, move.To, move.From));
+    return (written, new SlideMove(move.Slide, move.To, move.From, Pick: move.Pick));
   }
 
   /// <summary>Removes a slide's line, refusing the last slide since a presentation needs one. The undo restores it

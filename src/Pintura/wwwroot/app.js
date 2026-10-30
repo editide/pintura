@@ -27,6 +27,8 @@ const state = {
   current: null,
   // The layout whose specimen the slide view shows for its frames, areas, and elements to be moved.
   layout: null,
+  // Whether a pick's variant shows alone, rather than the pick showing all of them side by side.
+  alone: false,
   view: ['grid', 'theme'].includes(saved.view) ? saved.view : 'slide',
   guides: Boolean(saved.guides),
   inspector: saved.inspector ?? false,
@@ -86,7 +88,7 @@ function currentSlide() {
     return layout.stage;
   }
   const slides = state.deck.slides;
-  return slides.find((slide) => slide.id === state.current) || removedSlide(state.current) || slides[0];
+  return offeredSlide(state.current) || removedSlide(state.current) || slides[0];
 }
 
 // Each slide's thumbnail with the payload it drew, so a reload redraws only the slides that changed.
@@ -113,7 +115,7 @@ function renderSidebar() {
     for (const id of section.slides) {
       const slide = bySection.get(id);
       const width = thumbnailWidth(deck.size);
-      const drawn = JSON.stringify([deck.size, width, slide]);
+      const drawn = JSON.stringify([deck.size, width, slide, pickOf(slide)]);
       let thumbnail = thumbnails.get(id);
       if (!thumbnail || thumbnail.drawn !== drawn) {
         const button = element('button', 'thumbnail');
@@ -121,6 +123,8 @@ function renderSidebar() {
         button.dataset.slide = id;
         element('span', 'number', button);
         mountStage(element('div', 'preview', button), slide, deck.size, width);
+        markPick(button.querySelector('.preview'), slide);
+        button.dataset.pick = slide.pick || '';
         button.addEventListener('click', () => pickSlide(id));
         thumbnail = { drawn, button };
         thumbnails.set(id, thumbnail);
@@ -206,6 +210,14 @@ function renderSlide() {
     return;
   }
   const view = document.getElementById('slide-view');
+  const picking = showingPick(slide);
+  view.querySelector('.slide-canvas').hidden = picking;
+  document.getElementById('pick-view').hidden = !picking;
+  if (picking) {
+    renderPick(slide);
+    return;
+  }
+  renderVariantBar(slide);
   view.classList.toggle('zoomed', state.zoom > 1);
   const available = slideWidth(view);
   const shown = shownSlide(slide);
@@ -331,6 +343,8 @@ function renderGrid() {
       }
       markThumbnail(cell, id);
       markComments(frame, id);
+      markPick(frame, slide);
+      cell.dataset.pick = slide.pick || '';
       element('div', 'grid-caption', cell).textContent = `${slide.number} · ${slide.title || words(slide.id)}`;
       cell.addEventListener('click', () => {
         select(id);
@@ -346,8 +360,9 @@ function renderCurrent() {
   if (!slide) {
     return;
   }
+  const placed = deckSlide(slide).id;
   for (const button of document.querySelectorAll('.thumbnail, .grid-cell')) {
-    const current = button.dataset.slide === slide.id;
+    const current = button.dataset.slide === placed;
     button.classList.toggle('current', current);
     if (current && !button.closest('[hidden]')) {
       button.scrollIntoView({ block: 'nearest' });
@@ -356,7 +371,8 @@ function renderCurrent() {
   document.title = `Pintura | ${state.deck.name}`;
 }
 
-function select(id) {
+// A pick's first variant shows the pick unless <alone> asks for it by itself, and a later variant always shows alone.
+function select(id, alone = laterVariant(id)) {
   flushNudge();
   if (state.layout) {
     state.layout = null;
@@ -370,6 +386,7 @@ function select(id) {
     state.detail = null;
   }
   state.current = id;
+  state.alone = alone;
   history.replaceState(null, '', `#${encodeURIComponent(id)}`);
   unflipUnchanged();
   if (state.view === 'slide') {
@@ -398,10 +415,10 @@ function step(offset) {
   const slides = state.deck.slides;
   if (filteringChanges() && !state.presenting) {
     const changed = new Set(state.compare.diff.slides.map((slide) => slide.id));
-    select(changedStep(slides.map((slide) => slide.id), changed, currentSlide().id, offset));
+    select(changedStep(slides.map((slide) => slide.id), changed, deckSlide(currentSlide()).id, offset));
     return;
   }
-  const index = slides.indexOf(currentSlide());
+  const index = slides.indexOf(deckSlide(currentSlide()));
   const next = slides[Math.min(Math.max(index + offset, 0), slides.length - 1)];
   select(next.id);
 }
@@ -625,7 +642,7 @@ function renderPresent() {
   const present = document.getElementById('present');
   const frame = element('div', 'present-frame');
   present.replaceChildren(frame);
-  mountStage(frame, currentSlide(), size, Math.min(innerWidth, innerHeight * size[0] / size[1]));
+  mountStage(frame, deckSlide(currentSlide()), size, Math.min(innerWidth, innerHeight * size[0] / size[1]));
 }
 
 // #endregion
@@ -849,6 +866,7 @@ async function loadOnce() {
   state.deck = shownDeck(deck, compare.after);
   if (!state.current) {
     state.current = decodeURIComponent(location.hash.slice(1)) || null;
+    state.alone = laterVariant(state.current);
   }
   reselect();
   unflipUnchanged();

@@ -492,7 +492,8 @@ function startGesture(event) {
   // Every click follows a press, so what a press before it set no longer stands.
   editing.suppressClick = false;
   flushNudge();
-  if (event.button !== 0 || editing.busy || state.view !== 'slide' || reviewing()) {
+  if (event.button !== 0 || editing.busy || state.view !== 'slide' || reviewing() ||
+    event.target.closest('#pick-view')) {
     return;
   }
   if (editing.text) {
@@ -785,6 +786,10 @@ function deleteSlideKey(event) {
   if (editingActive()) {
     return true;
   }
+  if (node.dataset.pick) {
+    notice('Keep one of its variants, or none, rather than deleting a pick');
+    return true;
+  }
   const slides = state.deck.slides;
   const index = slides.findIndex((slide) => slide.id === node.dataset.slide);
   const next = slides[index + 1] || slides[index - 1];
@@ -833,6 +838,8 @@ function stepHistory(kind) {
     }
     if (entry.move) {
       sendMove(entry.move, kind);
+    } else if (entry.pick) {
+      sendPick(entry.pick, entry.first, kind);
     } else if (entry.comment) {
       sendComment(entry.comment, entry.slide, kind);
     } else {
@@ -1445,11 +1452,15 @@ function listEntry(node) {
   if (!node) {
     return null;
   }
+  if (node.dataset.pick) {
+    return { pick: node.dataset.pick };
+  }
   return node.dataset.slide !== undefined ? { slide: node.dataset.slide } : { section: node.dataset.section };
 }
 
 function sameEntry(one, other) {
-  return (one?.slide ?? null) === (other?.slide ?? null) && (one?.section ?? null) === (other?.section ?? null);
+  return (one?.slide ?? null) === (other?.slide ?? null) && (one?.section ?? null) === (other?.section ?? null) &&
+    (one?.pick ?? null) === (other?.pick ?? null);
 }
 
 // The sidebar and the grid list slides and section names in the order presentation.yaml does.
@@ -1625,7 +1636,7 @@ function endReorder(event) {
   reorder.line.remove();
   if (event.type === 'pointerup' && reorder.to !== undefined) {
     const from = listEntry(nodeBefore(reorder.surface.container, reorder.node));
-    sendMove({ slide: reorder.node.dataset.slide, from, to: reorder.to });
+    sendMove({ slide: reorder.node.dataset.slide, pick: reorder.node.dataset.pick || null, from, to: reorder.to });
   } else {
     afterEditing();
   }

@@ -447,6 +447,11 @@ public static partial class PreviewServer
     {
       return Refused($"{move.Slide} isn't a slide's file stem", StatusCodes.Status400BadRequest);
     }
+    if (move.Pick is not null && (move.Delete || move.Restore is not null))
+    {
+      return Refused($"pick {move.Pick} waits on you to keep one of its variants, or none, rather than deleting it",
+        StatusCodes.Status400BadRequest);
+    }
     SlideMove? undo;
     string list = Path.Combine(presentation.Root, "presentation.yaml");
     string commentsPath = Path.Combine(presentation.Root, CommentFile.Name);
