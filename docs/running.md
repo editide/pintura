@@ -359,6 +359,8 @@ Each book the presentation reads is inlined too, as `libreta --export` writes it
 A preview server keeps each book's page until a file in the book changes, so exporting again doesn't export an unchanged book again.
 Clicking a linked number slides the book in over the whole window at that cell, with its calculation and source, and the button naming the slide, Escape, or the browser's back goes back to it.
 On a phone, a tap on a linked number turns the slide like a tap anywhere else, since a thumb turning slides lands on numbers by accident, and a long press opens the book, which on a phone shows the cell's inspector over the whole screen.
+Nothing marks a linked number until the pointer is over it, so on the first three slides showing one, a closable pill above the arrows underlines them and says to click one, or on a touch screen to touch and hold one, until the reader traces a number; holding Ctrl (Cmd on a Mac) underlines them too, as in the preview.
+On a touch screen, the previous and next arrows are round buttons where thumbs rest: at the bottom corners, beside the counter, held upright, and in the margins beside the slide held sideways.
 The reader gets the whole book, not only the numbers the slides quote.
 
 The page's Export button downloads the presentation, named for its folder, as the files on disk have it, and shows a spinner and the step it is on while it waits: a web page's pictures as a share encoded, then its books, and a `.pptx` export's progress counted against about five calls a slide; it keeps its last `.pptx` in that folder's `exports`, so pressing it again exports incrementally too.
