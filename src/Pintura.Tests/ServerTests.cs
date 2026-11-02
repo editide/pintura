@@ -1252,6 +1252,52 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task Small_text_is_measured_at_its_true_width_rather_than_at_whole_pixel_glyph_advances()
+  {
+    // Arrange
+    // Only a font the theme ships shows it: Chromium on Linux sets installed fonts as fontconfig says, at fractions
+    // of a pixel. Elsewhere there's no fontconfig to find a font with, and the test has nothing to check.
+    string? font = FontFolders.Files().FirstOrDefault(file => Path.GetFileName(file) == "DejaVuSans.ttf");
+    if (font is null)
+    {
+      return;
+    }
+    using var deck = new DeckFixture();
+    Directory.CreateDirectory(deck.Folder.PathTo("theme/fonts"));
+    File.Copy(font, deck.Folder.PathTo("theme/fonts/DejaVuSans.ttf"));
+    deck.Write("theme/theme.yaml", DeckFixture.Theme.Replace("body: Arial", "body: DejaVu Sans"));
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: small
+          text: "2026 loans: SOFR + 2.25% to 5.50%, about 15% all-in"
+          size: 11
+          insets: [0, 0, 0, 0]
+          fit: grow
+          wrap: false
+          frame: [40, 100, 20, 20]
+        - id: large
+          text: "2026 loans: SOFR + 2.25% to 5.50%, about 15% all-in"
+          size: 110
+          insets: [0, 0, 0, 0]
+          fit: grow
+          wrap: false
+          frame: [40, 200, 20, 200]
+      """);
+    await using Served served = await Served.Start(deck, Served.Interface());
+    await using var headless = new HeadlessBrowser(served.Url);
+
+    // Act
+    Measurement measurement = await headless.Measure(["two"]);
+
+    // Assert
+    double small = measurement.Boxes.Single(box => box.Id == "small").Width.ShouldNotBeNull();
+    double large = measurement.Boxes.Single(box => box.Id == "large").Width.ShouldNotBeNull();
+    (small * 10).ShouldBe(large, large * 0.003);
+  }
+
+  [Fact]
   public async Task An_export_that_cannot_be_built_answers_with_why_for_the_page_to_show()
   {
     // Arrange

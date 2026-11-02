@@ -270,19 +270,23 @@ public sealed class HeadlessBrowser : IAsyncDisposable
     }
   }
 
+  /// <summary>Without hinting off, Chromium on Linux rounds each glyph advance of a web font, as a theme's fonts are,
+  /// to a whole pixel, which sets small text a few percent wider or narrower than the preview and PowerPoint do.
+  /// </summary>
   private static async Task<IBrowser> Launch(IPlaywright playwright)
   {
+    string[] args = ["--font-render-hinting=none"];
     foreach (string channel in Channels)
     {
       try
       {
-        return await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Channel = channel });
+        return await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Channel = channel, Args = args });
       }
       catch (PlaywrightException)
       {
       }
     }
-    return await playwright.Chromium.LaunchAsync();
+    return await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Args = args });
   }
 
   /// <summary>Fetches Playwright's headless Chromium in a child process, whose progress bars go to standard error so
