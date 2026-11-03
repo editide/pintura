@@ -60,6 +60,21 @@ public class HtmlExportTests
   }
 
   [Fact]
+  public void The_page_names_no_file_on_this_machine()
+  {
+    // Arrange
+    Presentation presentation = PresentationLoader.Load(
+      Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example"));
+
+    // Act
+    string html = HtmlExport.Build(presentation, Assets);
+
+    // Assert
+    Properties(Deck(html), "fieldEdit").ShouldAllBe(edit => edit.ValueKind == JsonValueKind.Null);
+    html.ShouldNotContain(".yaml\"");
+  }
+
+  [Fact]
   public void The_page_carries_the_interfaces_fonts()
   {
     // Arrange
@@ -274,6 +289,18 @@ public class HtmlExportTests
     File.WriteAllBytes(fixture.Folder.PathTo($"deck/media/{name}"), picture);
     fixture.Write("deck/slides/two.yaml",
       $"layout: content\nelements:\n  - id: picture\n    picture: ../media/{name}\n    frame: [40, 100, 400, 300]");
+  }
+
+  private static IEnumerable<JsonElement> Properties(JsonElement element, string name)
+  {
+    return element.ValueKind switch
+    {
+      JsonValueKind.Object => element.EnumerateObject()
+        .SelectMany(property => (property.Name == name ? [property.Value] : Enumerable.Empty<JsonElement>())
+          .Concat(Properties(property.Value, name))),
+      JsonValueKind.Array => element.EnumerateArray().SelectMany(item => Properties(item, name)),
+      _ => []
+    };
   }
 
   private static byte[] Carried(string html, string type)
