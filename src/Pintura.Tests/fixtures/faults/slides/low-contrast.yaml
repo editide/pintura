@@ -1,0 +1,8 @@
+layout: content
+title: White text on gold
+elements:
+  - id: band
+    text: White on gold is hard for anyone to read.
+    fill: accent4
+    color: light1
+    frame: [40, 120, 430, 40]

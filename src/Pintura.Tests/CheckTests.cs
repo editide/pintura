@@ -48,6 +48,61 @@ public class CheckTests
   }
 
   [Fact]
+  public void Text_too_faint_against_what_it_sits_on_is_a_warning_naming_its_faintest()
+  {
+    // Arrange
+    var measurement = new Measurement([], [], Contrasts:
+    [
+      new ContrastMeasure("cash", "sources", "slide", "$3.0B", "#FFFFFF", "#78E2B3", 10, false, "label"),
+      new ContrastMeasure("cash", "sources", "slide", "$1.3B", "#FFFFFF", "#80DBF2", 10, false, "label"),
+      new ContrastMeasure("cash", "sources", "slide", "$11.5B", "#FFFFFF", "#2AC27F", 10, false, "label"),
+      new ContrastMeasure("cash", "units", "slide", "(in $ billions)", "#0A0F1F", "#FFFFFF", 10, false)
+    ]);
+
+    // Act
+    List<Finding> findings = Checks.Contrast(measurement);
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Level.ShouldBe("warning");
+    finding.Where.ShouldBe("cash/sources");
+    finding.Message.ShouldBe("its data label \"$1.3B\", #FFFFFF on #80DBF2, has a contrast of 1.6:1, below 1.8:1, " +
+      "and 1 more like it");
+  }
+
+  [Fact]
+  public void White_on_a_bright_accent_professional_decks_use_is_contrast_enough()
+  {
+    // Arrange
+    var measurement = new Measurement([], [], Contrasts:
+    [
+      new ContrastMeasure("cash", "uses", "slide", "$14.1B", "#FFFFFF", "#20B3D8", 10, false, "label"),
+      new ContrastMeasure("business", "band", "slide", "Data centers", "#FFFFFF", "#ED7D31", 11, true)
+    ]);
+
+    // Act
+    List<Finding> findings = Checks.Contrast(measurement);
+
+    // Assert
+    findings.ShouldBeEmpty();
+  }
+
+  [Fact]
+  public void Contrast_runs_from_one_for_the_same_luminance_to_twenty_one_for_black_on_white()
+  {
+    // Arrange
+    (string white, string black) = ("#FFFFFF", "#000000");
+
+    // Act
+    double most = ColorMath.Contrast(black, white);
+    double none = ColorMath.Contrast(white, white);
+
+    // Assert
+    most.ShouldBe(21, 1e-9);
+    none.ShouldBe(1, 1e-9);
+  }
+
+  [Fact]
   public void Subpixel_overflow_is_rounding_rather_than_a_finding()
   {
     // Arrange
@@ -211,6 +266,7 @@ public class CheckTests
       "warning geometry off-slide/badge",
       "warning geometry overlap/second",
       "warning geometry near-miss/body",
+      "warning geometry uneven-row/box",
       "error geometry wide-table/table",
       "warning consistency moved-title/title",
       "warning consistency small-body/body",
@@ -898,6 +954,67 @@ public class CheckTests
   }
 
   [Fact]
+  public void Axis_labels_touching_text_or_the_other_axiss_labels_are_squeezed()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("type: line\ndata: revenue.csv");
+    deck.Write("deck/slides/chart.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - { id: chart, chart: revenue, frame: [40, 120, 600, 280] }
+        - { id: units, text: (in %), frame: [40, 100, 150, 16] }
+      """);
+    var measurement = new Measurement([],
+      [new BoxMeasure("chart", "units", "slide", "none", 1, [1], 0, null, null, Ink: [[40, 101, 40, 14]])],
+    [
+      new ChartMeasure("chart", "chart", [new ChartLabel("10%", [44, 116.6, 20, 12], Part: "value_axis"),
+        new ChartLabel("(40%)", [40, 378, 28, 12], Part: "value_axis"),
+        new ChartLabel("Sep 30", [60, 388, 30, 12], Part: "category_axis"),
+        new ChartLabel("Oct 3", [120, 388, 30, 12], Part: "category_axis")])
+    ]);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load(), measurement);
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Where.ShouldBe("chart/chart");
+    finding.Message.ShouldBe("its axis labels are squeezed: (40%) crosses Sep 30; 10% is 1.6pt from units's text; " +
+      "leave 3pt around them");
+  }
+
+  [Fact]
+  public void Axis_labels_with_room_around_them_are_not_squeezed()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("type: line\ndata: revenue.csv");
+    deck.Write("deck/slides/chart.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - { id: chart, chart: revenue, frame: [40, 120, 600, 280] }
+        - { id: units, text: (in %), frame: [40, 100, 150, 16] }
+      """);
+    var measurement = new Measurement([],
+      [new BoxMeasure("chart", "units", "slide", "none", 1, [1], 0, null, null, Ink: [[40, 101, 40, 14]])],
+    [
+      new ChartMeasure("chart", "chart", [new ChartLabel("10%", [44, 124, 20, 12], Part: "value_axis"),
+        new ChartLabel("(40%)", [40, 370, 28, 12], Part: "value_axis"),
+        new ChartLabel("10%", [70, 340, 20, 12], Part: "label"),
+        new ChartLabel("Sep 30", [60, 388, 30, 12], Part: "category_axis")])
+    ]);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load(), measurement);
+
+    // Assert
+    findings.ShouldBeEmpty();
+  }
+
+  [Fact]
   public void An_axis_label_the_plot_narrowed_for_is_an_export_warning_since_PowerPoint_cuts_it_off()
   {
     // Arrange
@@ -1071,6 +1188,142 @@ public class CheckTests
     // Assert
     introduced.ShouldBe([elsewhere]);
     gone.ShouldBe([fixedOne]);
+  }
+
+  [Fact]
+  public void A_row_inside_a_box_with_unequal_gaps_is_uneven()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: owners
+          shape: rectangle
+          frame: [40, 190, 250, 130]
+        - { id: first, shape: rectangle, frame: [70, 220, 60, 20] }
+        - { id: second, shape: rectangle, frame: [140, 220, 50, 20] }
+        - { id: third, shape: rectangle, frame: [210, 220, 50, 20] }
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Where.ShouldBe("two/owners");
+    finding.Message.ShouldBe("its row of first, second and third is uneven: gaps of 10 and 20pt");
+  }
+
+  [Fact]
+  public void A_row_whose_middle_item_is_off_its_box_centre_line_is_uneven()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: owners
+          shape: rectangle
+          frame: [40, 190, 250, 130]
+        - { id: core, shape: rectangle, frame: [61, 220, 84, 14] }
+        - { id: switch, shape: rectangle, frame: [161, 218, 36, 18] }
+        - { id: chirisa, shape: rectangle, frame: [213, 221, 57, 12] }
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    Finding finding = findings.ShouldHaveSingleItem();
+    finding.Where.ShouldBe("two/owners");
+    finding.Message.ShouldBe("its row of core, switch and chirisa is uneven: switch sits 14pt right of the box's " +
+      "centre line");
+  }
+
+  [Fact]
+  public void An_even_row_centred_in_its_box_with_equal_gaps_is_even()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: lenders
+          shape: rectangle
+          frame: [40, 190, 250, 130]
+        - { id: first, shape: rectangle, frame: [57, 220, 40, 20] }
+        - { id: second, shape: rectangle, frame: [109, 222, 50, 16] }
+        - { id: third, shape: rectangle, frame: [171, 220, 30, 20] }
+        - { id: fourth, shape: rectangle, frame: [213, 218, 64, 24] }
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    findings.ShouldBeEmpty();
+  }
+
+  [Fact]
+  public void A_row_of_four_whose_middle_gap_is_off_its_box_centre_line_is_uneven()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - id: lenders
+          shape: rectangle
+          frame: [40, 190, 250, 130]
+        - { id: first, shape: rectangle, frame: [50, 220, 40, 20] }
+        - { id: second, shape: rectangle, frame: [102, 222, 50, 16] }
+        - { id: third, shape: rectangle, frame: [164, 220, 30, 20] }
+        - { id: fourth, shape: rectangle, frame: [206, 218, 64, 24] }
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    findings.ShouldHaveSingleItem().Message.ShouldBe("its row of first, second, third and fourth is uneven: the gap " +
+      "between second and third sits 7pt left of the box's centre line");
+  }
+
+  [Fact]
+  public void Rows_outside_a_box_pairs_and_text_with_nothing_drawn_around_it_are_not_rows()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - { id: loose_1, shape: rectangle, frame: [60, 120, 60, 20] }
+        - { id: loose_2, shape: rectangle, frame: [130, 120, 50, 20] }
+        - { id: loose_3, shape: rectangle, frame: [200, 120, 50, 20] }
+        - id: pair
+          shape: rectangle
+          frame: [40, 190, 250, 130]
+        - { id: left, shape: rectangle, frame: [70, 220, 60, 20] }
+        - { id: right, shape: rectangle, frame: [140, 220, 50, 20] }
+        - id: card
+          shape: rectangle
+          frame: [400, 190, 250, 130]
+        - { id: label_1, text: One, frame: [420, 220, 60, 20] }
+        - { id: label_2, text: Two, frame: [490, 220, 50, 20] }
+        - { id: label_3, text: Three, frame: [560, 220, 50, 20] }
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Geometry(deck.Load());
+
+    // Assert
+    findings.ShouldBeEmpty();
   }
 
   [Fact]

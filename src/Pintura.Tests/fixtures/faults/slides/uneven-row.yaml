@@ -1,0 +1,9 @@
+layout: content
+title: A row of three unevenly spaced inside a box
+elements:
+  - id: box
+    shape: rectangle
+    frame: [40, 120, 400, 160]
+  - { id: first, shape: rectangle, frame: [80, 180, 80, 40] }
+  - { id: second, shape: rectangle, frame: [200, 180, 80, 40] }
+  - { id: third, shape: rectangle, frame: [300, 180, 80, 40] }

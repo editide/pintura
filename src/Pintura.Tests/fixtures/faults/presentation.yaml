@@ -10,11 +10,14 @@ slides:
   - shrunk
   - missing-font
   - long-table
+  - low-contrast
   - section: Geometry
   - off-slide
   - overlap
   - chart-label
   - near-miss
+  - uneven-row
+  - squeezed-axis
   - wide-table
   - section: Consistency
   - moved-title
