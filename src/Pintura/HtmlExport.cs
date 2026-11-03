@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 using SkiaSharp;
 
@@ -16,6 +17,17 @@ public static class HtmlExport
   // Fonts every Windows, Mac, and iPhone has, though Android and Linux may draw a lookalike.
   private static readonly string[] Everywhere =
     ["Arial", "Courier New", "Georgia", "Times New Roman", "Trebuchet MS", "Verdana"];
+  // A field's edit names its file on this machine wherever its run sits, so the deck is sent without it.
+  private static readonly JsonSerializerOptions Sent = new JsonSerializerOptions(PayloadJson.Options)
+  {
+    TypeInfoResolver = new DefaultJsonTypeInfoResolver().WithAddedModifier(type =>
+    {
+      if (type.Type == typeof(RunPayload))
+      {
+        type.Properties.Remove(type.Properties.Single(property => property.Name == "fieldEdit"));
+      }
+    })
+  };
 
   private const string SidebarIcon = "<svg class=\"icon\" viewBox=\"0 0 20 20\" aria-hidden=\"true\">"
     + "<rect x=\"2.5\" y=\"3\" width=\"15\" height=\"14\" rx=\"1.5\"></rect><path d=\"M7.5 3v14\"></path></svg>";
@@ -162,7 +174,7 @@ public static class HtmlExport
   // only inside strings, where its escape reads the same.
   private static string ScriptJson<T>(T value)
   {
-    return JsonSerializer.Serialize(value, PayloadJson.Options).Replace("<", "\\u003c");
+    return JsonSerializer.Serialize(value, Sent).Replace("<", "\\u003c");
   }
 
   private static string InlineFonts(string css, string assets)
