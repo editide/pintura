@@ -938,6 +938,119 @@ function measureCharts(stage) {
   }));
 }
 
+// Each run of text on a drawn stage, in the color it's drawn in, over the color painted beneath its middle: a chart's
+// bar under its label, a shape under its text, or the slide. Text over a picture or a gradient has no one color behind
+// it, so it's left out, as are bullets, which are marks rather than text to read.
+function measureContrast(stage) {
+  const painted = [...stage.querySelectorAll('path, rect, circle, ellipse, polygon, td')];
+  const walker = document.createTreeWalker(stage, NodeFilter.SHOW_TEXT);
+  const found = new Map();
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    const item = parent.closest('.item');
+    if (!item || !node.textContent.trim() || parent.closest('.bullet, .area-item')) {
+      continue;
+    }
+    const svgText = parent instanceof SVGElement;
+    const style = getComputedStyle(parent);
+    const color = parseColor(svgText ? style.fill : style.color);
+    if (!color || color[3] === 0) {
+      continue;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rect = [...range.getClientRects()].find((line) => line.width > 0 && line.height > 0);
+    if (!rect) {
+      continue;
+    }
+    const behind = backdrop(rect.left + rect.width / 2, rect.top + rect.height / 2, node, painted, stage);
+    if (!behind) {
+      continue;
+    }
+    const entry = {
+      id: item.dataset.id,
+      owner: item.dataset.owner,
+      text: node.textContent.trim(),
+      color: hex(color),
+      backdrop: hex(behind),
+      size: Math.round(parseFloat(style.fontSize) * 10) / 10,
+      bold: Number(style.fontWeight) >= 700,
+      part: svgText ? parent.dataset.part ?? null : null
+    };
+    const key = `${entry.id}|${entry.color}|${entry.backdrop}|${entry.size}|${entry.bold}`;
+    if (!found.has(key)) {
+      found.set(key, entry);
+    }
+  }
+  return [...found.values()];
+}
+
+// The color painted at a point beneath a text node: the latest fill before it in the document that covers the point,
+// blended over what's beneath when it's see-through. Null over a picture or a fill that isn't one color.
+function backdrop(x, y, text, painted, stage) {
+  const under = painted.filter((node) => node.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const pictures = [...stage.querySelectorAll('img')]
+    .filter((image) => image.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const covers = (node) => {
+    const box = node.getBoundingClientRect();
+    if (x < box.left || x > box.right || y < box.top || y > box.bottom) {
+      return false;
+    }
+    if (!(node instanceof SVGGeometryElement)) {
+      return true;
+    }
+    const point = new DOMPoint(x, y).matrixTransform(node.getScreenCTM().inverse());
+    return node.isPointInFill(point);
+  };
+  const layers = [];
+  for (const node of [...under, ...pictures].sort((a, b) =>
+    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? 1 : -1)) {
+    if (!covers(node)) {
+      continue;
+    }
+    if (node instanceof HTMLImageElement) {
+      return null;
+    }
+    const style = getComputedStyle(node);
+    const fill = node instanceof SVGElement ? style.fill : style.backgroundColor;
+    if (fill === 'none') {
+      continue;
+    }
+    const color = parseColor(fill);
+    if (!color) {
+      return null;
+    }
+    const opacity = color[3] * (node instanceof SVGElement ? Number(style.fillOpacity) * Number(style.opacity) : 1);
+    if (opacity === 0) {
+      continue;
+    }
+    layers.push([color, opacity]);
+    if (opacity === 1) {
+      break;
+    }
+  }
+  let result = parseColor(getComputedStyle(stage).backgroundColor) ?? [255, 255, 255, 1];
+  for (const [color, opacity] of layers.reverse()) {
+    result = result.map((channel, index) => index < 3 ? color[index] * opacity + channel * (1 - opacity) : 1);
+  }
+  return result;
+}
+
+// A computed CSS color as [r, g, b, alpha], or null for one that isn't a plain color, such as a gradient's url.
+function parseColor(value) {
+  const match = /^rgba?\(([\d.]+),?\s*([\d.]+),?\s*([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\)$/.exec(value ?? '');
+  if (!match) {
+    return null;
+  }
+  const alpha = match[4] === undefined ? 1
+    : match[4].endsWith('%') ? parseFloat(match[4]) / 100 : parseFloat(match[4]);
+  return [Number(match[1]), Number(match[2]), Number(match[3]), alpha];
+}
+
+function hex([r, g, b]) {
+  return `#${[r, g, b].map((channel) => Math.round(channel).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened };
+  module.exports = { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened, parseColor };
 }

@@ -37,6 +37,13 @@ public static class Checks
   /// what it draws.</summary>
   private const double BuiltInMargin = 0.05;
   private const double NearMiss = 3;
+  // Gaps in a row, and its middle against its box's centre line, this far apart are uneven rather than rounding.
+  private const double Uneven = 2;
+  // Room an axis label keeps from text and from the other axis's labels, short of which it reads as squeezed.
+  private const double AxisClearance = 3;
+  // Professional decks set white on bright accents, as PowerPoint's own palette does, well below WCAG's 3:1; text
+  // fainter than this, such as white on gold, is hard for anyone to read.
+  private const double MinimumContrast = 1.8;
   // Below this many other slides agreeing, there is no rest of the presentation for one slide to differ from.
   private const int Agreeing = 2;
   private const int RepeatedOnSlides = 3;
@@ -77,6 +84,7 @@ public static class Checks
   {
     List<Finding> findings = Structure(presentation);
     findings.AddRange(Text(measurement, fonts, presentation.Theme.Checks.Shrink));
+    findings.AddRange(Contrast(measurement));
     findings.AddRange(Geometry(presentation, measurement));
     findings.AddRange(Consistency(presentation));
     findings.AddRange(Comments(presentation));
@@ -258,6 +266,40 @@ public static class Checks
     return findings;
   }
 
+  /// <summary>Text too faint against the color beneath it, by the WCAG contrast ratio of their luminances, such as
+  /// white data labels on a light bar. Each element is one finding, naming its faintest text.</summary>
+  public static List<Finding> Contrast(Measurement measurement)
+  {
+    var candidates = new List<Candidate>();
+    foreach (IGrouping<(string Slide, string Id), ContrastMeasure> element in (measurement.Contrasts ?? [])
+      .Select(text => (Text: text, Ratio: ColorMath.Contrast(text.Color, text.Backdrop)))
+      .Where(pair => pair.Ratio < MinimumContrast - 0.005)
+      .OrderBy(pair => pair.Ratio)
+      .Select(pair => pair.Text)
+      .GroupBy(text => (text.Slide, text.Id)))
+    {
+      ContrastMeasure faintest = element.First();
+      double ratio = ColorMath.Contrast(faintest.Color, faintest.Backdrop);
+      string what = faintest.Part == "label" ? "data label" : faintest.Part is null ? "text" : "axis label";
+      List<string> texts = element.Select(text => text.Text).Distinct().ToList();
+      string others = texts.Count > 1 ? $", and {texts.Count - 1} more like it" : "";
+      string key = faintest.Owner == "slide" ? $"contrast/{faintest.Slide}/{faintest.Id}"
+        : $"contrast/{faintest.Owner}/{faintest.Id}";
+      candidates.Add(new Candidate(key, faintest.Owner, new Finding("warning", "text",
+        $"{faintest.Slide}/{faintest.Id}", $"its {what} \"{Snippet(faintest.Text)}\", {faintest.Color} on " +
+        $"{faintest.Backdrop}, has a contrast of {Points(ratio)}:1, below {Points(MinimumContrast)}:1{others}")
+      {
+        Slide = faintest.Slide
+      }, -ratio));
+    }
+    return Collapse(candidates);
+  }
+
+  private static string Snippet(string text)
+  {
+    return text.Length <= 40 ? text : $"{text[..39].TrimEnd()}…";
+  }
+
   private static Candidate BoxCandidate(BoxMeasure box, string level, string check, string message, double worst)
   {
     return new Candidate(box.Owner == "slide" ? $"{check}/{box.Slide}/{box.Id}" : $"{check}/{box.Owner}/{box.Id}",
@@ -287,8 +329,10 @@ public static class Checks
       candidates.AddRange(ChartLabels(slide, items, measurement));
       candidates.AddRange(PushedLabels(slide, items, measurement));
       candidates.AddRange(LabelsOverAxes(slide, items, measurement));
+      candidates.AddRange(SqueezedAxes(slide, items, measurement));
       candidates.AddRange(Crossings(slide, items));
       candidates.AddRange(NearMisses(slide, items, areas));
+      candidates.AddRange(UnevenRows(slide, items));
       candidates.AddRange(Margins(presentation, slide, items, pictures));
     }
     return Collapse(candidates);
@@ -473,6 +517,66 @@ public static class Checks
     }
   }
 
+  /// <summary>Axis labels short of a few points from the other axis's labels, as a date axis's first date meets the
+  /// lowest value at the plot's corner, or from text beside the chart, such as its units line. Text crossing any of the
+  /// chart's labels is <see cref="ChartLabels"/>'s.</summary>
+  private static IEnumerable<Candidate> SqueezedAxes(Slide slide, List<Placed> items, Measurement? measurement)
+  {
+    foreach (ChartMeasure chart in (measurement?.Charts ?? []).Where(chart => chart.Slide == slide.Id))
+    {
+      if (items.FirstOrDefault(item => item.Id == chart.Id) is not { } item)
+      {
+        continue;
+      }
+      List<ChartLabel> values = chart.Labels.Where(label => label.Part is "value_axis" or "secondary_axis").ToList();
+      List<ChartLabel> categories = chart.Labels.Where(label => label.Part == "category_axis").ToList();
+      var squeezed = new List<string>();
+      foreach (ChartLabel value in values)
+      {
+        foreach (ChartLabel category in categories.Where(category => Gap(value.Rect, category.Rect) < AxisClearance))
+        {
+          squeezed.Add(Crosses(value.Rect, category.Rect) ? $"{value.Text} crosses {category.Text}"
+            : $"{value.Text} {Apart(Gap(value.Rect, category.Rect))} {category.Text}");
+        }
+      }
+      foreach (BoxMeasure box in (measurement?.Boxes ?? []).Where(box => box.Slide == slide.Id && box.Ink is not null &&
+        !box.Ink.Any(line => chart.Labels.Any(label => Crosses(line, label.Rect)))))
+      {
+        foreach (ChartLabel label in values.Concat(categories))
+        {
+          double nearest = box.Ink!.Select(line => Gap(line, label.Rect)).DefaultIfEmpty(double.MaxValue).Min();
+          if (nearest < AxisClearance)
+          {
+            string name = items.FirstOrDefault(other => other.Id == box.Id)?.Name ?? box.Id;
+            squeezed.Add($"{label.Text} {Apart(nearest)} {name}'s text");
+          }
+        }
+      }
+      if (squeezed.Count > 0)
+      {
+        yield return item.Report(slide, "squeezed", "geometry",
+          $"its axis labels are squeezed: {string.Join("; ", squeezed.Distinct())}; leave {Points(AxisClearance)}pt " +
+          "around them");
+      }
+    }
+  }
+
+  private static string Apart(double gap)
+  {
+    return gap < Meets ? "touches" : $"is {Points(gap)}pt from";
+  }
+
+  /// <summary>How far apart two rectangles are, along whichever axis separates them; negative where they overlap.
+  /// </summary>
+  private static double Gap(double[] first, double[] second)
+  {
+    return new[]
+    {
+      second[0] - (first[0] + first[2]), first[0] - (second[0] + second[2]),
+      second[1] - (first[1] + first[3]), first[1] - (second[1] + second[3])
+    }.Max();
+  }
+
   private static bool Crosses(double[] first, double[] second)
   {
     double width = Math.Min(first[0] + first[2], second[0] + second[2]) - Math.Max(first[0], second[0]);
@@ -533,6 +637,73 @@ public static class Checks
         yield return item.Report(slide, "near", "geometry", string.Join("; ", misses));
       }
     }
+  }
+
+  /// <summary>Three or more items side by side inside a box, such as logos in a card, with unequal gaps between them, or
+  /// their middle off the box's centre line: the middle item when there's one, the middle gap when there isn't. Text
+  /// with nothing drawn around it has no edges to space, so it is no item of a row.</summary>
+  private static IEnumerable<Candidate> UnevenRows(Slide slide, List<Placed> items)
+  {
+    List<Placed> spaced = items.Where(item => !item.IsLine && !item.Rotated && item.Sides is null).ToList();
+    foreach (IGrouping<Placed, Placed> inside in spaced
+      .Select(item => (Item: item, Box: Container(item, items)))
+      .Where(pair => pair.Box is { Kind: "shape" })
+      .GroupBy(pair => pair.Box!, pair => pair.Item))
+    {
+      Placed box = inside.Key;
+      foreach (List<Placed> row in Rows(inside.ToList()).Where(row => row.Count >= 3))
+      {
+        double[] gaps = [.. row.Zip(row.Skip(1), (left, right) => right.Left - left.Right)];
+        if (gaps.Any(gap => gap < -Meets))
+        {
+          continue;
+        }
+        string names = $"{string.Join(", ", row.SkipLast(1).Select(item => item.Name))} and {row[^1].Name}";
+        var problems = new List<string>();
+        if (gaps.Max() - gaps.Min() > Uneven)
+        {
+          problems.Add($"gaps of {string.Join(", ", gaps.SkipLast(1).Select(Points))} and {Points(gaps[^1])}pt");
+        }
+        double centre = (box.Left + box.Right) / 2;
+        int middle = row.Count / 2;
+        (string what, double at) = row.Count % 2 == 1
+          ? (row[middle].Name, (row[middle].Left + row[middle].Right) / 2)
+          : ($"the gap between {row[middle - 1].Name} and {row[middle].Name}",
+            (row[middle - 1].Right + row[middle].Left) / 2);
+        if (Math.Abs(at - centre) > Uneven)
+        {
+          problems.Add($"{what} sits {Points(Math.Abs(at - centre))}pt {(at > centre ? "right" : "left")} of the " +
+            "box's centre line");
+        }
+        if (problems.Count > 0)
+        {
+          yield return box.Report(slide, $"uneven/{row[0].Id}", "geometry",
+            $"its row of {names} is uneven: {string.Join("; ", problems)}");
+        }
+      }
+    }
+  }
+
+  /// <summary>Items grouped into rows, left to right, each sharing the height of the others in its row: every one's
+  /// middle within the others' tops and bottoms.</summary>
+  private static List<List<Placed>> Rows(List<Placed> items)
+  {
+    var rows = new List<List<Placed>>();
+    foreach (Placed item in items.OrderBy(item => (item.Top + item.Bottom) / 2))
+    {
+      double middle = (item.Top + item.Bottom) / 2;
+      List<Placed>? row = rows.FirstOrDefault(row => row.All(other => middle >= other.Top && middle <= other.Bottom &&
+        (other.Top + other.Bottom) / 2 >= item.Top && (other.Top + other.Bottom) / 2 <= item.Bottom));
+      if (row is null)
+      {
+        rows.Add([item]);
+      }
+      else
+      {
+        row.Add(item);
+      }
+    }
+    return rows.Select(row => row.OrderBy(item => item.Left).ToList()).ToList();
   }
 
   /// <summary>Pictures whose image has transparent margins built in, so their frame, and anything aligned to it,
@@ -638,6 +809,7 @@ public static class Checks
       double rotate = item.Properties.TryGetValue("rotate", out Resolved? turn) ? (double)turn.Value : 0;
       placed.Add(new Placed(item.Id, name, owner, rect)
       {
+        Kind = item.Kind,
         Rotate = rotate % 360,
         Grown = measured.GetValueOrDefault((slide.Id, item.Id))?.Height is not null,
         Sides = AnchoredSides(item),
@@ -1198,6 +1370,7 @@ public static class Checks
     /// <summary>A text box's lines of text as measured, each <c>[x, y, w, h]</c>.</summary>
     public double[][]? Ink { get; init; }
     public double[]? Tail { get; init; }
+    public string? Kind { get; init; }
     public double Rotate { get; init; }
     /// <summary>A <c>grow</c> box's bottom follows its text rather than a number anyone wrote.</summary>
     public bool Grown { get; init; }

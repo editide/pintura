@@ -301,8 +301,8 @@ Typing inside a field instead rewrites its value where `presentation.yaml` write
 Export findings need `--export`, since they describe the exporter rather than the slides.
 
 - **Structure** (errors): unknown layouts, placeholders, areas, styles, colors, formats, charts, tables, or media; duplicate ids; unknown keys; unresolved fields.
-- **Text**: overflow (error); shrink below a threshold, fonts that didn't render (warnings).
-- **Geometry** (warnings): elements off the slide; partly overlapping elements, since a box wholly inside another is layering; near-miss alignment, where an edge sits within a few points of the same side of another element or area without meeting it, since facing edges a few points apart are spacing.
+- **Text**: overflow (error); shrink below a threshold, fonts that didn't render, text too faint against the color painted beneath it (warnings).
+- **Geometry** (warnings): elements off the slide; partly overlapping elements, since a box wholly inside another is layering; near-miss alignment, where an edge sits within a few points of the same side of another element or area without meeting it, since facing edges a few points apart are spacing; a row inside a shape spaced unevenly or off its centre line; a chart's axis labels pressed against text or each other.
 - **Consistency** (warnings): things that should match across slides and don't: a title moved on one slide, body text at 14pt on one slide and 16pt on the rest, the same one-off formatting on several slides, which wants to be a style.
 - **Export** (warnings): features the exporter can't reproduce.
 

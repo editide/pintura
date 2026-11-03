@@ -121,6 +121,24 @@ public static class ColorMath
     return FromHsl(hue, saturation, Math.Clamp(luminance * modulation + offset, 0, 1));
   }
 
+  /// <summary>WCAG's contrast ratio between two colors, from 1 for the same luminance to 21 for black on white.
+  /// </summary>
+  public static double Contrast(string first, string second)
+  {
+    static double Relative(string hex)
+    {
+      double Linear(int start)
+      {
+        double channel = Convert.ToInt32(hex.Substring(start, 2), 16) / 255.0;
+        return channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
+      }
+      return 0.2126 * Linear(1) + 0.7152 * Linear(3) + 0.0722 * Linear(5);
+    }
+    (double lighter, double darker) = (Math.Max(Relative(first), Relative(second)),
+      Math.Min(Relative(first), Relative(second)));
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
   private static (double Hue, double Saturation, double Luminance) ToHsl(string hex)
   {
     double red = Convert.ToInt32(hex.Substring(1, 2), 16) / 255.0;

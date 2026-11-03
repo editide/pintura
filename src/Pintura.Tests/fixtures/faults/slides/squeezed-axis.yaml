@@ -1,0 +1,9 @@
+layout: content
+title: A units line pressed against the value axis
+elements:
+  - id: units
+    text: (in $ millions)
+    frame: [40, 100, 200, 24]
+  - id: chart
+    chart: revenue
+    frame: [40, 124, 880, 348]

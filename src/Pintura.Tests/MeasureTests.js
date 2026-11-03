@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
+const { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened, parseColor } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
 
 test('runs side by side on one line count once', () => {
   // Arrange
@@ -328,4 +328,11 @@ test('a word wrapped at its hyphen counts as one word on its line', () => {
 
   // Assert
   assert.equal(line, start);
+});
+
+test('a computed color parses to its channels and alpha, and a gradient to nothing', () => {
+  assert.deepEqual(parseColor('rgb(32, 179, 216)'), [32, 179, 216, 1]);
+  assert.deepEqual(parseColor('rgba(0, 0, 0, 0)'), [0, 0, 0, 0]);
+  assert.deepEqual(parseColor('rgb(255 255 255 / 50%)'), [255, 255, 255, 0.5]);
+  assert.equal(parseColor('url("#fade")'), null);
 });

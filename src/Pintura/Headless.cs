@@ -6,7 +6,7 @@ using Microsoft.Playwright;
 namespace Pintura;
 
 public record Measurement(List<FontMeasure> Fonts, List<BoxMeasure> Boxes, List<ChartMeasure>? Charts = null,
-  List<PictureMeasure>? Pictures = null);
+  List<PictureMeasure>? Pictures = null, List<ContrastMeasure>? Contrasts = null);
 
 public record FontMeasure(string Family, bool Available);
 
@@ -40,6 +40,11 @@ public record Runt(int Paragraph, string Text);
 
 /// <summary>The text a chart draws, its axis, data, and legend labels, as the headless page drew it.</summary>
 public record ChartMeasure(string Slide, string Id, List<ChartLabel> Labels);
+
+/// <summary>Text as the headless page drew it, in its color, as <c>#RRGGBB</c>, over the color painted beneath it,
+/// at its size in points. Part is a chart's, such as <c>label</c>, for text a chart draws.</summary>
+public record ContrastMeasure(string Slide, string Id, string Owner, string Text, string Color, string Backdrop,
+  double Size, bool Bold, string? Part = null);
 
 /// <summary>A picture as the headless page drew it: the image's <c>[x, y, width, height]</c> on the slide, inside its
 /// frame under <c>fit: contain</c>, and the transparent margins built into the image, as fractions of its width and
