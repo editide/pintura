@@ -271,6 +271,23 @@ public class PickTests
   }
 
   [Fact]
+  public void The_payload_carries_each_picks_last_resolution_for_a_version_to_show_what_was_kept()
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", "One chart says it",
+      Shown: ["waterfall", "two", "stacked"]), "Daniel", Now, Seen);
+
+    // Act
+    DeckPayload payload = PayloadBuilder.Build(deck.Load(), 1, (path, _) => path);
+
+    // Assert
+    PickResolvedPayload resolved = payload.Resolved.ShouldHaveSingleItem();
+    (resolved.Id, resolved.Chosen, resolved.Why).ShouldBe(("p4kx", "stacked", "One chart says it"));
+    resolved.Shown.ShouldBe(["waterfall", "two", "stacked"]);
+  }
+
+  [Fact]
   public void Undoing_a_keep_puts_every_file_back_as_it_was()
   {
     // Arrange

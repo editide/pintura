@@ -4,6 +4,8 @@
 // position can't favour one, each under its intent with Keep beneath it, and None below them all. Clicking a variant
 // enlarges it, to flip through them with the arrows; Keep or None then asks why in a dialog. Nothing here says which
 // variant the agent expects kept.
+// A version stepped to may still offer a pick since resolved, and Keep there would write to the latest changes the
+// page isn't drawing, so a version shows its picks without Keep or None, marking what the latest changes kept.
 
 const PICK_GAP = 20;
 const PICK_ORDERS = 'pintura.picks';
@@ -49,6 +51,17 @@ function shownVariants(pick) {
   return order.map((slide) => pick.variants.find((variant) => variant.slide === slide));
 }
 
+// The variants in the order the reviewer saw them when resolving the pick, or as offered when that went unrecorded.
+function resolvedVariants(pick, resolution) {
+  const shown = resolution.shown?.map((slide) => pick.variants.find((variant) => variant.slide === slide));
+  return shown && shown.length === pick.variants.length && shown.every(Boolean) ? shown : pick.variants;
+}
+
+// The latest resolution of a pick, which a version showing it takes from the working tree.
+function resolutionOf(pick) {
+  return state.deck.resolved?.find((resolved) => resolved.id === pick.id) || null;
+}
+
 function shuffled(items, random = Math.random) {
   const copy = [...items];
   for (let index = copy.length - 1; index > 0; index--) {
@@ -69,7 +82,7 @@ function mountThumbnail(frame, slide, size, width) {
   const card = mountCard(frame, size, width, width / 14);
   if (pick) {
     element('div', 'pick-card-count', card).textContent = `${pick.variants.length} variants`;
-    element('div', 'pick-card-ask', card).textContent = 'Keep one';
+    element('div', 'pick-card-ask', card).textContent = pickAsk(slide, pick);
   } else {
     element('div', 'pick-card-count', card).textContent = 'Rejected';
   }
@@ -85,10 +98,20 @@ function mountCard(frame, size, width, fontSize) {
   return card;
 }
 
+// What a pick asks of the reviewer, or on a version, what the latest changes made of it.
+function pickAsk(slide, pick) {
+  const resolution = reviewing(slide) ? resolutionOf(pick) : null;
+  if (!resolution) {
+    return 'Keep one';
+  }
+  const index = resolvedVariants(pick, resolution).findIndex((variant) => variant.slide === resolution.chosen);
+  return index < 0 ? 'Kept none' : `Kept ${variantLetter(index)}`;
+}
+
 // A pick's caption, which names none of its variants, or a rejected slide's.
 function thumbnailTitle(slide) {
   const pick = pickOf(slide);
-  return pick ? `Keep one of ${pick.variants.length} variants` : slide.rejected ? 'Rejected'
+  return pick ? `${pickAsk(slide, pick)} of ${pick.variants.length} variants` : slide.rejected ? 'Rejected'
     : slide.title;
 }
 
@@ -102,7 +125,9 @@ function mountRejected(frame, slide, size, width) {
   const again = element('button', 'tool rejected-again', card);
   again.type = 'button';
   again.textContent = 'Choose again';
-  again.title = `Reopen pick ${slide.rejected.pick} to keep one of its variants, or none`;
+  again.disabled = reviewing();
+  again.title = again.disabled ? 'Choose again on the latest changes'
+    : `Reopen pick ${slide.rejected.pick} to keep one of its variants, or none`;
   again.addEventListener('click', () => sendPick({ pick: slide.rejected.pick, revisit: true }, slide.id));
   return card;
 }
@@ -115,14 +140,16 @@ function renderPick(slide) {
   const pick = pickOf(slide);
   const view = document.getElementById('pick-view');
   const size = state.deck.size;
-  const variants = shownVariants(pick);
+  const past = reviewing(slide);
+  const resolution = past ? resolutionOf(pick) : null;
+  const variants = resolution ? resolvedVariants(pick, resolution) : shownVariants(pick);
   const enlarged = enlargedIndex(pick);
   const width = enlarged === null
     ? Math.max(160, Math.floor((view.clientWidth - 48 - PICK_GAP * (variants.length - 1)) / variants.length))
     : Math.max(200, Math.floor(Math.min(view.clientWidth - 2 * ENLARGED_SIDES,
       (view.clientHeight - ENLARGED_ENDS) * size[0] / size[1])));
   const slides = variants.map((variant) => offeredSlide(variant.slide) || null);
-  const drawn = JSON.stringify([size, width, pick, variants, slides, enlarged]);
+  const drawn = JSON.stringify([size, width, pick, variants, slides, enlarged, past, resolution]);
   if (view.dataset.drawn === drawn) {
     return;
   }
@@ -133,11 +160,15 @@ function renderPick(slide) {
     const row = element('div', 'pick-variants', view);
     row.style.gap = `${PICK_GAP}px`;
     variants.forEach((variant, index) => {
-      const column = renderVariant(row, pick, variant, index, slides[index], width);
+      const column = renderVariant(row, pick, variant, index, slides[index], width, past, resolution);
       const frame = column.querySelector('.pick-frame');
       frame.title = 'Enlarge, to flip through the variants';
       frame.addEventListener('click', () => enlarge(pick, index));
     });
+    if (past) {
+      renderOutcome(view, pick, resolution);
+      return;
+    }
     const none = element('button', 'tool pick-none', view);
     none.type = 'button';
     none.textContent = 'None of these';
@@ -146,7 +177,7 @@ function renderPick(slide) {
   }
   const stage = element('div', 'pick-enlarged', view);
   const back = arrowButton(stage, '‹', 'Previous variant (←)', () => flipVariant(-1));
-  renderVariant(stage, pick, variants[enlarged], enlarged, slides[enlarged], width);
+  renderVariant(stage, pick, variants[enlarged], enlarged, slides[enlarged], width, past, resolution);
   const next = arrowButton(stage, '›', 'Next variant (→)', () => flipVariant(1));
   back.disabled = enlarged === 0;
   next.disabled = enlarged === variants.length - 1;
@@ -158,8 +189,8 @@ function renderPick(slide) {
   close.addEventListener('click', () => enlarge(pick, null));
 }
 
-// A variant under its letter and intent, with Keep beneath it.
-function renderVariant(parent, pick, variant, index, shown, width) {
+// A variant under its letter and intent, with Keep beneath it, or on a version, Kept beneath the one kept.
+function renderVariant(parent, pick, variant, index, shown, width, past, resolution) {
   const size = state.deck.size;
   const column = element('div', 'pick-variant', parent);
   column.style.width = `${width}px`;
@@ -175,11 +206,31 @@ function renderVariant(parent, pick, variant, index, shown, width) {
     const stage = mountStage(frame, { items: [], background: '#fff' }, size, width);
     element('div', 'absent', stage).textContent = shown?.error || `No slides/${variant.slide}.yaml`;
   }
+  if (past) {
+    if (resolution?.chosen === variant.slide) {
+      column.classList.add('kept');
+      element('div', 'pick-kept', column).textContent = 'Kept';
+    }
+    return column;
+  }
   const keep = element('button', 'tool primary pick-keep', column);
   keep.type = 'button';
   keep.textContent = `Keep ${variantLetter(index)}`;
   keep.addEventListener('click', () => askWhy(pick, variant.slide));
   return column;
+}
+
+// Below a version's pick, what the latest changes made of it, or that it waits on them.
+function renderOutcome(view, pick, resolution) {
+  const outcome = element('div', 'pick-outcome', view);
+  if (!resolution) {
+    outcome.textContent = 'Still open: keep one on the latest changes';
+    return;
+  }
+  element('div', 'pick-outcome-head', outcome).textContent = pickAsk(currentSlide(), pick);
+  if (resolution.why) {
+    element('div', null, outcome).textContent = resolution.why;
+  }
 }
 
 function arrowButton(parent, text, title, action) {
@@ -226,7 +277,7 @@ function pickKey(event) {
 
 // Keep or None asks why in a dialog, its box focused: optional for Keep, needed for None.
 function askWhy(pick, keep) {
-  if (editingActive()) {
+  if (editingActive() || reviewing()) {
     return;
   }
   const variants = shownVariants(pick);
@@ -279,5 +330,5 @@ function installPicks() {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { variantLetter, shuffled };
+  module.exports = { resolvedVariants, variantLetter, shuffled };
 }
