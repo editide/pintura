@@ -3853,7 +3853,9 @@ kbd {
 .comment-thread {
   max-height: 240px;
   margin-bottom: 8px;
+  padding-right: 10px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .comment-thread .comment-note {
