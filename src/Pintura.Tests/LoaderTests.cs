@@ -586,6 +586,30 @@ public class LoaderTests
   }
 
   [Theory]
+  [InlineData(null, null)]
+  [InlineData("a/.git/HEAD", "a")]
+  [InlineData("a/.git", "a")]
+  public void A_repository_is_a_git_folder_with_a_head_or_a_git_file_never_an_empty_git_folder(string? marker,
+    string? repository)
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    Directory.CreateDirectory(folder.PathTo("a/.git"));
+    Directory.CreateDirectory(folder.PathTo("a/b/deck"));
+    if (marker is not null)
+    {
+      Directory.Delete(folder.PathTo("a/.git"));
+      folder.Write(marker, "ref: refs/heads/main");
+    }
+
+    // Act
+    string? found = PresentationLoader.Repository(folder.PathTo("a/b/deck"));
+
+    // Assert
+    found.ShouldBe(repository is null ? null : folder.PathTo(repository));
+  }
+
+  [Theory]
   [MemberData(nameof(Malformed))]
   public void A_value_the_engine_cant_use_is_an_error_naming_it_never_a_crash(string _, Action<DeckFixture> write,
     string? problem)
