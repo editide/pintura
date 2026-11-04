@@ -897,15 +897,16 @@ public static partial class Patcher
         }
         int from;
         int to;
+        string kept = "";
         if (removed.Count > 0)
         {
-          (from, to) = Stretch(removed, Wrappers(lines[paragraph.Line], paragraph.Start));
+          (from, to, kept) = Cut(line, removed, Wrappers(lines[paragraph.Line], paragraph.Start), typed.Length > 0);
         }
         else
         {
           from = to = start > 0 ? old[start - 1].End : old.Count > 0 ? old[0].Start : paragraph.Start;
         }
-        line = line[..from] + Escape(typed, plain) + line[to..];
+        line = line[..from] + Escape(typed, plain) + kept + line[to..];
       }
       lines[paragraph.Line] = plain || paragraph.Level > 0 ? line : Markup.EscapeLineStart(line);
     }
@@ -964,9 +965,10 @@ public static partial class Patcher
       }
       int from;
       int to;
+      string kept = "";
       if (removed.Count > 0)
       {
-        (from, to) = Stretch(removed, wrappers);
+        (from, to, kept) = Cut(body, removed, wrappers, typed.Length > 0);
       }
       else if (start > 0 && typed.StartsWith('\n') && (start == old.Count || old[start].Character == '\n'))
       {
@@ -998,7 +1000,7 @@ public static partial class Patcher
       string closing = string.Concat(inside.Select(markup => markup.Close).Reverse());
       string reopening = string.Concat(inside.Select(markup => markup.Open));
       text.Remove(from, to - from);
-      text.Insert(from, Escape(typed, false).Replace("\n", closing + "\n" + opening + reopening));
+      text.Insert(from, Escape(typed, false).Replace("\n", closing + "\n" + opening + reopening) + kept);
     }
     string updated = text.ToString();
 
@@ -1012,32 +1014,35 @@ public static partial class Patcher
   /// side.</summary>
   private record Wrapper(int ContentStart, int ContentEnd, string Open, string Close);
 
-  /// <summary>Where the characters an edit removed lie, widened to take in the markers of any formatting whose
-  /// content they remove entirely, since nothing would be left for it to format.</summary>
-  private static (int From, int To) Stretch(List<(char Character, int Start, int End, string? Field)> removed,
-    List<Wrapper> wrappers)
+  /// <summary>The stretch of <paramref name="source"/> holding the characters an edit removed, and the markup in it
+  /// to keep, before which the typed text goes. Markup stays unless the edit removes all it formats, and what wraps
+  /// the first removed character stays for the text typed over it, as a word processor keeps it.</summary>
+  private static (int From, int To, string Kept) Cut(string source,
+    List<(char Character, int Start, int End, string? Field)> removed, List<Wrapper> wrappers, bool typing)
   {
-    int from = removed[0].Start;
+    int first = removed[0].Start;
+    var dropped = removed.Select(character => (character.Start, character.End)).ToList();
+    int from = first;
     int to = removed[^1].End;
-    int markup = 0;
-    var emptied = new HashSet<Wrapper>();
-    // Repeated so that emptying inner formatting can empty what wraps it.
-    for (bool grew = true; grew;)
+    // The characters removed run unbroken, so formatting whose content lies within them is left with nothing.
+    foreach (Wrapper wrapper in wrappers.Where(wrapper => wrapper.ContentStart < wrapper.ContentEnd &&
+      first <= wrapper.ContentStart && wrapper.ContentEnd <= removed[^1].End &&
+      !(typing && wrapper.ContentStart <= first && first < wrapper.ContentEnd)))
     {
-      grew = false;
-      foreach (Wrapper wrapper in wrappers.Where(wrapper => !emptied.Contains(wrapper) &&
-        wrapper.ContentStart < wrapper.ContentEnd && from <= wrapper.ContentStart && wrapper.ContentEnd <= to))
+      dropped.Add((wrapper.ContentStart - wrapper.Open.Length, wrapper.ContentStart));
+      dropped.Add((wrapper.ContentEnd, wrapper.ContentEnd + wrapper.Close.Length));
+      from = Math.Min(from, wrapper.ContentStart - wrapper.Open.Length);
+      to = Math.Max(to, wrapper.ContentEnd + wrapper.Close.Length);
+    }
+    var kept = new StringBuilder();
+    for (int position = from; position < to; position++)
+    {
+      if (!dropped.Any(range => range.Start <= position && position < range.End))
       {
-        emptied.Add(wrapper);
-        from = Math.Min(from, wrapper.ContentStart - wrapper.Open.Length);
-        to = Math.Max(to, wrapper.ContentEnd + wrapper.Close.Length);
-        markup += wrapper.Open.Length + wrapper.Close.Length;
-        grew = true;
+        kept.Append(source[position]);
       }
     }
-    return removed.Sum(character => character.End - character.Start) + markup == to - from
-      ? (from, to)
-      : throw new PatchException("that edit crosses formatting, such as bold or a span; make it in the file");
+    return (from, to, kept.ToString());
   }
 
   /// <summary>The markup whose content takes in <paramref name="position"/> on a line, its ends included, outermost
