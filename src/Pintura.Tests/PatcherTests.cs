@@ -246,14 +246,38 @@ public class PatcherTests
   }
 
   [Fact]
-  public void An_edit_across_formatting_is_refused_rather_than_breaking_it()
+  public void An_edit_across_formatting_removes_the_letters_and_keeps_the_markers()
+  {
+    // Arrange
+    string source = Patcher.SourceAt(Slide, "elements.takeaway.text")!;
+    string note = Slide.Replace("- Up **33%** on 2024", "- **Against revenue:** sales rose");
+
+    // Act
+    string typed = Apply(Slide,
+      new ValueEdit("elements.takeaway.text", source, Paragraphs: ["Revenue of $11.4B in ￼", "Up 3X2024"]));
+    string deleted = Apply(note, new ValueEdit("elements.takeaway.text",
+      Patcher.SourceAt(note, "elements.takeaway.text")!, Paragraphs: ["Revenue of $11.4B in ￼", "Against ales rose"]));
+    string after = Apply(Slide,
+      new ValueEdit("elements.takeaway.text", source, Paragraphs: ["Revenue of $11.4B in ￼", "UpX3% on 2024"]));
+
+    // Assert
+    Changed(Slide, typed).ShouldBe(["      - Up **3X**2024"]);
+    Changed(note, deleted).ShouldBe(["      - **Against **ales rose"]);
+    Changed(Slide, after).ShouldBe(["      - UpX**3%** on 2024"]);
+  }
+
+  [Fact]
+  public void Typing_over_all_of_a_bold_run_keeps_it_bold()
   {
     // Arrange
     string source = Patcher.SourceAt(Slide, "elements.takeaway.text")!;
 
     // Act
-    Should.Throw<PatchException>(() => Apply(Slide,
-      new ValueEdit("elements.takeaway.text", source, Paragraphs: ["Revenue of $11.4B in ￼", "Up 3X2024"])));
+    string patched = Apply(Slide,
+      new ValueEdit("elements.takeaway.text", source, Paragraphs: ["Revenue of $11.4B in ￼", "Up 40 on 2024"]));
+
+    // Assert
+    Changed(Slide, patched).ShouldBe(["      - Up **40** on 2024"]);
   }
 
   [Fact]
