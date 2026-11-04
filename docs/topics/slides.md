@@ -12,6 +12,7 @@ A slide is a file in `slides/` that picks a layout, writes its title and placeho
 | `placeholders` | Each placeholder's text, or a map, by the names its layout defines in the theme's `layouts/` files (see `layouts`). |
 | `elements` | Everything else on the slide, back to front, in front of the title and placeholders unless it names them. |
 | `hide` | Ids of the layout's elements this slide leaves out, such as `[page]` for the slide number. |
+| `rejected` | The pick the reviewer kept none of, which left this slide, its first variant, in its place; delete it with the redo (see `picks`). |
 
 The title and placeholders take one paragraph of plain text, in the layout's style: fields such as `${date}` work, markup doesn't, and a `$` not followed by `{` is literal, as everywhere.
 A newline in it breaks the line, as `title: "Borrowing to\nBuild the AI Cloud"` or a block (`|-`) of two lines.

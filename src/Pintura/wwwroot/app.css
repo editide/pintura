@@ -1157,6 +1157,11 @@ main {
   font-size: 0.75em;
 }
 
+.rejected-again {
+  border: 1px solid var(--strong-rule);
+  background: var(--surface);
+}
+
 .pick-view {
   position: absolute;
   inset: 0;

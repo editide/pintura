@@ -147,11 +147,16 @@ public class Slide
   public List<string> Hide { get; init; } = new List<string>();
   /// <summary>The open pick offering the slide as one of its variants.</summary>
   [JsonIgnore] public string? Pick { get; init; }
+  /// <summary>Set while the slide is a pick's first variant, kept in place when the reviewer kept none.</summary>
+  [JsonIgnore] public Rejection? Rejected { get; init; }
   /// <summary>Set when the slide's file failed to load; the rest of the presentation still renders.</summary>
   [JsonIgnore] public LoadException? Error { get; init; }
   [JsonIgnore] public Origin Origin { get; init; } = new Origin("", 0, 0);
   [JsonIgnore] public Origin? BackgroundOrigin { get; init; }
 }
+
+/// <summary>The pick a slide was rejected in, and the reviewer's reason, which its redo answers.</summary>
+public record Rejection(string Pick, string? Why);
 
 /// <summary>The title, or a placeholder by name, drawn in front of the slide's first <paramref name="Over"/> elements.
 /// </summary>
