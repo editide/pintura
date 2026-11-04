@@ -44,6 +44,7 @@ public partial class PresentationLoader
   private StyleSheet styles = new StyleSheet();
   private readonly Dictionary<string, Chart> charts = new Dictionary<string, Chart>(StringComparer.Ordinal);
   private readonly Dictionary<string, Table> tables = new Dictionary<string, Table>(StringComparer.Ordinal);
+  private List<Pick>? resolved;
 
   private PresentationLoader(string root, string displayBase, IBookReader reader, string bookBase)
   {
@@ -1353,6 +1354,7 @@ public partial class PresentationLoader
       stacked.Add(new Stacked(id, over));
     }
     Node? hideNode = map.Take("hide");
+    Rejection? rejected = map.Take("rejected") is Node rejectedNode ? ReadRejection(rejectedNode) : null;
     map.Done();
 
     var hide = new List<string>();
@@ -1407,8 +1409,23 @@ public partial class PresentationLoader
       Stacked = stacked,
       Hide = hide,
       Pick = pick,
+      Rejected = rejected,
       Origin = document.Origin
     };
+  }
+
+  /// <summary>The pick a slide's <c>rejected</c> names, which must have been resolved with none, as last resolved.
+  /// </summary>
+  private Rejection ReadRejection(Node node)
+  {
+    string id = node.AsString();
+    resolved ??= PickFile.LoadResolved(root, displayBase);
+    Pick pick = resolved.LastOrDefault(each => each.Id == id)
+      ?? throw node.Error($"rejected names no pick resolved with {PickFile.None} in {PickFile.ResolvedName}", "picks");
+    return pick.Resolved!.Chosen == PickFile.None
+      ? new Rejection(id, pick.Resolved.Why)
+      : throw node.Error($"rejected names pick {id}, which kept {pick.Resolved.Chosen} rather than {PickFile.None}",
+        "picks");
   }
 
   #endregion

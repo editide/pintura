@@ -60,25 +60,51 @@ function shuffled(items, random = Math.random) {
 
 // A thumbnail or grid cell draws a pick as a card saying how many variants wait, rather than the first variant, which
 // would show one of them before the others and favour it.
+// A slide the reviewer rejected draws as a card too, so what they turned down doesn't pass for what they kept.
 function mountThumbnail(frame, slide, size, width) {
   const pick = pickOf(slide);
-  if (!pick) {
+  if (!pick && !slide.rejected) {
     return mountStage(frame, slide, size, width);
   }
+  const card = mountCard(frame, size, width, width / 14);
+  if (pick) {
+    element('div', 'pick-card-count', card).textContent = `${pick.variants.length} variants`;
+    element('div', 'pick-card-ask', card).textContent = 'Keep one';
+  } else {
+    element('div', 'pick-card-count', card).textContent = 'Rejected';
+  }
+  return card;
+}
+
+function mountCard(frame, size, width, fontSize) {
   frame.replaceChildren();
   frame.style.width = `${width}px`;
   frame.style.height = `${width * size[1] / size[0]}px`;
   const card = element('div', 'pick-card', frame);
-  card.style.fontSize = `${Math.max(10, width / 14)}px`;
-  element('div', 'pick-card-count', card).textContent = `${pick.variants.length} variants`;
-  element('div', 'pick-card-ask', card).textContent = 'Keep one';
+  card.style.fontSize = `${Math.max(10, fontSize)}px`;
   return card;
 }
 
-// A pick's caption, which names none of its variants.
+// A pick's caption, which names none of its variants, or a rejected slide's.
 function thumbnailTitle(slide) {
   const pick = pickOf(slide);
-  return pick ? `Keep one of ${pick.variants.length} variants` : slide.title;
+  return pick ? `Keep one of ${pick.variants.length} variants` : slide.rejected ? 'Rejected'
+    : slide.title;
+}
+
+function hidingRejected(slide) {
+  return Boolean(slide?.rejected) && !state.layout && !state.presenting;
+}
+
+// The stage in a rejected slide's place, whose one way on is to reopen the pick and choose again.
+function mountRejected(frame, slide, size, width) {
+  const card = mountCard(frame, size, width, width / 56);
+  const again = element('button', 'tool rejected-again', card);
+  again.type = 'button';
+  again.textContent = 'Choose again';
+  again.title = `Reopen pick ${slide.rejected.pick} to keep one of its variants, or none`;
+  again.addEventListener('click', () => sendPick({ pick: slide.rejected.pick, revisit: true }, slide.id));
+  return card;
 }
 
 function enlargedIndex(pick) {

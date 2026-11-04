@@ -21,15 +21,16 @@ public record Pick
 /// <summary>A slide offered in a pick, with one neutral line on what it tries to show.</summary>
 public record Variant(string Slide, string Intent);
 
-/// <summary>Who resolved a pick, when, the commit the deck was then at, the order the variants were shown in, the
-/// slide kept or <c>none</c>, and why.</summary>
+/// <summary>Who resolved a pick, when, the commit the deck was then at, the order the variants were shown in, which
+/// lettered them A, B and C, the slide kept or <c>none</c>, and why.</summary>
 public record PickResolution(string? By, string? Date, string? Rev, List<string>? Shown, string Chosen, string? Why);
 
 /// <summary>A reviewer resolving a pick: keeping <paramref name="Keep"/>, or none of its variants when it is null,
-/// for the reason in <paramref name="Why"/>, having seen the variants in the order <paramref name="Shown"/>; or with
-/// <paramref name="Reopen"/>, undoing that.</summary>
+/// for the reason in <paramref name="Why"/>, having seen the variants in the order <paramref name="Shown"/>; with
+/// <paramref name="Reopen"/>, undoing that; or with <paramref name="Revisit"/>, reopening a pick that kept none to
+/// choose again.</summary>
 public record PickChange(string? Pick = null, string? Keep = null, string? Why = null, PickUndo? Reopen = null,
-  List<string>? Shown = null);
+  List<string>? Shown = null, bool Revisit = false);
 
 /// <summary>What resolving a pick removed, for an undo to put back: the slide its entry in <c>slides</c> became, the
 /// open pick it went before, the other variants' files by stem, and the comments on them it resolved.</summary>
@@ -139,7 +140,7 @@ public static class PickFile
     string? date = map.Take("date")?.AsString();
     string? rev = map.Take("rev")?.AsString();
     Node? shownNode = map.Take("shown");
-    var resolution = new PickResolution(by, date, rev, shownNode?.AsList().Select(each => each.AsString()).ToList(),
+    var resolution = new PickResolution(by, date, rev, shownNode is null ? null : ReadShown(shownNode, pick),
       chosenNode.AsString(), map.Take("why")?.AsString());
     map.Done();
     if (resolution.Shown is not null && !Shuffled(pick, resolution.Shown))
@@ -153,6 +154,31 @@ public static class PickFile
     return resolution;
   }
 
+  /// <summary>The variants by the letters the reviewer saw them under, which their why may name, in order.</summary>
+  private static List<string> ReadShown(Node node, Pick pick)
+  {
+    if (!node.IsMap)
+    {
+      throw node.Error($"write shown as each letter the reviewer saw with its variant, as A: {pick.Variants[0].Slide}");
+    }
+    var shown = new List<string>();
+    foreach ((string letter, Node slide) in node.AsMap().Entries())
+    {
+      if (letter != Letter(shown.Count))
+      {
+        throw slide.Error($"shown letters the variants A, B, C in order, so {letter} should be {Letter(shown.Count)}");
+      }
+      shown.Add(slide.AsString());
+    }
+    return shown;
+  }
+
+  /// <summary>The letter the preview shows the variant at <paramref name="index"/> under.</summary>
+  public static string Letter(int index)
+  {
+    return ((char)('A' + index)).ToString();
+  }
+
   public static IEnumerable<string> Slides(Pick pick)
   {
     return pick.Variants.Select(variant => variant.Slide);
@@ -164,19 +190,27 @@ public static class PickFile
     return shown.Order(StringComparer.Ordinal).SequenceEqual(Slides(pick).Order(StringComparer.Ordinal));
   }
 
-  /// <summary>What an export says of each placed pick still open: that it drew the first variant in its place.
-  /// </summary>
+  /// <summary>What an export says of each placed pick still open, that it drew the first variant in its place, and of
+  /// each slide the reviewer rejected.</summary>
   public static List<string> Warnings(Presentation presentation)
   {
     return
     [
-      .. presentation.Slides.Where(slide => slide.Pick is not null).Select(slide =>
+      .. presentation.Slides.Select(slide =>
       {
+        if (slide.Rejected is Rejection rejected)
+        {
+          return $"slide {slide.Number} is {slide.Id}, which the reviewer rejected in pick {rejected.Pick}";
+        }
+        if (slide.Pick is null)
+        {
+          return null;
+        }
         IEnumerable<string> variants = presentation.Offered.Where(each => each.Pick == slide.Pick)
           .Select(each => each.Id);
         return $"slide {slide.Number} is {slide.Id}, the first variant of pick {slide.Pick}, which waits on the " +
           $"reviewer to keep one of {string.Join(", ", variants)}";
-      })
+      }).OfType<string>()
     ];
   }
 
@@ -189,13 +223,18 @@ public static class PickFile
     {
       return Reopen(presentation, reopen, now);
     }
+    if (change.Revisit)
+    {
+      return Revisit(presentation, change.Pick ?? throw new PatchException("name the pick to choose again"), now);
+    }
     return Resolve(presentation, change.Pick ?? throw new PatchException("name the pick to resolve"), change.Keep,
       change.Why, change.Shown, author, now, seen);
   }
 
-  /// <summary>Keeps one variant of a pick, or none of them, which keeps the first in place so the deck still draws:
-  /// the pick's entry in <c>slides</c> becomes the slide kept, the other variants' files go with their open comments,
-  /// and the pick moves to the end of <c>picks-resolved.yaml</c>. Every file is written or none is.</summary>
+  /// <summary>Keeps one variant of a pick, or none of them, which keeps the first in place, marked rejected, so the
+  /// deck still draws until it's redone: the pick's entry in <c>slides</c> becomes the slide kept, the other variants'
+  /// files go with their open comments, and the pick moves to the end of <c>picks-resolved.yaml</c>. Every file is
+  /// written or none is.</summary>
   private static (PickChange Undo, Dictionary<string, string?> Wrote) Resolve(Presentation presentation, string id,
     string? keep, string? why, List<string>? shown, string author, DateTime now, Snapshot? seen)
   {
@@ -246,6 +285,11 @@ public static class PickFile
           files.Track(Path.Combine(presentation.Root, CommentFile.ResolvedName));
           comments.AddRange(CommentFile.RemoveSlide(presentation, slide, author, now, seen).Select(each => each.Id));
         }
+        string first = Path.Combine(presentation.Root, "slides", $"{kept}.yaml");
+        if (keep is null && files.Read(first) is string slideText)
+        {
+          files.Write(first, $"rejected: {YamlWriter.Text(id)}\n{Unmarked(slideText, null)}");
+        }
       }
       catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
       {
@@ -291,6 +335,11 @@ public static class PickFile
           >= 0 and int found
           ? found
           : entries.Count;
+        string first = Path.Combine(presentation.Root, "slides", $"{undo.Kept}.yaml");
+        if (keep is null && files.Read(first) is string slideText)
+        {
+          files.Write(first, Unmarked(slideText, undo.Pick));
+        }
         files.Write(files.PicksPath, Insert(live, entries, index, Unresolved(archive, archived[at])));
         files.Write(files.ResolvedPath, Without(archive, archived, at));
         if (undo.Comments.Count > 0)
@@ -309,6 +358,38 @@ public static class PickFile
       }
       return (new PickChange(undo.Pick, keep, why ?? "", Shown: pick.Resolved.Shown), files.Before);
     }
+  }
+
+  /// <summary>Reopens a pick that kept none, as its undo would, with the variants it dropped read from the commit it
+  /// was resolved at and the comments resolving it resolved, so the reviewer can choose again after the undo is gone.
+  /// </summary>
+  private static (PickChange Undo, Dictionary<string, string?> Wrote) Revisit(Presentation presentation, string id,
+    DateTime now)
+  {
+    Pick pick = LoadResolved(presentation.Root, presentation.Root).LastOrDefault(each => each.Id == id)
+      ?? throw new PatchException($"pick {id} isn't resolved; someone reopened it", true);
+    PickResolution resolved = pick.Resolved!;
+    if (resolved.Chosen != None)
+    {
+      throw new PatchException($"pick {id} kept {resolved.Chosen}, so there's nothing to choose again");
+    }
+    var files = new Dictionary<string, string>(StringComparer.Ordinal);
+    foreach (string slide in Slides(pick).Skip(1))
+    {
+      (int exit, string text, _) = resolved.Rev is null ? (1, "", "")
+        : Revisions.Run(presentation.Root, "show", $"{resolved.Rev}:./slides/{slide}.yaml");
+      if (exit != 0)
+      {
+        throw new PatchException($"slides/{slide}.yaml wasn't saved when pick {id} was resolved, so its variants " +
+          "can't be brought back");
+      }
+      files[slide] = text;
+    }
+    List<string> comments = [.. CommentFile.LoadResolved(presentation.Root, presentation.Root)
+      .Where(comment => comment.Resolved is { Outcome: "removed" } done && done.Date == resolved.Date &&
+        files.ContainsKey(comment.Slide))
+      .Select(comment => comment.Id)];
+    return Reopen(presentation, new PickUndo(id, pick.Variants[0].Slide, null, files, comments), now);
   }
 
   private static string Stamp(DateTime now)
@@ -335,7 +416,8 @@ public static class PickFile
     }
     if (resolution.Shown is not null)
     {
-      map["shown"] = resolution.Shown.Cast<object?>().ToList();
+      map["shown"] = new OrderedDictionary<string, object?>(resolution.Shown
+        .Select((slide, index) => KeyValuePair.Create(Letter(index), (object?)slide)));
     }
     map["chosen"] = resolution.Chosen;
     if (resolution.Why is not null)
@@ -353,6 +435,30 @@ public static class PickFile
     string shifted = string.Join("\n", resolved.Split('\n')
       .Select((line, index) => index == 0 || line.Length == 0 ? line : new string(' ', keys - 2) + line));
     return $"{lines}\n{new string(' ', keys)}{shifted}";
+  }
+
+  /// <summary>A slide's text without its <c>rejected</c> line; with <paramref name="pick"/>, only a line naming that
+  /// pick.</summary>
+  private static string Unmarked(string text, string? pick)
+  {
+    var stream = new YamlStream();
+    try
+    {
+      stream.Load(new StringReader(text));
+    }
+    catch (YamlDotNet.Core.YamlException)
+    {
+      return text;
+    }
+    if (stream.Documents.FirstOrDefault()?.RootNode is not YamlMappingNode map ||
+      map.Children.FirstOrDefault(pair => pair.Key is YamlScalarNode { Value: "rejected" }) is not
+      { Key: YamlScalarNode key, Value: YamlScalarNode value } || (pick is not null && value.Value != pick))
+    {
+      return text;
+    }
+    int start = text.LastIndexOf('\n', Math.Max((int)key.Start.Index - 1, 0)) + 1;
+    int newline = text.IndexOf('\n', (int)value.End.Index);
+    return text[..start] + (newline < 0 ? "" : text[(newline + 1)..]);
   }
 
   /// <summary>An archived entry's lines without the resolution it was given.</summary>
@@ -559,7 +665,8 @@ public static class PickList
       WriteVariants(pick, output);
       if (resolution.Shown is not null)
       {
-        output.WriteLine($"    shown: {string.Join(", ", resolution.Shown)}");
+        output.WriteLine($"    shown: {string.Join(", ", resolution.Shown.Select((slide, index) =>
+          $"{PickFile.Letter(index)} {slide}"))}");
       }
       if (resolution.Why is not null)
       {

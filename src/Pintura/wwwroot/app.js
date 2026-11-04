@@ -218,6 +218,12 @@ function renderSlide() {
   const available = slideWidth(view);
   const shown = shownSlide(slide);
   const frame = document.getElementById('slide-frame');
+  if (hidingRejected(shown)) {
+    frame.classList.remove('reviewing', 'layout-overlays', 'layout-bare');
+    mountRejected(frame, shown, deck.size, available);
+    slideCaption(shown);
+    return;
+  }
   frame.classList.toggle('reviewing', reviewing(slide));
   frame.classList.toggle('layout-overlays', Boolean(state.layout) && state.guides);
   frame.classList.toggle('layout-bare', Boolean(state.layout) && !state.guides);

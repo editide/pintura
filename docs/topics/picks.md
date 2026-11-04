@@ -40,17 +40,23 @@ Check each variant clean before offering it: the reviewer is choosing between ta
 
 ## In the preview
 
-Opening a pick shows its variants side by side, lettered in an order shuffled once for the pick, so where a variant sits can't favour it, each under its intent with Keep beneath it, and None below them all.
+Opening a pick shows its variants side by side, lettered A, B and C in an order shuffled once for the pick, so where a variant sits can't favour it, each under its intent with Keep beneath it, and None below them all.
 Clicking a variant enlarges it, and the arrows or the mouse wheel flip through the others.
 Keep and None ask why in a dialog: optional for Keep, required for None.
 Pick first, then comment on or edit the slide kept, as any slide.
 
 Keep writes the kept slide in place of the pick's entry in `presentation.yaml`, deletes the other variants' files, resolves any open comments on them as `removed`, and moves the pick to the end of `picks-resolved.yaml`, with the order the variants were shown in, so a reviewer's lean towards a position shows across picks.
-None does the same keeping the first variant in place, so the deck still draws, and records `chosen: none`.
+None does the same keeping the first variant in place, so the deck still draws, records `chosen: none`, and marks the slide `rejected: <pick id>`.
 Undo reopens the pick, its files, and its comments, as it does for a deleted slide.
 Save commits both files with the deck, as it does the comments.
 
 Only the reviewer resolves a pick, from the preview.
+
+## Redoing a rejected slide
+
+A slide marked `rejected` waits on a redo: the slide list and the grid show it as a card saying so, and `--check` warns of it with the reviewer's reason.
+In its place the slide view offers Choose again, which reopens the pick with the variants read back from the commit it was resolved at, so the reviewer can keep one after all.
+Read `why` in `picks-resolved.yaml`, where a letter names the variant `shown` lists under it, then redo the slide, or offer a new pick in its place, and delete `rejected` from the slide.
 
 ## Listing them
 
@@ -70,7 +76,7 @@ pintura presentations/q3 --picks --resolved
 | `date` | When, as `2026-11-02 10:14`. |
 | `rev` | The commit the deck was at when it was offered. |
 | `variants` | The slides offered, in order, each with `slide`, its file stem, and `intent`; the first draws in the pick's place. |
-| `resolved` | Only in `picks-resolved.yaml`: `by`, `date`, `rev`, `shown`, the variants in the order the reviewer saw them, `chosen`, the slide kept or `none`, and `why`. |
+| `resolved` | Only in `picks-resolved.yaml`: `by`, `date`, `rev`, `shown`, each letter the reviewer saw with its variant, `chosen`, the slide kept or `none`, and `why`, whose letters name variants by `shown`. |
 
 ```yaml
 - id: p4kx
@@ -82,22 +88,24 @@ pintura presentations/q3 --picks --resolved
     by: Daniel
     date: 2026-11-02 18:40
     rev: 8b21d07
-    shown: [growth-waterfall, growth, growth-stacked]
+    shown: { A: growth-waterfall, B: growth, C: growth-stacked }
     chosen: growth-stacked
-    why: One chart says it
+    why: C, since one chart says it
 ```
 
 ## Checks
 
-- `--check` warns of every open pick, and of `picks.yaml` or `picks-resolved.yaml` untracked in a repository.
+- `--check` warns of every open pick, every slide marked `rejected`, and `picks.yaml` or `picks-resolved.yaml` untracked in a repository.
 - It errors on a pick with fewer than two variants or more than three, and on a variant whose slide doesn't exist.
 - A slide both in `slides` and in a pick, a slide in two picks, and a `pick:` naming no open pick stop the presentation loading.
-- The export draws each open pick's first variant and lists the pick among its warnings.
+- The export draws each open pick's first variant and each rejected slide, and lists them among its warnings.
 
 ## Usual mistakes
 
 - Deleting the variants you'd drop: leave the choice to the reviewer, so the pick records it.
 - Resolving a pick yourself, or editing `picks-resolved.yaml`: it is the reviewer's record.
+- Reading a letter in `why` as a variant's place in `variants`: the letters follow `shown`, which is shuffled.
+- Leaving `rejected` on a slide you redid: the preview keeps hiding it behind the reviewer's reason.
 - Writing a recommendation into `intent`: say what the variant shows, not why it's better.
 - Listing a variant in `slides` as well as in the pick: name the pick alone.
 - Offering one variant: list the slide in `slides` instead.

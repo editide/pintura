@@ -263,8 +263,8 @@ public class PickTests
     File.Exists(deck.Folder.PathTo("deck/slides/two.yaml")).ShouldBeFalse();
     File.Exists(deck.Folder.PathTo("deck/slides/waterfall.yaml")).ShouldBeFalse();
     File.ReadAllText(deck.Folder.PathTo("deck/picks-resolved.yaml")).ShouldBe(Picks + "\n  resolved:\n" +
-      "    by: Daniel\n    date: 2026-11-02 18:40\n    rev: 8b21d07\n    shown: [waterfall, two, stacked]\n" +
-      "    chosen: stacked\n    why: One chart says it\n");
+      "    by: Daniel\n    date: 2026-11-02 18:40\n    rev: 8b21d07\n" +
+      "    shown: { A: waterfall, B: two, C: stacked }\n    chosen: stacked\n    why: One chart says it\n");
     PickFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root)[0].Resolved!.Chosen.ShouldBe("stacked");
     CommentFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root)[0].Resolved!.Outcome.ShouldBe("removed");
     undo.Reopen!.Comments.ShouldBe(["c1"]);
@@ -324,6 +324,115 @@ public class PickTests
     deck.Load().Slides.Select(slide => slide.Id).ShouldBe(["one", "two"]);
     PickFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root)[0].Resolved
       .ShouldBe(new PickResolution("Daniel", "2026-11-02 18:40", "8b21d07", null, "none", "None of them shows the gap"));
+  }
+
+  [Fact]
+  public void Keeping_none_marks_the_slide_kept_rejected_until_its_redo_deletes_the_mark()
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    string two = File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml"));
+
+    // Act
+    PickFile.Apply(deck.Load(), new PickChange("p4kx", null, "None of them shows the gap"), "Daniel", Now, Seen);
+    Presentation rejected = deck.Load();
+
+    // Assert
+    File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml")).ShouldBe($"rejected: p4kx\n{two}");
+    rejected.Slides[1].Rejected.ShouldBe(new Rejection("p4kx", "None of them shows the gap"));
+    PayloadBuilder.Build(rejected, 1, (path, _) => path).Slides[1].Rejected
+      .ShouldBe(new Rejection("p4kx", "None of them shows the gap"));
+    Finding finding = Checks.Picks(rejected).ShouldHaveSingleItem();
+    (finding.Level, finding.Where, finding.Message).ShouldBe(("warning", "two",
+      "two was rejected in pick p4kx: None of them shows the gap; redo it, then delete rejected: p4kx"));
+  }
+
+  [Fact]
+  public void Undoing_none_deletes_the_rejected_mark()
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    string two = File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml"));
+    (PickChange undo, _) = PickFile.Apply(deck.Load(), new PickChange("p4kx", null, "No"), "Daniel", Now, Seen);
+
+    // Act
+    PickFile.Apply(deck.Load(), undo, "Daniel", Now, Seen);
+
+    // Assert
+    File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml")).ShouldBe(two);
+  }
+
+  [Fact]
+  public void Choosing_again_reopens_a_pick_kept_none_of_from_the_commit_it_was_resolved_at()
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    deck.Write("deck/comments.yaml", "- id: c1\n  slide: waterfall\n  at: [0, 0]\n  text: Too busy");
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "offered");
+    string root = deck.Folder.PathTo("deck");
+    string[] files = ["presentation.yaml", "picks.yaml", "comments.yaml", "slides/two.yaml", "slides/stacked.yaml",
+      "slides/waterfall.yaml"];
+    string[] offered = [.. files.Select(file => File.ReadAllText(Path.Combine(root, file)))];
+    var seen = new Snapshot(Revisions.Run(root, "rev-parse", "HEAD").Output.Trim(), false, new HashSet<string>());
+    PickFile.Apply(deck.Load(), new PickChange("p4kx", null, "No"), "Daniel", Now, seen);
+
+    // Act
+    (PickChange undo, _) = PickFile.Apply(deck.Load(), new PickChange("p4kx", Revisit: true), "Daniel", Now, seen);
+
+    // Assert
+    files.Select(file => File.ReadAllText(Path.Combine(root, file))).ShouldBe(offered);
+    File.Exists(Path.Combine(root, "picks-resolved.yaml")).ShouldBeFalse();
+    (undo.Pick, undo.Keep, undo.Why).ShouldBe(("p4kx", null, "No"));
+  }
+
+  [Fact]
+  public void Choosing_again_is_refused_for_a_pick_that_kept_a_variant()
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", null), "Daniel", Now, Seen);
+
+    // Act
+    PatchException refused = Should.Throw<PatchException>(() =>
+      PickFile.Apply(deck.Load(), new PickChange("p4kx", Revisit: true), "Daniel", Now, Seen));
+
+    // Assert
+    refused.Message.ShouldBe("pick p4kx kept stacked, so there's nothing to choose again");
+  }
+
+  [Theory]
+  [InlineData("zzzz", "rejected names no pick resolved with none in picks-resolved.yaml")]
+  [InlineData("p4kx", "rejected names pick p4kx, which kept stacked rather than none")]
+  public void A_rejected_mark_naming_no_pick_resolved_with_none_is_an_error(string pick, string problem)
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", null), "Daniel", Now, Seen);
+    deck.Write("deck/slides/stacked.yaml", $"rejected: {pick}\nlayout: content");
+
+    // Act
+    Slide slide = deck.Load().Slides[1];
+
+    // Assert
+    slide.Error!.Message.ShouldContain(problem);
+  }
+
+  [Fact]
+  public void A_resolution_written_with_shown_as_a_list_fails_to_load()
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    deck.Write("deck/picks-resolved.yaml", Picks +
+      "\n  resolved:\n    shown: [two, stacked, waterfall]\n    chosen: two");
+
+    // Act
+    LoadException error = Should.Throw<LoadException>(() =>
+      PickFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root));
+
+    // Assert
+    error.Message.ShouldContain("write shown as each letter the reviewer saw with its variant, as A: two");
   }
 
   [Fact]

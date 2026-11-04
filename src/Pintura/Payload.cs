@@ -52,6 +52,7 @@ public record SlidePayload
   public string? Section { get; init; }
   /// <summary>The open pick offering the slide as one of its variants.</summary>
   public string? Pick { get; init; }
+  public Rejection? Rejected { get; init; }
   public string? Background { get; init; }
   public string? Error { get; init; }
   public List<ItemPayload>? Items { get; init; }
@@ -317,6 +318,7 @@ public static class PayloadBuilder
         Number = slide.Number,
         Section = slide.Section,
         Pick = slide.Pick,
+        Rejected = slide.Rejected,
         Error = exception.Message
       };
     }
@@ -330,6 +332,7 @@ public static class PayloadBuilder
       Layout = slide.Layout,
       Section = slide.Section,
       Pick = slide.Pick,
+      Rejected = slide.Rejected,
       Background = Hex(scene.Background.Value, theme),
       Items = stage is null
         ? scene.Items.Select(item => Item(item, theme, pictureUrl) with { Edit = Edit(slide, item) }).ToList()
