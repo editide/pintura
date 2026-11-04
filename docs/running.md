@@ -278,16 +278,22 @@ Exactly one presentation must be found; otherwise Pintura lists the candidates a
 
 ```bash
 pintura presentations/example --list
+pintura presentations/example --outline
 pintura presentations/example --slide revenue
 pintura presentations/example --element revenue takeaway
 ```
 
 `--list` prints the slides in order under their sections, with their layouts and titles, and exits nonzero when a slide fails to load.
+`--outline` prints what a reader of the deck reads, slide by slide: the title, then the placeholders and the slide's own text, charts, tables, and pictures' alt text, in reading order, with nothing about frames or styles.
+Reading order takes the elements in rows, a row being those whose frames overlap vertically, top row first and each left to right, so a column beside a chart reads before the chart and a source beneath both reads last.
+A chart gives its categories and each series' values, spelled in the series' label format, or failing that its axis's; a table gives its cells row by row, a merge's text in its first cell.
+The layout's and theme's elements, such as a slide number, are left out, as is anything `decorative`; each pick's variants follow with their intents, and a slide marked `rejected` says so with the reviewer's reason.
+It takes `--slides` and `--json`.
 `--slide` prints everything drawn on one slide, back to front: the theme's and layout's elements, the title and placeholders, and the slide's elements, each with its frame.
 `--element` prints an element's effective properties, each beside the file and line that set it, then what each paragraph and run changes.
 The title is `title`, and a placeholder is its name.
 
-Add `--json` to any of the three for the same content as JSON.
+Add `--json` to any of these for the same content as JSON.
 
 `pintura presentations/example --comments` lists reviewers' comments in slide order, each beside the file and line that writes what it points at; `--json` works here too.
 `--comments --slides 3-5` lists only those on the slides it names, `--comments --resolved` lists the resolved ones in the order they were resolved, each with how its thread ended, and `--resolve <id>,<id>` resolves the ones a reviewer names.

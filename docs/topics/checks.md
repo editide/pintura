@@ -32,6 +32,7 @@ checks: { shrink: 70 }      # warn when fit: shrink scales text below 70%
 ## Looking at a presentation
 
 - `--list`: slides with their layouts and titles.
+- `--outline`: every slide's words in reading order, charts' values and tables' cells included, for reviewing the story and its wording.
 - `--slide <stem>`: its elements with their effective frames.
 - `--element <slide> <id>`: effective properties, each with the file and line that set it; for a table, each cell's too.
 - `--screenshot <slide>`: a PNG of the slide, named by id or number; `--screenshot all` for a contact sheet.
