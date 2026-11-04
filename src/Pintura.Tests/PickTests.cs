@@ -287,6 +287,34 @@ public class PickTests
     resolved.Shown.ShouldBe(["waterfall", "two", "stacked"]);
   }
 
+  [Theory]
+  [InlineData("waterfall", "Resolved the pick on slide 2")]
+  [InlineData(null, "Resolved the pick on slide 2")]
+  public void A_draft_says_a_pick_was_resolved_rather_than_its_variants_added_and_removed(string? keep, string draft)
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "offered");
+    (_, Dictionary<string, string?> wrote) = PickFile.Apply(deck.Load(), new PickChange("p4kx", keep, "Says it best"),
+      "Daniel", Now, Seen);
+    foreach ((string path, string? before) in wrote)
+    {
+      PageEdits.Wrote(deck.Folder.PathTo("deck"), path, before);
+    }
+
+    // Act
+    string drafted = Saves.Draft(deck.Folder.PathTo("deck"));
+    List<SavePart> parts = Saves.Parts(deck.Folder.PathTo("deck"), deck.Load());
+
+    // Assert
+    drafted.ShouldBe(draft);
+    parts.ShouldNotContain(part => part.Label == "The theme");
+    parts.ShouldContain(part =>
+      part.Files.Contains("deck/picks.yaml") && part.Files.Contains("deck/presentation.yaml"));
+  }
+
   [Fact]
   public void Undoing_a_keep_puts_every_file_back_as_it_was()
   {

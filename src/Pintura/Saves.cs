@@ -113,8 +113,8 @@ public static class Saves
   }
 
   /// <summary>Each slide's file is a part, as are presentation.yaml and the theme. A slide deleted or restored goes
-  /// with presentation.yaml, since a version listing a slide it lacks, or lacking one it lists, doesn't load.
-  /// </summary>
+  /// with presentation.yaml, since a version listing a slide it lacks, or lacking one it lists, doesn't load, and so
+  /// do the pick files, since a pick resolved rewrites the list.</summary>
   private static List<List<string>> Groups(VersionScope scope, IEnumerable<string> edited)
   {
     List<List<string>> slides = [];
@@ -122,7 +122,8 @@ public static class Saves
     List<string> themed = [];
     foreach (string path in edited.Order(StringComparer.Ordinal))
     {
-      if (path == scope.Manifest || scope.Slide(path) is not null && CameOrWent(scope, path))
+      if (path == scope.Manifest || path == scope.PickFile || path == scope.ResolvedPickFile ||
+        scope.Slide(path) is not null && CameOrWent(scope, path))
       {
         listed.Add(path);
       }
@@ -369,11 +370,19 @@ public static class Saves
     bool themed = edited.Any(path => scope.Slide(path) is null && path != scope.Manifest);
     // A slide's changes that came from the list or the theme are the page's when it wrote them, unless the slide's
     // own file holds someone else's too.
+    // Keeping a variant other than the one drawn in the pick's place would read as a slide added and one removed.
+    // Saving always takes the pick files, so a pick resolved since is said whatever else is saved.
+    List<Pick> resolved = [.. before.Picks.Where(pick => after.Picks.All(open => open.Id != pick.Id))];
+    HashSet<string> offered = [.. resolved.SelectMany(PickFile.Slides)];
     List<SlideDiff> slides = [.. diff.Slides
       .Where(slide => mine.Contains(slide.Id) || (listed || themed) && !others.Contains(slide.Id))
       .Where(slide => listed || slide.Status != "moved")
+      .Where(slide => slide.Status is not ("added" or "removed") || !offered.Contains(slide.Id))
       .Select(slide => listed ? slide : slide with { Moved = false })];
-    return Draft(new DeckDiff(slides, themed ? diff.Causes : []));
+    List<int> picked = [.. resolved
+      .Select(pick => before.Slides.FirstOrDefault(slide => slide.Pick == pick.Id)?.Number)
+      .OfType<int>()];
+    return Draft(new DeckDiff(slides, themed ? diff.Causes : []), picked);
   }
 
   /// <summary>What saving takes along that the page didn't write: the slides and shared files it wrote, of the parts
@@ -411,7 +420,7 @@ public static class Saves
     };
   }
 
-  public static string Draft(DeckDiff diff)
+  public static string Draft(DeckDiff diff, List<int>? picked = null)
   {
     var slides = new OrderedDictionary<string, List<int>>
     {
@@ -465,6 +474,10 @@ public static class Saves
     }
     List<string> parts = [.. slides.Where(pair => pair.Value.Count > 0)
       .Select(pair => $"{pair.Key} {Numbers(pair.Value)}")];
+    if (picked is { Count: > 0 })
+    {
+      parts.Insert(0, $"resolved the {(picked.Count == 1 ? "pick" : "picks")} on {Numbers(picked)}");
+    }
     if (reordered)
     {
       parts.Add("reordered the slides");
