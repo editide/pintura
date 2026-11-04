@@ -426,6 +426,25 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Undoing_text_written_as_a_block_restores_the_line_it_was_written_on()
+  {
+    // Arrange
+    string line = "elements:\n  - id: head\n    text: Revenue by year\n    style: section_head\n";
+    string block = "elements:\n  - id: head\n    text: |-\n      Revenue\n      by year\n    style: section_head\n";
+    var split = new ValueEdit("elements.head.text", "Revenue by year", Paragraphs: ["Revenue", "by year"]);
+    var joined = new ValueEdit("elements.head.text", Patcher.SourceAt(block, "elements.head.text")!,
+      Paragraphs: ["Revenue by year"]);
+
+    // Act
+    string resplit = Undo(line, split);
+    string rejoined = Undo(block, joined);
+
+    // Assert
+    resplit.ShouldBe(line);
+    rejoined.ShouldBe(block);
+  }
+
+  [Fact]
   public void Joining_two_paragraphs_writes_them_on_one_line()
   {
     // Arrange

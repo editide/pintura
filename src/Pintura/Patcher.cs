@@ -407,8 +407,27 @@ public static partial class Patcher
       throw Conflict(edit);
     }
     Expect(text, node, edit);
+    // A block's source runs on through the line break that ends it, which a value on its key's line leaves to the
+    // file, so swapping one for the other moves that break across.
+    (int start, int end) = Node.Extent(text, node);
+    string restore = edit.Restore!;
+    bool was = node is YamlScalarNode { Style: ScalarStyle.Literal or ScalarStyle.Folded };
+    bool becomes = restore.StartsWith('|') || restore.StartsWith('>');
+    if (was && !becomes)
+    {
+      while (end > start && text[end - 1] is '\n' or '\r')
+      {
+        end--;
+      }
+      return First(edit, candidate => SourceAt(candidate, edit.Path) == edit.Restore,
+        Splice(text, start, end, restore));
+    }
+    if (becomes && !was)
+    {
+      restore = restore.TrimEnd('\n', '\r');
+    }
     return First(edit, candidate => SourceAt(candidate, edit.Path) == edit.Restore,
-      Splice(text, node, edit.Restore!));
+      Splice(text, node, restore));
   }
 
   #region Deleting elements
