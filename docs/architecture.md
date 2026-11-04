@@ -213,6 +213,7 @@ The format is much larger than Libreta's, so its documentation is disclosed a to
 Looking at a presentation:
 
 - `--list`: slides with their layouts and titles.
+- `--outline`: every slide's words, charts' values, and tables' cells, in reading order.
 - `--slide revenue`: its elements with their effective frames, one line each.
 - `--element revenue takeaway`: effective properties with provenance.
 - `--screenshot revenue`: a PNG of the rendered slide, the agent's way to look at it.

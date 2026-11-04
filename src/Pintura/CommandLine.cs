@@ -2,7 +2,7 @@ namespace Pintura;
 
 public enum HeadlessCommand
 {
-  List, Slide, Element, Screenshot, Check, Url, Export, ExportHtml, ExportPptx, Diff, Comments, Resolve, Picks
+  List, Slide, Element, Screenshot, Check, Url, Export, ExportHtml, ExportPptx, Diff, Comments, Resolve, Picks, Outline
 }
 
 public enum AccountCommand { Login, Logout, WhoAmI }
@@ -95,6 +95,10 @@ public class CommandLineOptions
         case "--list":
           RequireNoCommand(command, argument);
           command = HeadlessCommand.List;
+          break;
+        case "--outline":
+          RequireNoCommand(command, argument);
+          command = HeadlessCommand.Outline;
           break;
         case "--slide":
           RequireNoCommand(command, argument);
@@ -261,8 +265,8 @@ public class CommandLineOptions
     }
     if (command is not null && portSpecified)
     {
-      throw new ArgumentException("--port cannot be combined with --list, --slide, --element, --screenshot, " +
-        "--check, --comments, --picks, --url, --export, --export-json, --export-html or --diff.");
+      throw new ArgumentException("--port cannot be combined with --list, --outline, --slide, --element, " +
+        "--screenshot, --check, --comments, --picks, --url, --export, --export-json, --export-html or --diff.");
     }
     if (noOpen && (command is not null || documentation is not null || import is not null))
     {
@@ -276,8 +280,8 @@ public class CommandLineOptions
     if ((command is null or HeadlessCommand.Screenshot or HeadlessCommand.Url or HeadlessCommand.Export or
       HeadlessCommand.ExportHtml or HeadlessCommand.ExportPptx or HeadlessCommand.Resolve) && json)
     {
-      throw new ArgumentException("--json requires --list, --slide, --element, --check, --comments, --picks or " +
-        "--diff.");
+      throw new ArgumentException("--json requires --list, --outline, --slide, --element, --check, --comments, " +
+        "--picks or --diff.");
     }
     if (command is not HeadlessCommand.Check && export)
     {
@@ -305,10 +309,10 @@ public class CommandLineOptions
     }
     if (slides is not null && (themeOnly || resolved || import is null &&
       command is not (HeadlessCommand.ExportPptx or HeadlessCommand.Diff or HeadlessCommand.Check or
-        HeadlessCommand.Comments)))
+        HeadlessCommand.Comments or HeadlessCommand.Outline)))
     {
-      throw new ArgumentException("--slides requires --check, --comments without --resolved, --diff, --export " +
-        "<deck.pptx>, or --import without --theme.");
+      throw new ArgumentException("--slides requires --check, --comments without --resolved, --outline, --diff, " +
+        "--export <deck.pptx>, or --import without --theme.");
     }
     return new CommandLineOptions
     {
@@ -341,6 +345,9 @@ public class CommandLineOptions
     writer.WriteLine("  pintura [<presentation>] [--port <n>] [--no-open]   (without --port, the first free port from " +
       "5180; --no-open leaves opening the page to the caller)");
     writer.WriteLine("  pintura [<presentation>] --list [--json]   (slides with their layouts and titles)");
+    writer.WriteLine("  pintura [<presentation>] --outline [--slides <list>] [--json]   (every slide's words in deck " +
+      "order: its title, then its text, charts' categories and values, and tables' cells in reading order, with each " +
+      "pick's variants and the slides rejected; nothing about frames or styles)");
     writer.WriteLine("  pintura [<presentation>] --slide <slide> [--json]   (its elements and their frames)");
     writer.WriteLine("  pintura [<presentation>] --element <slide> <id> [--json]   (effective properties, " +
       "each with the file and line that set it)");
@@ -409,8 +416,8 @@ public class CommandLineOptions
     if (command is not null)
     {
       throw new ArgumentException(
-        "Use only one of --list, --slide, --element, --screenshot, --check, --comments, --resolve, --url, --export, " +
-        $"--export-json or --export-html; found '{argument}' after another.");
+        "Use only one of --list, --outline, --slide, --element, --screenshot, --check, --comments, --picks, " +
+        $"--resolve, --url, --export, --export-json or --export-html; found '{argument}' after another.");
     }
   }
 

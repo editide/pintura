@@ -78,6 +78,7 @@ public static class HeadlessRunner
     return command switch
     {
       HeadlessCommand.List => List(presentation, json, output),
+      HeadlessCommand.Outline => Outline.Write(presentation, json, output, only),
       HeadlessCommand.Slide => Slide(presentation, slide!, json, output),
       HeadlessCommand.Element => Element(presentation, slide!, element!, json, output),
       HeadlessCommand.Export => Export(presentation, output),
