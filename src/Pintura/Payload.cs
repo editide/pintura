@@ -29,6 +29,9 @@ public record DeckPayload
   public List<SlidePayload> Variants { get; init; } = new List<SlidePayload>();
   /// <summary>The placed picks waiting on the reviewer.</summary>
   public List<PickPayload> Picks { get; init; } = new List<PickPayload>();
+  /// <summary>Each resolved pick as last resolved, so a version that still offers it shows what became of it.
+  /// </summary>
+  public List<PickResolvedPayload> Resolved { get; init; } = new List<PickResolvedPayload>();
   public List<Comment> Comments { get; init; } = new List<Comment>();
   public List<FontFacePayload> Fonts { get; init; } = new List<FontFacePayload>();
 }
@@ -42,6 +45,9 @@ public record SectionPayload(string? Name, List<string> Slides);
 /// <summary>A pick as the page offers it: who offered it, when, and its variants in order, each slide with its intent.
 /// </summary>
 public record PickPayload(string Id, string? By, string? Date, List<Variant> Variants);
+
+/// <summary>What a resolved pick kept, or <c>none</c>, why, and the order its variants were shown in.</summary>
+public record PickResolvedPayload(string Id, string Chosen, string? Why, List<string>? Shown);
 
 public record SlidePayload
 {
@@ -287,6 +293,11 @@ public static class PayloadBuilder
       Picks = presentation.Picks
         .Where(pick => presentation.Slides.Any(slide => slide.Pick == pick.Id))
         .Select(pick => new PickPayload(pick.Id, pick.By, pick.Date, pick.Variants))
+        .ToList(),
+      Resolved = PickFile.LoadResolved(presentation.Root, presentation.Root)
+        .GroupBy(pick => pick.Id)
+        .Select(group => group.Last())
+        .Select(pick => new PickResolvedPayload(pick.Id, pick.Resolved!.Chosen, pick.Resolved.Why, pick.Resolved.Shown))
         .ToList(),
       Comments = presentation.Comments,
       Fonts = presentation.Theme.Faces

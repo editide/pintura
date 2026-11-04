@@ -1238,6 +1238,34 @@ main {
   margin-left: 0;
 }
 
+.pick-variant.kept .pick-frame {
+  outline: 2px solid var(--ok);
+  outline-offset: 2px;
+}
+
+.pick-kept {
+  align-self: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pick-outcome {
+  max-width: 640px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.pick-outcome-head {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .pick-none {
   border: 1px solid var(--rule);
   color: var(--ink);

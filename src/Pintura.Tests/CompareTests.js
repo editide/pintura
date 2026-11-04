@@ -304,3 +304,15 @@ test("a version stepped to keeps the working tree's comments, which an agent mar
   assert.deepEqual(shown.comments, deck.comments);
   assert.equal(shownDeck(deck, null), deck);
 });
+
+test("a version stepped to takes the working tree's pick resolutions, so a pick it offers shows what was kept", () => {
+  // Arrange
+  const deck = { slides: [{ id: 'kept' }], resolved: [{ id: 'p4kx', chosen: 'kept' }] };
+  const after = { slides: [{ id: 'offered', pick: 'p4kx' }], resolved: [] };
+
+  // Act
+  const shown = shownDeck(deck, after);
+
+  // Assert
+  assert.deepEqual(shown.resolved, deck.resolved);
+});

@@ -462,9 +462,9 @@ function commentable(slide = currentSlide()) {
 }
 
 // The deck the page draws: a version stepped to in the working tree's place, under the working tree's comments, since
-// those are what's being reviewed against it.
+// those are what's being reviewed against it, and its picks' resolutions, so a pick it offers shows what was kept.
 function shownDeck(deck, after) {
-  return after ? { ...after, comments: deck.comments } : deck;
+  return after ? { ...after, comments: deck.comments, resolved: deck.resolved } : deck;
 }
 
 // The slide as the side showing draws it; null for a slide added since the revision.
