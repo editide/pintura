@@ -54,7 +54,7 @@ Only the reviewer resolves a pick, from the preview.
 
 ## Redoing a rejected slide
 
-A slide marked `rejected` waits on a redo: the slide list and the grid show it as a card saying so, and `--check` warns of it with the reviewer's reason.
+A slide marked `rejected` waits on a redo: the slide list and the grid show it as a card saying so, and `--check` warns of it with the reviewer's reason, saying instead that it has changed once it differs from the commit it was rejected at, beyond the mark.
 In its place the slide view offers Choose again, which reopens the pick with the variants read back from the commit it was resolved at, so the reviewer can keep one after all.
 Read `why` in `picks-resolved.yaml`, where a letter names the variant `shown` lists under it, then redo the slide, or offer a new pick in its place, and delete `rejected` from the slide.
 
@@ -95,7 +95,7 @@ pintura presentations/q3 --picks --resolved
 
 ## Checks
 
-- `--check` warns of every open pick, every slide marked `rejected`, and `picks.yaml` or `picks-resolved.yaml` untracked in a repository.
+- `--check` warns of every open pick, every slide marked `rejected`, saying when it has changed since the commit it was rejected at, and `picks.yaml` or `picks-resolved.yaml` untracked in a repository.
 - It errors on a pick with fewer than two variants or more than three, and on a variant whose slide doesn't exist.
 - A slide both in `slides` and in a pick, a slide in two picks, and a `pick:` naming no open pick stop the presentation loading.
 - The export draws each open pick's first variant and each rejected slide, and lists them among its warnings.

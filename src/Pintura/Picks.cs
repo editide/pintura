@@ -437,6 +437,31 @@ public static class PickFile
     return $"{lines}\n{new string(' ', keys)}{shifted}";
   }
 
+  /// <summary>Whether a rejected slide's file, its mark aside, differs from the commit its pick was resolved at; false
+  /// when that can't be told, as without git or for a slide that commit doesn't have.</summary>
+  public static bool ChangedSinceRejected(Presentation presentation, Slide slide)
+  {
+    string pick = slide.Rejected!.Pick;
+    string? rev = LoadResolved(presentation.Root, presentation.Root).LastOrDefault(each => each.Id == pick)?.Resolved
+      ?.Rev;
+    string path = Path.Combine(presentation.Root, "slides", $"{slide.Id}.yaml");
+    if (rev is null || !File.Exists(path))
+    {
+      return false;
+    }
+    (int exit, string then, _) = (1, "", "");
+    try
+    {
+      (exit, then, _) = Revisions.Run(presentation.Root, "show", $"{rev}:./slides/{slide.Id}.yaml");
+    }
+    catch (InvalidDataException)
+    {
+      return false;
+    }
+    string Normal(string text) => Unmarked(text, pick).ReplaceLineEndings("\n").TrimEnd();
+    return exit == 0 && Normal(File.ReadAllText(path)) != Normal(then);
+  }
+
   /// <summary>A slide's text without its <c>rejected</c> line; with <paramref name="pick"/>, only a line naming that
   /// pick.</summary>
   private static string Unmarked(string text, string? pick)

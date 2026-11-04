@@ -392,6 +392,35 @@ public class PickTests
       "two was rejected in pick p4kx: None of them shows the gap; redo it, then delete rejected: p4kx"));
   }
 
+  [Theory]
+  [InlineData(false, "two was rejected in pick p4kx: No; redo it, then delete rejected: p4kx")]
+  [InlineData(true, "two has changed since it was rejected in pick p4kx: No; if this is the redo, delete " +
+    "rejected: p4kx")]
+  public void The_check_on_a_rejected_slide_says_whether_it_changed_since_the_commit_it_was_rejected_at(bool edited,
+    string message)
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "offered");
+    string root = deck.Folder.PathTo("deck");
+    var seen = new Snapshot(Revisions.Run(root, "rev-parse", "HEAD").Output.Trim(), false, new HashSet<string>());
+    PickFile.Apply(deck.Load(), new PickChange("p4kx", null, "No"), "Daniel", Now, seen);
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "rejected");
+    if (edited)
+    {
+      File.AppendAllText(Path.Combine(root, "slides/two.yaml"), "hide: [page]\n");
+    }
+
+    // Act
+    Finding finding = Checks.Picks(deck.Load()).ShouldHaveSingleItem();
+
+    // Assert
+    finding.Message.ShouldBe(message);
+  }
+
   [Fact]
   public void Undoing_none_deletes_the_rejected_mark()
   {
