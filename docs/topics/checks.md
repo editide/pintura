@@ -15,7 +15,7 @@ It exits 1 when there are errors, and lists warnings without failing.
 | Consistency | A title or placeholder moved from its layout's frame; text at another size on one slide than the rest of the presentation has for its style and level; the same one-off text properties on three or more slides; a stack's or a waterfall's total that isn't what the bars it sums come to. | warning |
 | Comments | A comment on a slide or element that no longer exists, or a comments file git doesn't track in a repository. | warning |
 | Picks | A pick of fewer than two variants. | error |
-| Picks | A pick waiting on the reviewer, or a picks file git doesn't track in a repository. | warning |
+| Picks | A pick waiting on the reviewer; a slide marked `rejected`, saying when it has changed since the commit it was rejected at, as a redo that forgot to delete the mark has; a picks file git doesn't track in a repository. | warning |
 | Export | With `--export`: picture crops, callout tails, text columns, axis labels PowerPoint cuts off at a chart's edge, a plot's insets, and the other features the export can't reproduce. | warning |
 
 Each finding names the slide and element, `revenue/takeaway`, and a structure error names the file, the line, and the topic to read.

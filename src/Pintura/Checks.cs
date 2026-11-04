@@ -1193,8 +1193,8 @@ public static class Checks
   #region Picks
 
   /// <summary>Every open pick, which waits on the reviewer, or offers too few variants to choose between or more than
-  /// are worth reading, every slide the reviewer rejected, which waits on its redo, and a picks file git doesn't
-  /// track.</summary>
+  /// are worth reading, every slide the reviewer rejected, which waits on its redo or, once changed, on its mark's
+  /// deletion, and a picks file git doesn't track.</summary>
   public static List<Finding> Picks(Presentation presentation)
   {
     List<Finding> findings = Untracked(presentation, "picks",
@@ -1227,8 +1227,11 @@ public static class Checks
     {
       Rejection rejected = slide.Rejected!;
       string why = rejected.Why is null ? "" : $": {rejected.Why}";
-      findings.Add(new Finding("warning", "picks", slide.Id,
-        $"{slide.Id} was rejected in pick {rejected.Pick}{why}; redo it, then delete rejected: {rejected.Pick}")
+      string message = PickFile.ChangedSinceRejected(presentation, slide)
+        ? $"{slide.Id} has changed since it was rejected in pick {rejected.Pick}{why}; if this is the redo, delete " +
+          $"rejected: {rejected.Pick}"
+        : $"{slide.Id} was rejected in pick {rejected.Pick}{why}; redo it, then delete rejected: {rejected.Pick}";
+      findings.Add(new Finding("warning", "picks", slide.Id, message)
       {
         Slide = slide.Id,
         File = slide.Origin.File,
