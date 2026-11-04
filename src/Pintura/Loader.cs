@@ -1455,13 +1455,14 @@ public partial class PresentationLoader
   }
 
   /// <summary>The folder of the git repository holding <paramref name="folder"/>, where shared pictures can live.
-  /// </summary>
-  private static string? Repository(string folder)
+  /// A <c>.git</c> folder counts only with a HEAD, as git requires, since a stray empty one would widen what a picture
+  /// may reach to everything beneath it; a <c>.git</c> file marks a worktree, or a version Pintura extracted.</summary>
+  public static string? Repository(string folder)
   {
     for (DirectoryInfo? current = new DirectoryInfo(folder); current is not null; current = current.Parent)
     {
       string marker = Path.Combine(current.FullName, ".git");
-      if (Directory.Exists(marker) || System.IO.File.Exists(marker))
+      if (System.IO.File.Exists(Path.Combine(marker, "HEAD")) || System.IO.File.Exists(marker))
       {
         return current.FullName;
       }
