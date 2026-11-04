@@ -393,11 +393,12 @@ public class PresentationStore : IDisposable
     return ContentType(path) ?? ThemeFonts.ContentType(path);
   }
 
-  /// <summary>Every picture the layouts and the slides place, and every font the theme ships.</summary>
+  /// <summary>Every picture the layouts, the slides and the variants of open picks place, and every font the theme
+  /// ships.</summary>
   public static HashSet<string> Media(Presentation presentation)
   {
     return presentation.Theme.Layouts.Values.SelectMany(layout => layout.Elements)
-      .Concat(presentation.Slides.SelectMany(slide => slide.Elements))
+      .Concat(presentation.Offered.SelectMany(slide => slide.Elements))
       .Select(element => element.PicturePath)
       .OfType<string>()
       .Concat(presentation.Theme.Faces.Select(face => face.Path))

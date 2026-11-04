@@ -64,6 +64,22 @@ public class PickTests
     presentation.Sections[1].Slides.ShouldBe(["two"]);
   }
 
+  [Fact]
+  public void The_preview_serves_the_pictures_every_variant_places()
+  {
+    // Arrange
+    using DeckFixture deck = Offering();
+    deck.Write("deck/media/stacked.png", "png");
+    deck.Write("deck/slides/stacked.yaml",
+      "layout: content\nelements:\n  - id: picture\n    picture: ../media/stacked.png\n    frame: [40, 100, 400, 300]");
+
+    // Act
+    HashSet<string> media = PresentationStore.Media(deck.Load());
+
+    // Assert
+    media.ShouldContain(deck.Folder.PathTo("deck/media/stacked.png"));
+  }
+
   [Theory]
   [InlineData("  - pick: zzzz", "no open pick zzzz in picks.yaml")]
   [InlineData("  - pick: p4kx\n  - stacked", "slide stacked is both in slides and offered in pick p4kx")]
