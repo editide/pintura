@@ -257,6 +257,27 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Deleting_all_of_a_bold_run_drops_its_markers_with_it()
+  {
+    // Arrange
+    string source = Patcher.SourceAt(Slide, "elements.takeaway.text")!;
+    string leading = Slide.Replace("- Up **33%** on 2024", "- **Up:** 33% on 2024");
+
+    // Act
+    string alone = Apply(Slide,
+      new ValueEdit("elements.takeaway.text", source, Paragraphs: ["Revenue of $11.4B in ￼", "Up  on 2024"]));
+    string spaced = Apply(Slide,
+      new ValueEdit("elements.takeaway.text", source, Paragraphs: ["Revenue of $11.4B in ￼", "Up on 2024"]));
+    string first = Apply(leading, new ValueEdit("elements.takeaway.text",
+      Patcher.SourceAt(leading, "elements.takeaway.text")!, Paragraphs: ["Revenue of $11.4B in ￼", "33% on 2024"]));
+
+    // Assert
+    Changed(Slide, alone).ShouldBe(["      - Up  on 2024"]);
+    Changed(Slide, spaced).ShouldBe(["      - Up on 2024"]);
+    Changed(leading, first).ShouldBe(["      - 33% on 2024"]);
+  }
+
+  [Fact]
   public void A_quoted_placeholder_keeps_its_quotes_and_its_field()
   {
     // Act

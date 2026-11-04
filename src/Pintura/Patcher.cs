@@ -880,12 +880,7 @@ public static partial class Patcher
         int to;
         if (removed.Count > 0)
         {
-          from = removed[0].Start;
-          to = removed[^1].End;
-          if (removed.Sum(character => character.End - character.Start) != to - from)
-          {
-            throw new PatchException("that edit crosses formatting, such as bold or a span; make it in the file");
-          }
+          (from, to) = Stretch(removed, Wrappers(lines[paragraph.Line], paragraph.Start));
         }
         else
         {
@@ -932,6 +927,12 @@ public static partial class Patcher
       old.AddRange(Characters(paragraph).Select(character =>
         (character.Character, line + character.Start, line + character.End, character.Field)));
     }
+    List<Wrapper> wrappers = parsed.SelectMany(paragraph => Wrappers(lines[paragraph.Line], paragraph.Start)
+      .Select(markup => markup with
+      {
+        ContentStart = markup.ContentStart + starts[paragraph.Line],
+        ContentEnd = markup.ContentEnd + starts[paragraph.Line]
+      })).ToList();
     string before = new string(old.Select(character => character.Character).ToArray());
     var text = new StringBuilder(body);
     foreach ((int start, int end, string typed) in Hunks(before, string.Join('\n', paragraphs)).AsEnumerable()
@@ -946,12 +947,7 @@ public static partial class Patcher
       int to;
       if (removed.Count > 0)
       {
-        from = removed[0].Start;
-        to = removed[^1].End;
-        if (removed.Sum(character => character.End - character.Start) != to - from)
-        {
-          throw new PatchException("that edit crosses formatting, such as bold or a span; make it in the file");
-        }
+        (from, to) = Stretch(removed, wrappers);
       }
       else if (start > 0 && typed.StartsWith('\n') && (start == old.Count || old[start].Character == '\n'))
       {
@@ -997,9 +993,44 @@ public static partial class Patcher
   /// side.</summary>
   private record Wrapper(int ContentStart, int ContentEnd, string Open, string Close);
 
+  /// <summary>Where the characters an edit removed lie, widened to take in the markers of any formatting whose
+  /// content they remove entirely, since nothing would be left for it to format.</summary>
+  private static (int From, int To) Stretch(List<(char Character, int Start, int End, string? Field)> removed,
+    List<Wrapper> wrappers)
+  {
+    int from = removed[0].Start;
+    int to = removed[^1].End;
+    int markup = 0;
+    var emptied = new HashSet<Wrapper>();
+    // Repeated so that emptying inner formatting can empty what wraps it.
+    for (bool grew = true; grew;)
+    {
+      grew = false;
+      foreach (Wrapper wrapper in wrappers.Where(wrapper => !emptied.Contains(wrapper) &&
+        wrapper.ContentStart < wrapper.ContentEnd && from <= wrapper.ContentStart && wrapper.ContentEnd <= to))
+      {
+        emptied.Add(wrapper);
+        from = Math.Min(from, wrapper.ContentStart - wrapper.Open.Length);
+        to = Math.Max(to, wrapper.ContentEnd + wrapper.Close.Length);
+        markup += wrapper.Open.Length + wrapper.Close.Length;
+        grew = true;
+      }
+    }
+    return removed.Sum(character => character.End - character.Start) + markup == to - from
+      ? (from, to)
+      : throw new PatchException("that edit crosses formatting, such as bold or a span; make it in the file");
+  }
+
   /// <summary>The markup whose content takes in <paramref name="position"/> on a line, its ends included, outermost
   /// first, read as <see cref="Markup"/> reads it.</summary>
   private static List<Wrapper> Around(string line, int start, int position)
+  {
+    return Wrappers(line, start).Where(markup => markup.ContentStart <= position && position <= markup.ContentEnd)
+      .ToList();
+  }
+
+  /// <summary>The markup on a line, outermost first, read as <see cref="Markup"/> reads it.</summary>
+  private static List<Wrapper> Wrappers(string line, int start)
   {
     var wrapping = new List<Wrapper>();
     var open = new Stack<(int ContentStart, string Marker, int Close, string Closer)>();
@@ -1015,10 +1046,7 @@ public static partial class Patcher
           open.Pop();
         }
         open.Pop();
-        if (span.ContentStart <= position && position <= span.Close)
-        {
-          wrapping.Add(new Wrapper(span.ContentStart, span.Close, "[", span.Closer));
-        }
+        wrapping.Add(new Wrapper(span.ContentStart, span.Close, "[", span.Closer));
         at = span.Close + span.Closer.Length;
         continue;
       }
@@ -1041,11 +1069,7 @@ public static partial class Patcher
         string delimiter = !closesItalic && rest.StartsWith("**", StringComparison.Ordinal) ? "**" : "*";
         if (open.Count > 0 && open.Peek().Marker == delimiter)
         {
-          int contentStart = open.Pop().ContentStart;
-          if (contentStart <= position && position <= at)
-          {
-            wrapping.Add(new Wrapper(contentStart, at, delimiter, delimiter));
-          }
+          wrapping.Add(new Wrapper(open.Pop().ContentStart, at, delimiter, delimiter));
         }
         else if (at + delimiter.Length < line.Length && line[at + delimiter.Length] != ' ')
         {
