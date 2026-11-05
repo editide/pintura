@@ -226,6 +226,20 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Moving_words_from_one_side_of_a_field_to_the_other_keeps_the_field()
+  {
+    // Arrange
+    string slide = "title: \"Sales grew, but rent is ${date} of spend, and it has a strange board\"\n";
+
+    // Act
+    string patched = Apply(slide, new ValueEdit("title", Patcher.SourceAt(slide, "title")!,
+      Paragraphs: ["Sales grew, but it has a strange board and rent is ￼ of spend"]));
+
+    // Assert
+    patched.ShouldBe("title: \"Sales grew, but it has a strange board and rent is ${date} of spend\"\n");
+  }
+
+  [Fact]
   public void Typing_over_a_field_writes_the_text_in_its_place()
   {
     // Arrange

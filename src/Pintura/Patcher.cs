@@ -1313,18 +1313,20 @@ public static partial class Patcher
   }
 
   /// <summary>The stretches of <paramref name="before"/> an edit replaced, as its longest common subsequence with
-  /// <paramref name="after"/> leaves them, so two edits either side of formatting stay two.</summary>
+  /// <paramref name="after"/> leaves them, so two edits either side of formatting stay two. The page can't make a
+  /// field, so a field it kept outweighs any run of letters: words moved past one leave it where it was.</summary>
   private static List<(int Start, int End, string Typed)> Hunks(string before, string after)
   {
     int rows = before.Length;
     int columns = after.Length;
-    var common = new int[rows + 1, columns + 1];
+    long field = rows + 1;
+    var common = new long[rows + 1, columns + 1];
     for (int row = rows - 1; row >= 0; row--)
     {
       for (int column = columns - 1; column >= 0; column--)
       {
         common[row, column] = before[row] == after[column]
-          ? common[row + 1, column + 1] + 1
+          ? common[row + 1, column + 1] + (before[row] == FieldMark ? field : 1)
           : Math.Max(common[row + 1, column], common[row, column + 1]);
       }
     }
