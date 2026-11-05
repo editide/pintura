@@ -163,6 +163,104 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Asterisks_in_a_title_are_text_and_stay_when_words_beside_them_go()
+  {
+    // Arrange
+    string slide = "title: \"Fees *est. and rent *est.\"\n";
+
+    // Act
+    string patched = Apply(slide, new ValueEdit("title", Patcher.SourceAt(slide, "title")!,
+      Paragraphs: ["Fees * rent *est."]));
+
+    // Assert
+    patched.ShouldBe("title: \"Fees * rent *est.\"\n");
+  }
+
+  [Fact]
+  public void Deleting_the_first_word_of_emphasis_moves_the_space_after_it_out_of_the_markers()
+  {
+    // Arrange
+    string note = "elements:\n  - id: note\n    text: |\n      Sales **grew fast** and *rent fell*\n";
+
+    // Act
+    string patched = Apply(note, new ValueEdit("elements.note.text", Patcher.SourceAt(note, "elements.note.text")!,
+      Paragraphs: ["Sales  fast andfell"]));
+
+    // Assert
+    Changed(note, patched).ShouldBe(["      Sales  **fast** and*fell*"]);
+  }
+
+  [Fact]
+  public void Deleting_what_parts_two_runs_of_emphasis_merges_them()
+  {
+    // Arrange
+    string note = "elements:\n  - id: note\n    text: |\n      *rent* and *fees*\n";
+
+    // Act
+    string patched = Apply(note, new ValueEdit("elements.note.text", Patcher.SourceAt(note, "elements.note.text")!,
+      Paragraphs: ["rentfees"]));
+
+    // Assert
+    Changed(note, patched).ShouldBe(["      *rentfees*"]);
+  }
+
+  [Fact]
+  public void A_brace_typed_after_a_dollar_sign_stays_text()
+  {
+    // Arrange
+    string slide = "title: Costs of $4B\n";
+
+    // Act
+    string patched = Apply(slide, new ValueEdit("title", "Costs of $4B", Paragraphs: ["Costs of ${4B"]));
+
+    // Assert
+    patched.ShouldBe("title: Costs of \\${4B\n");
+  }
+
+  [Fact]
+  public void A_block_whose_first_line_comes_to_start_with_a_space_states_its_indentation()
+  {
+    // Arrange
+    string note = "elements:\n  - id: note\n    text: |\n      Sales grew\n      - Rent fell\n";
+
+    // Act
+    string patched = Apply(note, new ValueEdit("elements.note.text", Patcher.SourceAt(note, "elements.note.text")!,
+      Paragraphs: [" grew", "Rent fell"]));
+
+    // Assert
+    patched.ShouldBe("elements:\n  - id: note\n    text: |2\n       grew\n      - Rent fell\n");
+  }
+
+  [Fact]
+  public void Text_emptied_of_every_word_loses_its_style_lines()
+  {
+    // Arrange
+    string note = "elements:\n  - id: note\n    text: |\n      {.lead}\n      Sales grew\n";
+
+    // Act
+    string patched = Apply(note, new ValueEdit("elements.note.text", Patcher.SourceAt(note, "elements.note.text")!,
+      Paragraphs: [""]));
+
+    // Assert
+    Patcher.SourceAt(patched, "elements.note.text").ShouldNotContain("lead");
+  }
+
+  [Fact]
+  public void Joining_paragraphs_keeps_the_break_left_where_it_was_and_escapes_a_typed_marker()
+  {
+    // Arrange
+    string note = "elements:\n  - id: note\n    text: |\n      Fees\n      - [33% of rent](https://a.com)\n" +
+      "      - **sales**\n      Costs\n";
+
+    // Act
+    string patched = Apply(note, new ValueEdit("elements.note.text", Patcher.SourceAt(note, "elements.note.text")!,
+      Paragraphs: ["Fees33%", "sales", "1. Costs"]));
+
+    // Assert
+    patched.ShouldEndWith("      Fees[33%](https://a.com)\n      - **sales**\n      1\\. Costs\n");
+  }
+
+  [Fact]
   public void Rewording_a_paragraph_changes_its_line_alone_and_keeps_its_formatting_and_fields()
   {
     // Arrange
