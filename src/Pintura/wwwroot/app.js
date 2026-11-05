@@ -1458,29 +1458,58 @@ function versionSubject(version) {
 // Steps the comparison to the version before or after the one shown that changed the slide on screen, each version
 // beside the one before it, so a round of an agent's changes shows apart from the nudges that followed it. Stepping
 // past the newest returns to the latest changes, where edits write.
+// Finding the step loads each version passed over that changed files the slide may draw from, a Libreta run or two
+// apiece for a book, so one can take many seconds. Presses while it runs are dropped: each would step from the same
+// version, and their loads would race to draw.
+const historyTimeout = 60000;
+let stepping = false;
+
 async function stepSlideChanges(direction) {
   const slide = currentSlide()?.id;
   const from = direction < 0 ? state.compare?.commit || compareBase() : state.compare?.head?.commit;
-  if (!slide || !from) {
+  if (!slide || !from || stepping) {
     return;
   }
-  const query = new URLSearchParams({ slide, [direction < 0 ? 'before' : 'after']: from });
-  const response = await fetch(`api/history?${query}`, { cache: 'no-store' }).catch(() => null);
-  const found = response?.ok ? await response.json() : null;
-  if (!found && direction < 0) {
-    notice(response ? 'No earlier version changed this slide' : "Can't reach the server to step through versions");
-    return;
+  stepping = true;
+  const history = document.getElementById('slide-history');
+  const button = document.getElementById(direction < 0 ? 'history-older' : 'history-newer');
+  history.setAttribute('aria-busy', 'true');
+  button.setAttribute('aria-busy', 'true');
+  const label = document.getElementById('versions-label');
+  const shown = label.textContent;
+  label.textContent = '…';
+  try {
+    const query = new URLSearchParams({ slide, [direction < 0 ? 'before' : 'after']: from });
+    const signal = AbortSignal.timeout(historyTimeout);
+    const response = await fetch(`api/history?${query}`, { cache: 'no-store', signal }).catch((error) => error);
+    if (response instanceof Error) {
+      label.textContent = shown;
+      notice(response.name === 'TimeoutError'
+        ? `Gave up looking for this slide's ${direction < 0 ? 'previous' : 'next'} change after a minute; ` +
+          'stepping again picks up where it stopped'
+        : "Can't reach the server to step through versions");
+      return;
+    }
+    const found = response.ok ? await response.json() : null;
+    if (!found && direction < 0) {
+      label.textContent = shown;
+      notice('No earlier version changed this slide');
+      return;
+    }
+    const newest = found && state.saving && found.head.number === state.saving.next - 1 && !state.saving.unsaved;
+    if (!found || newest) {
+      chooseBase(null);
+    } else {
+      chooseBase(found.base.commit, found.head.commit);
+    }
+    state.before = false;
+    await load().catch((error) => showError(String(error)));
+    renderToolbar();
+  } finally {
+    stepping = false;
+    history.removeAttribute('aria-busy');
+    button.removeAttribute('aria-busy');
   }
-  const newest = found && state.saving && found.head.number === state.saving.next - 1 && !state.saving.unsaved;
-  if (!found || newest) {
-    chooseBase(null);
-  } else {
-    chooseBase(found.base.commit, found.head.commit);
-  }
-  state.before = false;
-  document.getElementById('versions-label').textContent = '…';
-  await load().catch((error) => showError(String(error)));
-  renderToolbar();
 }
 
 document.getElementById('history-older').addEventListener('click', () => stepSlideChanges(-1));

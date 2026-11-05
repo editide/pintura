@@ -65,8 +65,8 @@ public static partial class PreviewServer
     app.MapPost("/api/trace", (TracePayload trace) => Trace(store, trace));
     var comparison = new Comparison(store);
     app.MapGet("/api/compare", (string? @base, string? head) => comparison.Answer(@base, head));
-    app.MapGet("/api/history", (string slide, string? before, string? after) =>
-      comparison.Step(slide, before, after));
+    app.MapGet("/api/history", (string slide, string? before, string? after, CancellationToken aborted) =>
+      comparison.Step(slide, before, after, aborted));
     app.MapPost("/api/revert", (RevertRequest request) => comparison.Revert(request));
     app.MapGet("/api/versions", () => Results.Json(Revisions.Versions(store.Root), PayloadJson.Options));
     app.MapGet("/api/save", () => Saving(() => Saves.Status(store.Root)));
@@ -898,7 +898,9 @@ public class Comparison
   /// <summary>The newest version no later than <paramref name="before"/> that changed a slide as drawn, or the oldest
   /// later than <paramref name="after"/>, with the version before it; not found past either end of the versions.
   /// </summary>
-  public IResult Step(string slide, string? before, string? after)
+  /// <summary>The nearest version before or after one that changed the slide. A page that stops waiting stops the
+  /// walk at the next version, keeping what it learned of those it passed.</summary>
+  public IResult Step(string slide, string? before, string? after, CancellationToken aborted = default)
   {
     try
     {
@@ -923,6 +925,7 @@ public class Comparison
         var loaded = new Dictionary<string, Presentation>();
         foreach (int candidate in candidates)
         {
+          aborted.ThrowIfCancellationRequested();
           if (Changed(slide, versions[candidate], versions[candidate + 1], loaded))
           {
             return Results.Json(new SlideStep(versions[candidate + 1], versions[candidate]), PayloadJson.Options);
