@@ -58,7 +58,7 @@ public static class Revisions
 
   public static Presentation Load(Revision checkout, IBookReader? books = null)
   {
-    return PresentationLoader.Load(checkout.Root, checkout.DisplayBase, books);
+    return PresentationLoader.Load(checkout.Root, checkout.DisplayBase, books ?? LibretaReader.Extracted);
   }
 
   public static Revision Checkout(string root, string revision, string displayBase)

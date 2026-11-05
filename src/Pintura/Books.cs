@@ -58,6 +58,10 @@ public class LibretaReader : IBookReader
 {
   public static readonly LibretaReader Shared = new LibretaReader();
 
+  /// <summary>Reads the copies of books extracted for revisions, each in a folder of its own, so that the versions
+  /// sharing a book share its answers.</summary>
+  public static readonly LibretaReader Extracted = new LibretaReader(byContent: true);
+
   private static readonly JsonSerializerOptions Json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
   private readonly Dictionary<string, (string Stamp, object Answer)> answers =
     new Dictionary<string, (string, object)>(StringComparer.Ordinal);
@@ -65,11 +69,15 @@ public class LibretaReader : IBookReader
   private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(30);
   private readonly string executable;
   private readonly TimeSpan runTimeout;
+  private readonly bool byContent;
 
-  public LibretaReader(string? executable = null, TimeSpan? runTimeout = null)
+  /// <param name="byContent">Whether to know a book by what its files hold rather than where they are and when they
+  /// were written, which costs reading them but answers every copy of a book from one Libreta run.</param>
+  public LibretaReader(string? executable = null, TimeSpan? runTimeout = null, bool byContent = false)
   {
     this.executable = executable ?? Environment.GetEnvironmentVariable("PINTURA_LIBRETA") ?? "libreta";
     this.runTimeout = runTimeout ?? TimeSpan.FromMinutes(2);
+    this.byContent = byContent;
   }
 
   /// <summary>Checks whether a book changed once per book, rather than per question: a load asks one book dozens of
@@ -85,17 +93,17 @@ public class LibretaReader : IBookReader
 
     public IReadOnlyDictionary<string, BookLine> Lines(string root)
     {
-      return reader.Lines(root, stamps.GetOrAdd(root, Stamp));
+      return reader.Lines(root, stamps.GetOrAdd(root, reader.Stamp));
     }
 
     public BookView View(string root, string id)
     {
-      return reader.View(root, id, stamps.GetOrAdd(root, Stamp));
+      return reader.View(root, id, stamps.GetOrAdd(root, reader.Stamp));
     }
 
     public string Page(string root)
     {
-      return reader.Page(root, stamps.GetOrAdd(root, Stamp));
+      return reader.Page(root, stamps.GetOrAdd(root, reader.Stamp));
     }
 
 
@@ -260,7 +268,8 @@ public class LibretaReader : IBookReader
 
   private T Cached<T>(string root, string stamp, string key, Func<T> read) where T : class
   {
-    string entry = $"{root}\n{key}";
+    // Known by content, a book's answers hold no path, so they serve any folder holding the same files.
+    string entry = $"{(byContent ? stamp : root)}\n{key}";
     lock (gate)
     {
       if (answers.TryGetValue(entry, out (string Stamp, object Answer) cached) && cached.Stamp == stamp)
@@ -277,11 +286,31 @@ public class LibretaReader : IBookReader
   }
 
   /// <summary>The path, size, and write time of every file Libreta reads of a book, which move whenever a fact or
-  /// formula does: its files, but for a presentation kept inside it, and the <c>formats.yaml</c> above it as far as
-  /// the Git worktree's root.</summary>
-  private static string Stamp(string root)
+  /// formula does; known by content, each file's path from the book and a hash of what it holds.</summary>
+  private string Stamp(string root)
   {
     var text = new StringBuilder();
+    foreach (string path in BookFiles(root))
+    {
+      if (byContent)
+      {
+        text.Append(Path.GetRelativePath(root, path)).Append('\t')
+          .Append(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
+      }
+      else
+      {
+        var file = new FileInfo(path);
+        text.Append(path).Append('\t').Append(file.Length).Append('\t').Append(file.LastWriteTimeUtc.Ticks);
+      }
+      text.Append('\n');
+    }
+    return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
+  }
+
+  /// <summary>The files Libreta reads of a book: its own, but for a presentation kept inside it, and the
+  /// <c>formats.yaml</c> above it as far as the Git worktree's root.</summary>
+  private static IEnumerable<string> BookFiles(string root)
+  {
     var paths = new List<string>();
     Read(new DirectoryInfo(root));
     for (DirectoryInfo? folder = new DirectoryInfo(root).Parent; folder is not null; folder = folder.Parent)
@@ -310,12 +339,7 @@ public class LibretaReader : IBookReader
       }
     }
 
-    foreach (string path in paths.Order(StringComparer.Ordinal))
-    {
-      var file = new FileInfo(path);
-      text.Append(path).Append('\t').Append(file.Length).Append('\t').Append(file.LastWriteTimeUtc.Ticks).Append('\n');
-    }
-    return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
+    return paths.Order(StringComparer.Ordinal);
   }
 
   private string Run(string root, params string[] arguments)
