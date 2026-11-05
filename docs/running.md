@@ -188,6 +188,7 @@ The picker beside Save offers the latest changes above the versions of the prese
 Choosing a version writes its commit into the address as `?base=`, and choosing the latest changes clears it.
 The picker names both ends of what the page shows, as `v11 → v12`, or `v12 → unsaved` over changes not yet saved.
 In the slide view, the arrows beside it, or `[` and `]`, step through the versions that changed the slide on screen as drawn, each against the version before it, so a round of an agent's changes shows apart from the nudges either side of it.
+Finding the step loads each version it passes over that changed more than other slides' files, which can take seconds where the presentation draws from a book; the arrow spins meanwhile, takes no other press, and gives up after a minute, keeping what it learned for the next step.
 A version stepped to is written into the address as `?base=` and `?head=`, and drawn in the working tree's place, so the slide doesn't take edits until stepping past the newest returns to the latest changes.
 It keeps the comments as they are now, pinned to its elements, so each round reads against what asked for it and what the agent marked.
 

@@ -697,7 +697,7 @@ main {
   cursor: progress;
 }
 
-.export-button .spinner {
+.tool .spinner {
   display: none;
   width: 14px;
   height: 14px;
@@ -708,11 +708,11 @@ main {
   animation: spin .8s linear infinite;
 }
 
-.export-button[aria-busy="true"] .spinner {
+.tool[aria-busy="true"] .spinner {
   display: inline-block;
 }
 
-.export-button[aria-busy="true"] .icon {
+.tool[aria-busy="true"] .icon {
   display: none;
 }
 
@@ -727,7 +727,7 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .export-button .spinner {
+  .tool .spinner {
     animation-duration: 2.4s;
   }
 }
@@ -806,6 +806,10 @@ main {
 
 .slide-history .tool {
   padding: 0 2px;
+}
+
+.slide-history[aria-busy="true"] .tool {
+  cursor: progress;
 }
 
 .save-menu {
