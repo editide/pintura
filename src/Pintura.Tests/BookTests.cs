@@ -784,6 +784,35 @@ public class BookTests
   }
 
   [Fact]
+  public void A_reader_by_content_asks_libreta_once_for_copies_of_a_book_in_different_folders()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    foreach (string copy in new[] { "one", "two", "three" })
+    {
+      folder.Write($"{copy}/.git", "");
+      folder.Write($"{copy}/formats.yaml", "formats: {}");
+      folder.Write($"{copy}/book/book.yaml", "name: Acme");
+    }
+    folder.Write("three/formats.yaml", "formats: { restated: {} }");
+    string libreta = FakeLibreta(folder, $$"""
+      #!/bin/sh
+      echo call >> '{{folder.PathTo("calls").Replace('\\', '/')}}'
+      echo '[{"name":"a.b","label":"B","columns":["2025"],"exact":["1"],"display":["1.0"]}]'
+      """);
+    var reader = new LibretaReader(libreta, byContent: true);
+
+    // Act
+    reader.Session().Lines(folder.PathTo("one/book"));
+    IReadOnlyDictionary<string, BookLine> copied = reader.Session().Lines(folder.PathTo("two/book"));
+    reader.Session().Lines(folder.PathTo("three/book"));
+
+    // Assert
+    copied["a.b"].Display.ShouldBe(["1.0"]);
+    File.ReadAllLines(folder.PathTo("calls")).Length.ShouldBe(2);
+  }
+
+  [Fact]
   public void A_session_reads_each_book_as_it_first_found_it_and_the_next_session_sees_a_change()
   {
     // Arrange
