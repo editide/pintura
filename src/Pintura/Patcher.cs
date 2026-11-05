@@ -844,7 +844,7 @@ public static partial class Patcher
     switch (scalar.Style)
     {
       case ScalarStyle.Literal:
-        return First(edit, Written, Lines(text, scalar, value, updated));
+        return First(edit, Written, Lines(text, scalar, value, updated), Block(text, scalar, parent, updated));
       case ScalarStyle.Folded:
       case not ScalarStyle.Literal when !OneLine(scalar):
         throw new PatchException($"{edit.Path} is written across lines; write it as a block (|) to edit it here");
@@ -872,6 +872,11 @@ public static partial class Patcher
     string body = trailing ? value[..^1] : value;
     string[] lines = plain ? [body] : body.Split('\n');
     List<Paragraph> parsed = Parse(body, plain, context);
+    // Text emptied of every word goes with its style lines and list markers.
+    if (!plain && paragraphs.All(paragraph => paragraph.Length == 0))
+    {
+      return "";
+    }
     if (parsed.Count != paragraphs.Count)
     {
       return Regroup(body, parsed, paragraphs, context) + (trailing ? "\n" : "");
@@ -886,7 +891,8 @@ public static partial class Patcher
       {
         continue;
       }
-      string line = lines[paragraph.Line];
+      List<Wrapper> wrappers = plain ? [] : Wrappers(lines[paragraph.Line], paragraph.Start);
+      var line = new Tagged(lines[paragraph.Line], wrappers);
       // From the end back, so each stretch's offsets still hold when it is replaced.
       foreach ((int start, int end, string typed) in Hunks(before, after).AsEnumerable().Reverse())
       {
@@ -897,18 +903,19 @@ public static partial class Patcher
         }
         int from;
         int to;
-        string kept = "";
+        List<int> kept = [];
         if (removed.Count > 0)
         {
-          (from, to, kept) = Cut(line, removed, Wrappers(lines[paragraph.Line], paragraph.Start), typed.Length > 0);
+          (from, to, kept) = Cut(removed, wrappers, typed.Length > 0);
         }
         else
         {
           from = to = start > 0 ? old[start - 1].End : old.Count > 0 ? old[0].Start : paragraph.Start;
         }
-        line = line[..from] + Escape(typed, plain) + kept + line[to..];
+        line.Replace(from, to, Escape(typed, plain), kept);
       }
-      lines[paragraph.Line] = plain || paragraph.Level > 0 ? line : Markup.EscapeLineStart(line);
+      string written = line.Tidy(wrappers);
+      lines[paragraph.Line] = plain || paragraph.Level > 0 ? written : Markup.EscapeLineStart(written);
     }
     string updated = string.Join('\n', lines) + (trailing ? "\n" : "");
 
@@ -954,7 +961,7 @@ public static partial class Patcher
         ContentEnd = markup.ContentEnd + starts[paragraph.Line]
       })).ToList();
     string before = new string(old.Select(character => character.Character).ToArray());
-    var text = new StringBuilder(body);
+    var text = new Tagged(body, wrappers);
     foreach ((int start, int end, string typed) in Hunks(before, string.Join('\n', paragraphs)).AsEnumerable()
       .Reverse())
     {
@@ -965,10 +972,10 @@ public static partial class Patcher
       }
       int from;
       int to;
-      string kept = "";
+      List<int> kept = [];
       if (removed.Count > 0)
       {
-        (from, to, kept) = Cut(body, removed, wrappers, typed.Length > 0);
+        (from, to, kept) = Cut(removed, wrappers, typed.Length > 0);
       }
       else if (start > 0 && typed.StartsWith('\n') && (start == old.Count || old[start].Character == '\n'))
       {
@@ -999,10 +1006,23 @@ public static partial class Patcher
       List<Wrapper> inside = around.Where(markup => markup.ContentEnd >= next).ToList();
       string closing = string.Concat(inside.Select(markup => markup.Close).Reverse());
       string reopening = string.Concat(inside.Select(markup => markup.Open));
-      text.Remove(from, to - from);
-      text.Insert(from, Escape(typed, false).Replace("\n", closing + "\n" + opening + reopening) + kept);
+      // A line opened by a typed break starts with its paragraph's own style line and marker, so it reads as one.
+      string[] pieces = Escape(typed, false).Split('\n');
+      string inserted = pieces[0];
+      var origins = Enumerable.Repeat(-1, inserted.Length).ToList();
+      int styled = home.Style is null ? 0 : lines[home.Line - 1].Length + 1;
+      foreach (string piece in pieces.Skip(1))
+      {
+        inserted += closing + "\n" + opening + reopening + piece;
+        origins.AddRange(Enumerable.Repeat(-1, closing.Length + 1)
+          .Concat(Enumerable.Range(starts[home.Line] - styled, opening.Length))
+          .Concat(Enumerable.Repeat(-1, reopening.Length + piece.Length)));
+      }
+      text.Replace(from, to, inserted, kept, origins);
     }
-    string updated = text.ToString();
+    text.Tidy(wrappers);
+    // A line whose start an edit made, by typing or by deleting what came before, mustn't read as a list item.
+    string updated = text.EscapeLineStarts(starts.ToHashSet());
 
     List<Paragraph> reread = Parse(updated, false, context);
     bool same = reread.Count == paragraphs.Count &&
@@ -1014,10 +1034,10 @@ public static partial class Patcher
   /// side.</summary>
   private record Wrapper(int ContentStart, int ContentEnd, string Open, string Close);
 
-  /// <summary>The stretch of <paramref name="source"/> holding the characters an edit removed, and the markup in it
-  /// to keep, before which the typed text goes. Markup stays unless the edit removes all it formats, and what wraps
-  /// the first removed character stays for the text typed over it, as a word processor keeps it.</summary>
-  private static (int From, int To, string Kept) Cut(string source,
+  /// <summary>The stretch of source holding the characters an edit removed, and where the markup in it to keep sits,
+  /// before which the typed text goes. Markup stays unless the edit removes all it formats, and what wraps the first
+  /// removed character stays for the text typed over it, as a word processor keeps it.</summary>
+  private static (int From, int To, List<int> Kept) Cut(
     List<(char Character, int Start, int End, string? Field)> removed, List<Wrapper> wrappers, bool typing)
   {
     int first = removed[0].Start;
@@ -1034,15 +1054,153 @@ public static partial class Patcher
       from = Math.Min(from, wrapper.ContentStart - wrapper.Open.Length);
       to = Math.Max(to, wrapper.ContentEnd + wrapper.Close.Length);
     }
-    var kept = new StringBuilder();
-    for (int position = from; position < to; position++)
+    List<int> kept = Enumerable.Range(from, to - from)
+      .Where(position => !dropped.Any(range => range.Start <= position && position < range.End)).ToList();
+    return (from, to, kept);
+  }
+
+  /// <summary>Markup being patched, each character of a wrapper's markers tagged with it, so what an edit leaves
+  /// beside formatting can be tidied into markup that reads as it: a marker can't open onto a space, and emphasis
+  /// emptied or run into its like goes. Positions before the last stretch replaced are the source's.</summary>
+  private sealed class Tagged
+  {
+    private readonly StringBuilder text;
+    // The wrapper's index plus one on its opener, minus that on its closer, and 0 elsewhere.
+    private readonly List<int> tags;
+    // Each character's position in the source, or -1 for one typed.
+    private readonly List<int> origins;
+
+    public Tagged(string source, List<Wrapper> wrappers)
     {
-      if (!dropped.Any(range => range.Start <= position && position < range.End))
+      text = new StringBuilder(source);
+      tags = Enumerable.Repeat(0, source.Length).ToList();
+      origins = Enumerable.Range(0, source.Length).ToList();
+      for (int index = 0; index < wrappers.Count; index++)
       {
-        kept.Append(source[position]);
+        Wrapper wrapper = wrappers[index];
+        for (int position = wrapper.ContentStart - wrapper.Open.Length; position < wrapper.ContentStart; position++)
+        {
+          tags[position] = index + 1;
+        }
+        for (int position = wrapper.ContentEnd; position < wrapper.ContentEnd + wrapper.Close.Length; position++)
+        {
+          tags[position] = -(index + 1);
+        }
       }
     }
-    return (from, to, kept.ToString());
+
+    /// <summary>Replaces from <paramref name="from"/> to <paramref name="to"/> with typed text and then the
+    /// characters kept from within it, which keep their tags.</summary>
+    public void Replace(int from, int to, string typed, List<int> kept, List<int>? typedOrigins = null)
+    {
+      string keptText = string.Concat(kept.Select(position => text[position]));
+      List<int> keptTags = kept.Select(position => tags[position]).ToList();
+      List<int> keptOrigins = kept.Select(position => origins[position]).ToList();
+      Remove(from, to);
+      text.Insert(from, typed + keptText);
+      tags.InsertRange(from, Enumerable.Repeat(0, typed.Length).Concat(keptTags));
+      origins.InsertRange(from, (typedOrigins ?? Enumerable.Repeat(-1, typed.Length)).Concat(keptOrigins));
+    }
+
+    /// <summary>The text, each line not starting where one of <paramref name="lineStarts"/> did escaped so it stays
+    /// a paragraph.</summary>
+    public string EscapeLineStarts(HashSet<int> lineStarts)
+    {
+      var lines = new List<string>();
+      int start = 0;
+      string written = text.ToString();
+      foreach (string line in written.Split('\n'))
+      {
+        string escaped = Markup.EscapeLineStart(line);
+        lines.Add(escaped == line || Kept(start, line, escaped, lineStarts) ? line : escaped);
+        start += line.Length + 1;
+      }
+      return string.Join('\n', lines);
+    }
+
+    public string Tidy(List<Wrapper> wrappers)
+    {
+      bool Emphasis(int tag) => wrappers[Math.Abs(tag) - 1].Open is "*" or "**";
+      for (int position = 0; position < text.Length; position++)
+      {
+        int tag = tags[position];
+        if (tag == 0 || !Emphasis(tag) || (position > 0 && tags[position - 1] == tag))
+        {
+          continue;
+        }
+        int end = position;
+        while (end < text.Length && tags[end] == tag)
+        {
+          end++;
+        }
+        int next = end < text.Length ? tags[end] : 0;
+        bool emptied = tag > 0 && next == -tag;
+        // A closer run into an opener of the same emphasis would read as another marker, and both wrap the same.
+        bool joined = tag < 0 && next > 0 && Emphasis(next) &&
+          wrappers[-tag - 1].Open == wrappers[next - 1].Open;
+        if (emptied || joined)
+        {
+          int after = end;
+          while (after < text.Length && tags[after] == next)
+          {
+            after++;
+          }
+          Remove(position, after);
+          position = Math.Max(-1, position - 2);
+          continue;
+        }
+        int spaces = end;
+        while (tag > 0 && spaces < text.Length && text[spaces] == ' ' && tags[spaces] == 0)
+        {
+          spaces++;
+        }
+        if (spaces > end)
+        {
+          string marker = text.ToString(position, end - position);
+          List<int> markerOrigins = origins.GetRange(position, end - position);
+          Remove(position, end);
+          int at = position + spaces - end;
+          text.Insert(at, marker);
+          tags.InsertRange(at, Enumerable.Repeat(tag, marker.Length));
+          origins.InsertRange(at, markerOrigins);
+          position = Math.Max(-1, position - 2);
+        }
+      }
+      // A `$` and a `{` an edit brought together would read as a field.
+      for (int position = text.Length - 2; position >= 0; position--)
+      {
+        int escapes = 0;
+        while (position - escapes > 0 && text[position - escapes - 1] == '\\')
+        {
+          escapes++;
+        }
+        if (text[position] == '$' && text[position + 1] == '{' && escapes % 2 == 0 &&
+          !(origins[position] >= 0 && origins[position + 1] == origins[position] + 1))
+        {
+          text.Insert(position, '\\');
+          tags.Insert(position, 0);
+          origins.Insert(position, -1);
+        }
+      }
+      return text.ToString();
+    }
+
+    /// <summary>Whether the marker starting a line is the source's: every character of it is, in order from the
+    /// start of one of its lines.</summary>
+    private bool Kept(int start, string line, string escaped, HashSet<int> lineStarts)
+    {
+      int marker = Math.Min(line.Length, Enumerable.Range(0, line.Length).First(index => escaped[index] != line[index])
+        + 2);
+      return lineStarts.Contains(origins[start]) &&
+        Enumerable.Range(1, marker - 1).All(index => origins[start + index] == origins[start] + index);
+    }
+
+    private void Remove(int from, int to)
+    {
+      text.Remove(from, to - from);
+      tags.RemoveRange(from, to - from);
+      origins.RemoveRange(from, to - from);
+    }
   }
 
   /// <summary>The markup whose content takes in <paramref name="position"/> on a line, its ends included, outermost
@@ -1314,8 +1472,9 @@ public static partial class Patcher
 
   /// <summary>The stretches of <paramref name="before"/> an edit replaced, as its longest common subsequence with
   /// <paramref name="after"/> leaves them, so two edits either side of formatting stay two. The page can't make a
-  /// field, so a field it kept outweighs any run of letters: words moved past one leave it where it was.</summary>
-  private static List<(int Start, int End, string Typed)> Hunks(string before, string after)
+  /// field or a paragraph break, so one it kept outweighs any run of letters: words moved past a field leave it where
+  /// it was, and a break stays a break rather than reading as typed inside a link.</summary>
+  internal static List<(int Start, int End, string Typed)> Hunks(string before, string after)
   {
     int rows = before.Length;
     int columns = after.Length;
@@ -1326,7 +1485,7 @@ public static partial class Patcher
       for (int column = columns - 1; column >= 0; column--)
       {
         common[row, column] = before[row] == after[column]
-          ? common[row + 1, column + 1] + (before[row] == FieldMark ? field : 1)
+          ? common[row + 1, column + 1] + (before[row] is FieldMark or '\n' ? field : 1)
           : Math.Max(common[row + 1, column], common[row, column + 1]);
       }
     }
@@ -1477,7 +1636,11 @@ public static partial class Patcher
     bool kept = updated.EndsWith('\n');
     string[] lines = (kept ? updated[..^1] : updated).Split('\n');
     int indent = (int)key.Start.Column - 1 + 2;
-    return Splice(text, scalar, $"{(kept ? "|" : "|-")}\n{Indented(lines, indent)}");
+    // YAML takes a block's indentation from its first line with words, so one starting with a space needs it stated.
+    string stated = lines.FirstOrDefault(line => line.Trim().Length > 0)?.StartsWith(' ') == true ? "2" : "";
+    // A block's span takes in its last line break, where a one-line value's ends at its last character.
+    string end = scalar.Style == ScalarStyle.Literal && Node.Span(text, scalar).EndsWith('\n') ? "\n" : "";
+    return Splice(text, scalar, $"|{stated}{(kept ? "" : "-")}\n{Indented(lines, indent)}{end}");
   }
 
   private static List<(int Start, int End)> LineSpans(string text)
@@ -1670,7 +1833,8 @@ public static partial class Patcher
           return candidate;
         }
       }
-      catch (PatchException)
+      // A candidate YAML can't read, as a block whose first line starts with a space, gives way to the next.
+      catch (Exception exception) when (exception is PatchException or YamlException or ArgumentException)
       {
       }
     }
