@@ -44,10 +44,12 @@ public static partial class Differ
   {
     Func<Slide, string> identity = byPosition ? slide => slide.Number.ToString(CultureInfo.InvariantCulture)
       : slide => slide.Id;
-    Dictionary<string, Slide> earlier = before.Slides.ToDictionary(identity);
+    // A pick's later variants share its number, and the one the reviewer keeps should diff against itself as offered.
+    List<Slide> offered = byPosition ? before.Slides : [.. before.Offered];
+    Dictionary<string, Slide> earlier = offered.ToDictionary(identity);
     Dictionary<string, Slide> later = after.Slides.ToDictionary(identity);
     HashSet<string> kept = Kept(
-      before.Slides.Select(identity).Where(later.ContainsKey).ToList(),
+      offered.Select(identity).Where(later.ContainsKey).ToList(),
       after.Slides.Select(identity).Where(earlier.ContainsKey).ToList());
 
     var slides = new List<SlideDiff>();

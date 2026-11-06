@@ -374,4 +374,26 @@ public class DiffTests
     output.ToString().ShouldContain("text  …2023 to $11.4B in 2025,… → …2023 to $11.5B in 2025,…");
   }
 
+  [Fact]
+  public void A_kept_variant_diffs_against_the_slide_as_offered_and_the_dropped_ones_show_as_removed()
+  {
+    // Arrange
+    using DeckFixture deck = PickTests.Offering();
+    Presentation before = deck.Load();
+    string list = File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml"));
+    deck.Write("deck/presentation.yaml", list.Replace("pick: p4kx", "stacked"));
+    File.Delete(deck.Folder.PathTo("deck/picks.yaml"));
+    File.Delete(deck.Folder.PathTo("deck/slides/two.yaml"));
+    File.Delete(deck.Folder.PathTo("deck/slides/waterfall.yaml"));
+    deck.Write("deck/slides/stacked.yaml", "layout: content\ntitle: Stacked, edited");
+
+    // Act
+    DeckDiff diff = Differ.Compare(before, deck.Load());
+
+    // Assert
+    diff.Slides.Select(slide => (slide.Id, slide.Status, slide.Moved))
+      .ShouldBe([("stacked", "changed", false), ("two", "removed", false)]);
+  }
+
+
 }

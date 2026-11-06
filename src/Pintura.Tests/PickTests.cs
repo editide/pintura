@@ -36,7 +36,7 @@ public class PickTests
       - pick: p4kx
     """;
 
-  private static DeckFixture Offering()
+  internal static DeckFixture Offering()
   {
     var deck = new DeckFixture();
     deck.Write("deck/picks.yaml", Picks);
