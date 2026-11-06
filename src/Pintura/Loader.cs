@@ -35,7 +35,7 @@ public partial class PresentationLoader
   private readonly string root;
   private readonly string displayBase;
   private readonly IBookReader reader;
-  private readonly string bookBase;
+  private readonly IFiles files;
   private string? themeRoot;
   private Dictionary<string, Field> fields = new Dictionary<string, Field>();
   private readonly Dictionary<string, Book> books = new Dictionary<string, Book>(StringComparer.Ordinal);
@@ -46,27 +46,34 @@ public partial class PresentationLoader
   private readonly Dictionary<string, Table> tables = new Dictionary<string, Table>(StringComparer.Ordinal);
   private List<Pick>? resolved;
 
-  private PresentationLoader(string root, string displayBase, IBookReader reader, string bookBase)
+  private PresentationLoader(string root, string displayBase, IBookReader reader, IFiles files)
   {
     this.root = root;
     this.displayBase = displayBase;
     this.reader = reader;
-    this.bookBase = bookBase;
+    this.files = files;
   }
 
-  /// <summary>Loads the presentation at <paramref name="root"/>, finding the books it quotes from
-  /// <paramref name="bookBase"/>, the presentation's own folder unless a revision's copy of it is elsewhere.</summary>
+  /// <summary>Loads the presentation at <paramref name="root"/> from <paramref name="files"/>, the disk unless a
+  /// revision's tree.</summary>
   public static Presentation Load(string root, string? displayBase = null, IBookReader? books = null,
-    string? bookBase = null)
+    IFiles? files = null)
   {
-    string full = Path.GetFullPath(root);
-    return new PresentationLoader(full, displayBase ?? Directory.GetCurrentDirectory(),
-      (books ?? LibretaReader.Shared).Session(), Path.GetFullPath(bookBase ?? full)).LoadPresentation();
+    return new PresentationLoader(Path.GetFullPath(root), displayBase ?? Directory.GetCurrentDirectory(),
+      (books ?? LibretaReader.Shared).Session(), files ?? DiskFiles.Instance).LoadPresentation();
+  }
+
+  /// <summary>Whether a revision is read and <paramref name="path"/> lies outside its repository, where git has none
+  /// of it.</summary>
+  private bool OutsideTree(string path)
+  {
+    return files is GitTree tree &&
+      Path.GetRelativePath(tree.Top, path).Split(Path.DirectorySeparatorChar)[0] == "..";
   }
 
   private SourceFile File(string path)
   {
-    return SourceFile.For(Path.GetFullPath(path), displayBase);
+    return SourceFile.For(Path.GetFullPath(path), displayBase, files);
   }
 
   private Presentation LoadPresentation()
@@ -108,13 +115,18 @@ public partial class PresentationLoader
     map.Done();
 
     themeRoot = Path.GetFullPath(Path.Combine(root, themeNode.AsString()));
-    if (!System.IO.File.Exists(Path.Combine(themeRoot, "theme.yaml")))
+    if (OutsideTree(themeRoot))
+    {
+      throw themeNode.Error($"the theme at {themeNode.AsString()} is outside the repository, so it can't be read at " +
+        "a revision", "themes");
+    }
+    if (!files.Exists(Path.Combine(themeRoot, "theme.yaml")))
     {
       throw themeNode.Error($"no theme.yaml in {themeNode.AsString()}", "themes");
     }
     Theme theme = LoadTheme(themeRoot);
 
-    List<Pick> picks = PickFile.Load(root, displayBase);
+    List<Pick> picks = PickFile.Load(root, displayBase, files);
     // Which pick offers each slide, so one listed in slides as well is caught whichever comes first.
     var offered = new Dictionary<string, string>(StringComparer.Ordinal);
     foreach (Pick pick in picks)
@@ -205,10 +217,11 @@ public partial class PresentationLoader
       Slides = slides,
       Charts = charts,
       Tables = tables,
-      Comments = CommentFile.Load(root, displayBase),
+      Comments = CommentFile.Load(root, displayBase, files),
       Picks = picks,
       Variants = variants,
       Root = root,
+      Files = files,
       Origin = document.Origin,
       Origins = origins
     };
@@ -266,8 +279,12 @@ public partial class PresentationLoader
       Node pathNode = map.Require("path");
       map.Done();
       string path = pathNode.AsString();
-      string bookRoot = Path.GetFullPath(Path.Combine(bookBase, path));
-      if (!System.IO.File.Exists(Path.Combine(bookRoot, "book.yaml")))
+      string bookRoot = Path.GetFullPath(Path.Combine(root, path));
+      if (OutsideTree(bookRoot))
+      {
+        throw pathNode.Error($"the book at {path} is outside the repository, so it can't be read at a revision");
+      }
+      if (!files.Exists(Path.Combine(bookRoot, "book.yaml")))
       {
         throw pathNode.Error($"no book.yaml in {path}; paths are relative to presentation.yaml");
       }
@@ -286,14 +303,12 @@ public partial class PresentationLoader
   private void AskBooks()
   {
     string tables = Path.Combine(root, "tables");
-    IEnumerable<(Book Book, string? View)> views = Directory.Exists(tables)
-      ? Directory.EnumerateFiles(tables, "*.yaml")
-        .SelectMany(file => ViewNamed().Matches(TextOrNothing(file)))
-        .Select(match => (Book: books.GetValueOrDefault(match.Groups["book"].Value),
-          View: (string?)match.Groups["view"].Value))
-        .Where(entry => entry.Book is not null)
-        .Select(entry => (entry.Book!, entry.View))
-      : [];
+    IEnumerable<(Book Book, string? View)> views = files.Files(tables, "*.yaml")
+      .SelectMany(file => ViewNamed().Matches(TextOrNothing(file)))
+      .Select(match => (Book: books.GetValueOrDefault(match.Groups["book"].Value),
+        View: (string?)match.Groups["view"].Value))
+      .Where(entry => entry.Book is not null)
+      .Select(entry => (entry.Book!, entry.View));
     List<(Book Book, string? View)> questions =
       [.. books.Values.Select(book => (book, (string?)null)), .. views.Distinct()];
     Parallel.ForEach(questions, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, question =>
@@ -489,13 +504,10 @@ public partial class PresentationLoader
 
     var layouts = new Dictionary<string, Layout>(StringComparer.Ordinal);
     string layoutFolder = Path.Combine(themeRoot, "layouts");
-    if (Directory.Exists(layoutFolder))
+    foreach (string path in files.Files(layoutFolder, "*.yaml").Order(StringComparer.Ordinal))
     {
-      foreach (string path in Directory.GetFiles(layoutFolder, "*.yaml").Order(StringComparer.Ordinal))
-      {
-        Layout layout = LoadLayout(path, areas, title, placeholders);
-        layouts[layout.Id] = layout;
-      }
+      Layout layout = LoadLayout(path, areas, title, placeholders);
+      layouts[layout.Id] = layout;
     }
 
     return new Theme
@@ -504,7 +516,7 @@ public partial class PresentationLoader
       Colors = colors,
       NamedColors = namedColors,
       Fonts = fonts,
-      Faces = ThemeFonts.Read(Path.Combine(themeRoot, "fonts")),
+      Faces = ThemeFonts.Read(Path.Combine(themeRoot, "fonts"), files),
       Background = background,
       Title = title,
       Placeholders = placeholders,
@@ -1259,7 +1271,7 @@ public partial class PresentationLoader
     Origin origin = new Origin(File(path).Display, 1, 1);
     try
     {
-      if (!System.IO.File.Exists(path))
+      if (!files.Exists(path))
       {
         throw entry.Error($"no slide file slides/{stem}.yaml");
       }
@@ -1419,7 +1431,7 @@ public partial class PresentationLoader
   private Rejection ReadRejection(Node node)
   {
     string id = node.AsString();
-    resolved ??= PickFile.LoadResolved(root, displayBase);
+    resolved ??= PickFile.LoadResolved(root, displayBase, files);
     Pick pick = resolved.LastOrDefault(each => each.Id == id)
       ?? throw node.Error($"rejected names no pick resolved with {PickFile.None} in {PickFile.ResolvedName}", "picks");
     return pick.Resolved!.Chosen == PickFile.None
@@ -1456,7 +1468,7 @@ public partial class PresentationLoader
 
   /// <summary>The folder of the git repository holding <paramref name="folder"/>, where shared pictures can live.
   /// A <c>.git</c> folder counts only with a HEAD, as git requires, since a stray empty one would widen what a picture
-  /// may reach to everything beneath it; a <c>.git</c> file marks a worktree, or a version Pintura extracted.</summary>
+  /// may reach to everything beneath it; a <c>.git</c> file marks a worktree.</summary>
   public static string? Repository(string folder)
   {
     for (DirectoryInfo? current = new DirectoryInfo(folder); current is not null; current = current.Parent)
@@ -1688,7 +1700,7 @@ public partial class PresentationLoader
       Node pictureNode = Take("picture")!;
       picture = pictureNode.AsString();
       picturePath = Path.GetFullPath(Path.Combine(folder, picture));
-      if (!System.IO.File.Exists(picturePath))
+      if (!files.Exists(picturePath))
       {
         throw pictureNode.Error($"no picture at {picture}; paths are relative to the file naming them");
       }
@@ -1736,7 +1748,7 @@ public partial class PresentationLoader
       {
         throw reference.Error($"name a {kind} by its file's stem in {folderName}/, such as revenue");
       }
-      if (!System.IO.File.Exists(Path.Combine(root, folderName, $"{stem}.yaml")))
+      if (!files.Exists(Path.Combine(root, folderName, $"{stem}.yaml")))
       {
         throw reference.Error($"no {kind} file {folderName}/{stem}.yaml");
       }
@@ -1792,7 +1804,7 @@ public partial class PresentationLoader
 
   /// <summary>Reads a crop, refusing one that trims the whole image away, as reading the crop as the corners of the part
   /// kept does.</summary>
-  private static double[] Crop(Node node, string picture, string path)
+  private double[] Crop(Node node, string picture, string path)
   {
     const string shape = "[left, top, right, bottom] pixels from the image's edges, each 0 or more";
     double[] crop = node.AsNumbers(4, $"the {shape}");
@@ -1800,7 +1812,7 @@ public partial class PresentationLoader
     {
       throw node.Error($"crop trims {shape}");
     }
-    if (Exporter.Intrinsic(path) is double[] size)
+    if (Exporter.Intrinsic(path, files) is double[] size)
     {
       string name = Path.GetFileName(picture);
       foreach ((int axis, string direction) in new[] { (0, "across"), (1, "down") })
@@ -1948,7 +1960,7 @@ public partial class PresentationLoader
     else
     {
       string csvPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, data));
-      if (!System.IO.File.Exists(csvPath))
+      if (!files.Exists(csvPath))
       {
         throw dataNode.Error($"no CSV at {data}; paths are relative to the file naming them");
       }
@@ -2695,7 +2707,7 @@ public partial class PresentationLoader
     else
     {
       string csvPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, data));
-      if (!System.IO.File.Exists(csvPath))
+      if (!files.Exists(csvPath))
       {
         throw dataNode.Error($"no CSV at {data}; paths are relative to the file naming them");
       }

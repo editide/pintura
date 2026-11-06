@@ -2,6 +2,7 @@
 
 A presentation can quote a Libreta book, so its figures come from the book rather than being typed: text reads one cell, a chart reads lines, and a table presents a view.
 Reading a book needs the `libreta` CLI on the path, or `PINTURA_LIBRETA` pointing at it.
+Comparing against a version reads its books with `libreta --at`, which needs a Libreta new enough to have it.
 
 ## Including a book
 

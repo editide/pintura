@@ -1,15 +1,8 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Formats.Tar;
-using System.Security.Cryptography;
-using System.Text;
 using YamlDotNet.RepresentationModel;
 
 namespace Pintura;
-
-/// <summary>A presentation as a commit left it, extracted with its theme, its books, and the pictures and CSVs they
-/// name into a folder of its own.</summary>
-public record Revision(string Name, string Commit, string Folder, string Root, string DisplayBase);
 
 /// <summary>A commit that changed a presentation, as the page lists it to compare against, numbered from its first;
 /// <see cref="ByHand"/> when the page's Save made it rather than an agent or git.</summary>
@@ -45,55 +38,23 @@ public record VersionScope(string Top, string Presentation, List<string> Saved, 
   }
 }
 
-/// <summary>Presentations at a git revision. Each commit is extracted once, under the temporary folder, and loaded by
-/// the same loader as the working tree, with origins named as the working tree names them.</summary>
+/// <summary>Presentations at a git revision, read from git by the same loader as the working tree, with origins named
+/// as the working tree names them.</summary>
 public static class Revisions
 {
-  private const string ExtractionVersion = "2";
-
-  public static Presentation Load(string root, string revision, string? displayBase = null)
-  {
-    return Load(Checkout(root, revision, displayBase ?? Directory.GetCurrentDirectory()));
-  }
-
-  public static Presentation Load(Revision checkout, IBookReader? books = null)
-  {
-    return PresentationLoader.Load(checkout.Root, checkout.DisplayBase, books ?? LibretaReader.Extracted);
-  }
-
-  public static Revision Checkout(string root, string revision, string displayBase)
+  /// <summary>The presentation as a revision left it, with its theme, books and pictures, read from git.</summary>
+  public static Presentation Load(string root, string revision, string? displayBase = null, IBookReader? books = null)
   {
     root = Path.GetFullPath(root);
-    (string top, string spelled, string presentation) = Locate(root);
-    string commit = Commit(top, revision);
-    string manifest = presentation == "." ? "presentation.yaml" : $"{presentation}/presentation.yaml";
-    (int exit, string text, _) = Run(top, "show", $"{commit}:{manifest}");
-    if (exit != 0)
-    {
-      throw new InvalidDataException($"{revision} has no {manifest}");
-    }
-    var paths = new List<string> { presentation };
-    foreach ((string? book, string path) in Linked(root, spelled, text, revision))
-    {
-      paths.Add(path);
-      if (book is not null)
-      {
-        paths.AddRange(Formats(top, commit, path));
-      }
-    }
+    GitTree tree = Tree(root, revision);
+    return PresentationLoader.Load(root, displayBase, (books ?? LibretaReader.Shared).At(tree), tree);
+  }
 
-    // The version names what an extraction holds, so one made before pictures and CSVs outside these paths came
-    // along is made again.
-    string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-      string.Join("\n", paths.Prepend(ExtractionVersion)))))[..8];
-    string folder = Temporary.Folder("revisions", $"{commit}-{key}".ToLowerInvariant());
-    if (!Directory.Exists(folder))
-    {
-      Extract(top, commit, paths, folder);
-    }
-    string shown = Relative(spelled, Path.GetFullPath(displayBase));
-    return new Revision(revision, commit, folder, Path.Combine(folder, presentation),
-      shown.StartsWith("..", StringComparison.Ordinal) ? folder : Path.GetFullPath(Path.Combine(folder, shown)));
+  /// <summary>The tree of the commit a revision names, in the repository holding the presentation.</summary>
+  public static GitTree Tree(string root, string revision)
+  {
+    (_, string spelled, _) = Locate(Path.GetFullPath(root));
+    return GitTree.Open(spelled, Commit(root, revision));
   }
 
   /// <summary>The repository's top, as git answers it and as the root spells it, and the presentation's folder in it.
@@ -227,8 +188,8 @@ public static class Revisions
       fields[6].Trim().Length > 0);
   }
 
-  /// <summary>The full hash a revision names, so a moving name such as <c>HEAD</c> finds a new extraction once it
-  /// moves.</summary>
+  /// <summary>The full hash a revision names, so a moving name such as <c>HEAD</c> is read anew once it moves.
+  /// </summary>
   public static string Commit(string folder, string revision)
   {
     (int exit, string output, _) = Run(TopLevel(folder), "rev-parse", "--verify", "--quiet", "--end-of-options",
@@ -313,103 +274,6 @@ public static class Revisions
     }
   }
 
-  /// <summary>The <c>formats.yaml</c> the commit has above a book, up to the repository's root, which Libreta merges
-  /// into the book's formats.</summary>
-  private static IEnumerable<string> Formats(string top, string commit, string book)
-  {
-    var candidates = new List<string>();
-    for (string? folder = Path.GetDirectoryName(book); folder is not null; folder = Path.GetDirectoryName(folder))
-    {
-      candidates.Add(folder.Length == 0 ? "formats.yaml" : $"{folder.Replace('\\', '/')}/formats.yaml");
-    }
-    (int exit, string output, _) = Run(top, ["ls-tree", "--name-only", commit, "--", .. candidates]);
-    return exit == 0 ? output.Split('\n', StringSplitOptions.RemoveEmptyEntries) : [];
-  }
-
-  /// <summary>Extracts beside the destination and renames, so a folder that exists is always whole.</summary>
-  private static void Extract(string top, string commit, List<string> paths, string folder)
-  {
-    string partial = $"{folder}.{Guid.NewGuid():N}";
-    Directory.CreateDirectory(partial);
-    try
-    {
-      Archive(top, commit, paths, partial);
-      List<string> referenced = Referenced(partial).ToList();
-      if (referenced.Count > 0 && Committed(top, commit, referenced) is { Count: > 0 } committed)
-      {
-        Archive(top, commit, committed, partial);
-      }
-      // Libreta merges formats as far as a worktree's root, which it finds by a .git marker.
-      File.WriteAllText(Path.Combine(partial, ".git"), "");
-      try
-      {
-        Directory.Move(partial, folder);
-      }
-      catch (IOException) when (Directory.Exists(folder))
-      {
-      }
-    }
-    finally
-    {
-      if (Directory.Exists(partial))
-      {
-        Directory.Delete(partial, true);
-      }
-    }
-  }
-
-  private static void Archive(string top, string commit, IEnumerable<string> paths, string folder)
-  {
-    var start = Start(top, ["archive", "--format=tar", commit, "--", .. paths]);
-    using Process process = Process.Start(start)!;
-    Task<string> error = process.StandardError.ReadToEndAsync();
-    TarFile.ExtractToDirectory(process.StandardOutput.BaseStream, folder, true);
-    // The reader stops at the archive's end, before the padding git writes after it, which can be more than
-    // Windows' pipe holds, so git would wait to write it while this waits for git.
-    process.StandardOutput.BaseStream.CopyTo(Stream.Null);
-    process.WaitForExit();
-    if (process.ExitCode != 0)
-    {
-      throw new InvalidDataException($"git archive failed: {error.Result.Trim()}");
-    }
-  }
-
-  /// <summary>The pictures and CSVs the extracted YAML names outside the extracted paths, as repository paths;
-  /// those outside the repository are left for the loader to report.</summary>
-  private static IEnumerable<string> Referenced(string folder)
-  {
-    var found = new SortedSet<string>(StringComparer.Ordinal);
-    foreach (string file in Directory.EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories))
-    {
-      var stream = new YamlStream();
-      try
-      {
-        stream.Load(new StringReader(File.ReadAllText(file)));
-      }
-      catch (YamlDotNet.Core.YamlException)
-      {
-        continue;
-      }
-      foreach (string value in stream.Documents.SelectMany(document => FileValues(document.RootNode)))
-      {
-        string path = Relative(folder, Path.GetFullPath(Path.Combine(Path.GetDirectoryName(file)!, value)));
-        if (!path.StartsWith("..", StringComparison.Ordinal) && !File.Exists(Path.Combine(folder, path)))
-        {
-          found.Add(path);
-        }
-      }
-    }
-    return found;
-  }
-
-  /// <summary>The paths the commit has, so one it lacks is the loader's to report rather than git archive's.
-  /// </summary>
-  private static List<string> Committed(string top, string commit, List<string> paths)
-  {
-    (int exit, string output, _) = Run(top, ["ls-tree", "--name-only", commit, "--", .. paths]);
-    return exit == 0 ? output.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToList() : [];
-  }
-
   /// <summary>The paths a YAML node names as pictures or CSVs, as written.</summary>
   public static IEnumerable<string> FileValues(YamlNode node)
   {
@@ -453,7 +317,7 @@ public static class Revisions
     }
   }
 
-  private static ProcessStartInfo Start(string folder, IEnumerable<string> arguments)
+  internal static ProcessStartInfo Start(string folder, IEnumerable<string> arguments)
   {
     var start = new ProcessStartInfo("git")
     {

@@ -678,7 +678,7 @@ public class BookTests
   }
 
   [Fact]
-  public void A_revision_reads_its_books_as_the_commit_left_them()
+  public void A_revision_reads_its_books_from_git_at_the_working_trees_paths()
   {
     // Arrange
     using DeckFixture deck = Deck("""
@@ -688,40 +688,48 @@ public class BookTests
     RevisionTests.Git(deck.Folder.Root, "init", "-q");
     RevisionTests.Git(deck.Folder.Root, "add", "deck", "theme", "book");
     RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
-    deck.Write("book/book.yaml", "name: Acme, restated");
-    Revision checkout = Revisions.Checkout(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root);
+    Directory.Delete(deck.Folder.PathTo("book"), true);
 
     // Act
-    Presentation committed = Revisions.Load(checkout, deck.Books);
+    Presentation committed = Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root, deck.Books);
 
     // Assert
-    committed.Books["acme"].Root.ShouldBe(Path.Combine(checkout.Folder, "book"));
-    File.ReadAllText(Path.Combine(committed.Books["acme"].Root, "book.yaml")).Trim().ShouldBe("name: Acme");
+    committed.Books["acme"].Root.ShouldBe(deck.Folder.PathTo("book"));
+    committed.Files.ReadAllText(Path.Combine(committed.Books["acme"].Root, "book.yaml")).Trim().ShouldBe("name: Acme");
     PayloadBuilder.Title(committed, committed.Slides[0]).ShouldBe("11,387 in revenue");
   }
 
   [Fact]
-  public void A_revision_keeps_the_formats_libreta_reads_above_its_books_as_far_as_the_repository_root()
+  public void A_books_key_at_a_revision_moves_with_its_files_and_the_formats_above_it_alone()
   {
     // Arrange
-    using DeckFixture deck = Deck("""
-      layout: content
-      title: Revenue
-      """);
-    deck.Write("formats.yaml", "formats: { dollars_per_share: { decimals: 2 } }");
-    deck.Write("notes.md", "Not read by the book");
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", ".");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    using var folder = new TempFolder();
+    folder.Write("formats.yaml", "formats: {}");
+    folder.Write("books/acme/book.yaml", "name: Acme");
+    folder.Write("notes.md", "Not read by the book");
+    RevisionTests.Git(folder.Root, "init", "-q");
+    RevisionTests.Git(folder.Root, "add", ".");
+    RevisionTests.Git(folder.Root, "commit", "-q", "-m", "first");
+    string Key() => GitTree.Open(folder.Root, Revisions.Commit(folder.Root, "HEAD")).BookKey(folder.PathTo("books/acme"))!;
+    string first = Key();
+    void Commit(string path, string text)
+    {
+      folder.Write(path, text);
+      RevisionTests.Git(folder.Root, "commit", "-q", "-am", path);
+    }
 
     // Act
-    Revision checkout = Revisions.Checkout(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root);
+    Commit("notes.md", "Still not read");
+    string afterNotes = Key();
+    Commit("formats.yaml", "formats: { restated: {} }");
+    string afterFormats = Key();
+    Commit("books/acme/book.yaml", "name: Acme, restated");
+    string afterBook = Key();
 
     // Assert
-    File.ReadAllText(Path.Combine(checkout.Folder, "formats.yaml")).ShouldContain("dollars_per_share");
-    File.Exists(Path.Combine(checkout.Folder, "notes.md")).ShouldBeFalse();
-    // Libreta merges formats up to a worktree's root, which a .git marker names.
-    File.Exists(Path.Combine(checkout.Folder, ".git")).ShouldBeTrue();
+    afterNotes.ShouldBe(first);
+    afterFormats.ShouldNotBe(afterNotes);
+    afterBook.ShouldNotBe(afterFormats);
   }
 
   [Fact]
@@ -748,12 +756,12 @@ public class BookTests
     RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
 
     // Act
-    InvalidDataException error = Should.Throw<InvalidDataException>(() =>
-      Revisions.Checkout(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root));
+    LoadException error = Should.Throw<LoadException>(() =>
+      Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root, deck.Books));
 
     // Assert
-    error.Message.ShouldBe($"the book acme at {elsewhere.PathTo("book")} is outside the repository, so HEAD " +
-      "can't be compared");
+    error.Problem.ShouldBe($"the book at {elsewhere.PathTo("book")} is outside the repository, so it can't be read " +
+      "at a revision");
   }
 
   [Fact]
@@ -784,32 +792,30 @@ public class BookTests
   }
 
   [Fact]
-  public void A_reader_by_content_asks_libreta_once_for_copies_of_a_book_in_different_folders()
+  public void A_revisions_answers_are_asked_of_libreta_at_its_commit_once_and_kept_across_readers()
   {
     // Arrange
     using var folder = new TempFolder();
-    foreach (string copy in new[] { "one", "two", "three" })
-    {
-      folder.Write($"{copy}/.git", "");
-      folder.Write($"{copy}/formats.yaml", "formats: {}");
-      folder.Write($"{copy}/book/book.yaml", "name: Acme");
-    }
-    folder.Write("three/formats.yaml", "formats: { restated: {} }");
+    folder.Write("book/book.yaml", "name: Acme");
+    RevisionTests.Git(folder.Root, "init", "-q");
+    RevisionTests.Git(folder.Root, "add", "book");
+    RevisionTests.Git(folder.Root, "commit", "-q", "-m", "first");
+    string commit = Revisions.Commit(folder.Root, "HEAD");
     string libreta = FakeLibreta(folder, $$"""
       #!/bin/sh
-      echo call >> '{{folder.PathTo("calls").Replace('\\', '/')}}'
+      echo "$@" >> '{{folder.PathTo("calls").Replace('\\', '/')}}'
       echo '[{"name":"a.b","label":"B","columns":["2025"],"exact":["1"],"display":["1.0"]}]'
       """);
-    var reader = new LibretaReader(libreta, byContent: true);
+    GitTree tree = GitTree.Open(folder.Root, commit);
 
     // Act
-    reader.Session().Lines(folder.PathTo("one/book"));
-    IReadOnlyDictionary<string, BookLine> copied = reader.Session().Lines(folder.PathTo("two/book"));
-    reader.Session().Lines(folder.PathTo("three/book"));
+    new LibretaReader(libreta, kept: folder.PathTo("kept")).At(tree).Lines(folder.PathTo("book"));
+    IReadOnlyDictionary<string, BookLine> again =
+      new LibretaReader(libreta, kept: folder.PathTo("kept")).At(tree).Lines(folder.PathTo("book"));
 
     // Assert
-    copied["a.b"].Display.ShouldBe(["1.0"]);
-    File.ReadAllLines(folder.PathTo("calls")).Length.ShouldBe(2);
+    again["a.b"].Display.ShouldBe(["1.0"]);
+    File.ReadAllLines(folder.PathTo("calls")).ShouldBe([$"{folder.PathTo("book")} --lines --json --at {commit}"]);
   }
 
   [Fact]

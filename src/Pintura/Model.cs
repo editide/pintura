@@ -28,6 +28,8 @@ public class Presentation
   /// </summary>
   [JsonIgnore] public List<Slide> Variants { get; init; } = new List<Slide>();
   [JsonIgnore] public string Root { get; init; } = "";
+  /// <summary>Where its files are read from: the disk, or the tree of the revision it was loaded at.</summary>
+  [JsonIgnore] public IFiles Files { get; init; } = DiskFiles.Instance;
   [JsonIgnore] public Origin Origin { get; init; } = new Origin("", 0, 0);
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
 

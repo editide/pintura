@@ -625,11 +625,20 @@ public class PresentationStore : IDisposable
 
   public static string MediaUrl(string path, string? fill)
   {
+    return MediaUrl(DiskFiles.Instance, path, fill);
+  }
+
+  /// <summary>A picture's or font's address, naming the revision it's read at when that isn't the working tree.
+  /// </summary>
+  public static string MediaUrl(IFiles files, string path, string? fill)
+  {
     // The file's stamp, so a picture replaced in place changes the payload, which the page redraws, and the URL,
     // which the browser fetches again.
-    var file = new FileInfo(path);
-    string stamp = file.Exists ? $"{file.LastWriteTimeUtc.Ticks:x}-{file.Length:x}" : "0";
-    string url = $"api/media?path={Uri.EscapeDataString(path)}&v={stamp}";
+    string url = $"api/media?path={Uri.EscapeDataString(path)}&v={Uri.EscapeDataString(files.Stamp(path))}";
+    if (files is GitTree tree)
+    {
+      url += $"&at={tree.Commit}";
+    }
     return fill is null ? url : $"{url}&fill={Uri.EscapeDataString(fill)}";
   }
 

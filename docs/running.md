@@ -314,7 +314,7 @@ pintura presentations/example --check --export --json
 `all` writes a contact sheet of every slide under its section instead.
 `theme` writes the preview's theme view, whole, at 1440 pixels wide.
 Take screenshots through `--screenshot` rather than a browser of your own: Pintura sets up its browser so that what it draws matches `--check` and the export, which a browser started some other way may not, with fonts that differ or are missing.
-Without `--output`, the PNG goes to `screenshots/<presentation>/<slide>.png` in Pintura's own folder for what it can make again: `~/.cache/pintura` on Linux, where the temporary folder is shared between users, and the temporary folder's `pintura` elsewhere.
+Without `--output`, the PNG goes to `screenshots/<presentation>/<slide>.png` in Pintura's own folder for what it can make again: `~/.cache/pintura` on Linux, where the temporary folder is shared between users, and the temporary folder's `pintura` elsewhere, unless `PINTURA_CACHE` names another.
 
 `--screenshot` also prints the slide's findings.
 

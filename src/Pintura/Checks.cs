@@ -114,7 +114,7 @@ public static class Checks
     foreach (SceneItem item in SceneBuilder.Build(presentation, slide).Items.Where(item => item.Owner == "slide" &&
       item.Kind == "picture" && item.Properties.GetValueOrDefault("fill")?.Value is Color { IsNone: false }))
     {
-      int paints = SvgPaint.Paints(File.ReadAllText(item.Element!.PicturePath!));
+      int paints = SvgPaint.Paints(presentation.Files.ReadAllText(item.Element!.PicturePath!));
       if (paints > 1)
       {
         yield return new Finding("warning", "structure", $"{slide.Id}/{item.Id}",
@@ -185,6 +185,10 @@ public static class Checks
     (string Name, string Problem)[] files)
   {
     var findings = new List<Finding>();
+    if (presentation.Files is GitTree)
+    {
+      return findings;
+    }
     try
     {
       if (Revisions.Run(presentation.Root, "rev-parse", "--is-inside-work-tree").Exit != 0)

@@ -11,17 +11,14 @@ public static class ThemeFonts
 {
   /// <summary>Each file answers to its family at its weight, and, for a weight beyond regular and bold, to the
   /// Windows family that names the weight, such as "IBM Plex Sans Medm", which a slide may write instead.</summary>
-  public static List<FontFace> Read(string folder)
+  public static List<FontFace> Read(string folder, IFiles? files = null)
   {
+    files ??= DiskFiles.Instance;
     var faces = new List<FontFace>();
-    if (!Directory.Exists(folder))
-    {
-      return faces;
-    }
-    foreach (string path in Directory.GetFiles(folder).Where(path => ContentType(path) is not null)
+    foreach (string path in files.Files(folder, "*").Where(path => ContentType(path) is not null)
       .Order(StringComparer.Ordinal))
     {
-      if (Names(File.ReadAllBytes(path)) is not var (family, typographic, weight, bold, italic))
+      if (Names(files.ReadAllBytes(path)) is not var (family, typographic, weight, bold, italic))
       {
         continue;
       }

@@ -177,11 +177,13 @@ public sealed class HeadlessBrowser : IAsyncDisposable
     });
   }
 
-  public async Task<Measurement> Measure(IReadOnlyList<string>? slides)
+  /// <param name="revision">The revision to measure rather than the working tree.</param>
+  public async Task<Measurement> Measure(IReadOnlyList<string>? slides, string? revision = null)
   {
     return await Use(async current =>
     {
-      JsonElement result = await current.EvaluateAsync<JsonElement>("ids => pintura.measure(ids)", slides);
+      JsonElement result = await current.EvaluateAsync<JsonElement>("([ids, base]) => pintura.measure(ids, base)",
+        new object?[] { slides, revision });
       return result.Deserialize<Measurement>(PayloadJson.Options)!;
     });
   }
