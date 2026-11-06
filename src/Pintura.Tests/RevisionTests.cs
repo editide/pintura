@@ -57,6 +57,32 @@ public class RevisionTests
   }
 
   [Fact]
+  public void A_revision_reads_a_picture_whose_folder_the_working_tree_has_since_removed()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    const string svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>";
+    deck.Write("assets/old/logo.svg", svg);
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Results
+      elements:
+        - { id: logo, picture: ../../assets/old/logo.svg, frame: [880, 500, 60, 20], crop: [1, 1, 1, 1] }
+      """);
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    Directory.Delete(deck.Folder.PathTo("assets/old"), true);
+
+    // Act
+    Presentation committed = Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root);
+
+    // Assert
+    committed.Slides.Single(slide => slide.Id == "two").Error.ShouldBeNull();
+    committed.Files.ReadAllText(deck.Folder.PathTo("assets/old/logo.svg")).ShouldBe(svg + "\n");
+  }
+
+  [Fact]
   public void A_repository_reached_through_a_symlink_loads_its_revision()
   {
     // Arrange

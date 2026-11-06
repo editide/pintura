@@ -60,11 +60,14 @@ public record SourceFile(string FullPath, string Display)
   /// <summary>The file's text as last loaded.</summary>
   public string Text { get; init; } = "";
 
-  public static SourceFile For(string fullPath, string displayBase)
+  /// <summary>Where the file is read from: the disk, or a revision's tree.</summary>
+  public IFiles Files { get; init; } = DiskFiles.Instance;
+
+  public static SourceFile For(string fullPath, string displayBase, IFiles? files = null)
   {
     string relative = Path.GetRelativePath(displayBase, fullPath);
     string shown = relative.Length <= fullPath.Length ? relative : fullPath;
-    return new SourceFile(fullPath, shown.Replace('\\', '/'));
+    return new SourceFile(fullPath, shown.Replace('\\', '/')) { Files = files ?? DiskFiles.Instance };
   }
 
   public string Folder => System.IO.Path.GetDirectoryName(FullPath)!;
@@ -98,6 +101,12 @@ public record SourceFile(string FullPath, string Display)
   /// otherwise refuses.</summary>
   public string ReadText(string topic)
   {
+    if (Files is not DiskFiles)
+    {
+      return Files.Exists(FullPath)
+        ? Files.ReadAllText(FullPath)
+        : throw new LoadException("file not found", new Origin(Display, 1, 1), topic);
+    }
     try
     {
       using var stream = new FileStream(FullPath, FileMode.Open, FileAccess.Read,

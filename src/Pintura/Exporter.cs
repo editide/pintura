@@ -1235,9 +1235,9 @@ public partial class Exporter
   }
 
   // The picture's own size, for fitting it inside its frame as the preview does.
-  public static double[]? Intrinsic(string file)
+  public static double[]? Intrinsic(string file, IFiles? files = null)
   {
-    byte[] bytes = File.ReadAllBytes(file);
+    byte[] bytes = (files ?? DiskFiles.Instance).ReadAllBytes(file);
     if (file.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
     {
       string text = System.Text.Encoding.UTF8.GetString(bytes);

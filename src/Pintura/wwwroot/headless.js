@@ -8,9 +8,14 @@ const SHEET_WIDTH = 480;
 
 const root = document.getElementById('root');
 
-async function fetchDeck() {
-  const response = await fetch('api/presentation', { cache: 'no-store' });
+// A base names a revision, drawn as the server reads it from git.
+async function fetchDeck(base) {
+  const response = await fetch(base ? `api/revision?base=${encodeURIComponent(base)}` : 'api/presentation',
+    { cache: 'no-store' });
   const deck = await response.json();
+  if (!response.ok) {
+    throw new Error(deck.error || `reading ${base} failed (${response.status})`);
+  }
   await useFonts(deck.fonts);
   return deck;
 }
@@ -84,8 +89,8 @@ function families(deck) {
   return [...found].sort();
 }
 
-async function measure(ids) {
-  const deck = await fetchDeck();
+async function measure(ids, base) {
+  const deck = await fetchDeck(base);
   // A pick's later variants are measured too, so the checks reach every slide the reviewer is offered.
   const slides = [...deck.slides, ...deck.variants].filter((slide) => !ids || ids.includes(slide.id));
   const stages = slides.map((slide) => [slide.id, renderStage(slide, deck.size)]);

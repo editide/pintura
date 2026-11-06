@@ -316,7 +316,7 @@ A presentation includes books with the `books:` entries Libreta uses to compose 
 - **Charts** take series from lines and categories from columns.
 - **Tables** render a Libreta view: its row roles find the table style's row styles by name, and its indents the table style's `indent`.
 - **Watching** covers the book's files, and folders linked into it, so editing a fact redraws every slide showing it.
-- **Revisions** extract the books with the presentation and its theme, so a restated fact is a change.
+- **Revisions** read the presentation, its theme, its pictures and its books straight from git, the books through `libreta --at`, so a restated fact is a change and nothing is copied out.
 - **Tracing**: Ctrl-clicking a linked number, in text, a table cell, or a chart's point, opens Libreta's inspector at that cell, so a board slide traces back to the filing.
 
 Pintura and Libreta each work without the other.

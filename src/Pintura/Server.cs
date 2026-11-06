@@ -65,6 +65,7 @@ public static partial class PreviewServer
     app.MapPost("/api/trace", (TracePayload trace) => Trace(store, trace));
     var comparison = new Comparison(store);
     app.MapGet("/api/compare", (string? @base, string? head) => comparison.Answer(@base, head));
+    app.MapGet("/api/revision", (string @base) => comparison.Deck(@base));
     app.MapGet("/api/history", (string slide, string? before, string? after, CancellationToken aborted) =>
       comparison.Step(slide, before, after, aborted));
     app.MapPost("/api/revert", (RevertRequest request) => comparison.Revert(request));
@@ -91,20 +92,27 @@ public static partial class PreviewServer
       return Saves.Save(store.Root, request.Message, store.Deck.Error is null ? store.Presentation : null,
         request.Files);
     }));
-    app.MapGet("/api/media", (HttpContext context, string path, string? fill) =>
+    app.MapGet("/api/media", (HttpContext context, string path, string? fill, string? at) =>
     {
-      if (!store.TryGetMedia(path, out string? contentType) && !comparison.TryGetMedia(path, out contentType))
+      // A revision's pictures are read from git, under the working tree's paths.
+      string? contentType = PresentationStore.ServedType(path);
+      IFiles? files = at is null
+        ? store.TryGetMedia(path, out _) ? DiskFiles.Instance : null
+        : comparison.Media(path, at);
+      if (files is null || contentType is null)
       {
         return Results.NotFound();
       }
       // An SVG opened on its own would otherwise run its script as this page, with every endpoint at hand.
       context.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'; style-src 'unsafe-inline'";
       context.Response.Headers.XContentTypeOptions = "nosniff";
-      return fill is null || !PresentationLoader.Svg(path)
-        ? Results.File(path, contentType)
-        : SvgPaint.IsHex(fill)
-          ? Results.Text(SvgPaint.Recolor(File.ReadAllText(path), fill), contentType)
+      if (fill is not null && PresentationLoader.Svg(path))
+      {
+        return SvgPaint.IsHex(fill)
+          ? Results.Text(SvgPaint.Recolor(files.ReadAllText(path), fill), contentType)
           : Results.BadRequest();
+      }
+      return files is DiskFiles ? Results.File(path, contentType) : Results.File(files.ReadAllBytes(path), contentType);
     });
 
     // The page holds this open and re-fetches whenever the presentation changes on disk or git's HEAD moves.
@@ -187,11 +195,12 @@ public static partial class PreviewServer
     // A POST, since a .pptx export is billed, and any page can make a browser GET.
     app.MapPost("/api/export/{format}", (HttpContext context, string format) =>
       Export(context, store, headless, app.Environment.WebRootPath, format, progress));
-    app.MapGet("/api/measure", async (string? slides) =>
+    // With a base, the revision is measured as the page draws it, read from git.
+    app.MapGet("/api/measure", async (string? slides, string? @base) =>
     {
       store.Refresh();
       string[]? wanted = slides?.Split(',', StringSplitOptions.RemoveEmptyEntries);
-      return await Headless(async () => Results.Json(await headless.Measure(wanted), PayloadJson.Options));
+      return await Headless(async () => Results.Json(await headless.Measure(wanted, @base), PayloadJson.Options));
     });
     app.MapGet("/api/findings", async (string slide) =>
     {
@@ -962,10 +971,27 @@ public class Comparison
     {
       if (!loaded.TryGetValue(commit, out Presentation? presentation))
       {
-        presentation = Revisions.Load(Revisions.Checkout(store.Root, commit, Directory.GetCurrentDirectory()));
+        presentation = Revisions.Load(store.Root, commit);
         loaded[commit] = presentation;
       }
       return presentation;
+    }
+  }
+
+  /// <summary>A revision's deck as the page draws it, which needn't be the working tree's to load.</summary>
+  public IResult Deck(string revision)
+  {
+    try
+    {
+      string commit = Revisions.Commit(store.Root, revision);
+      lock (gate)
+      {
+        return Results.Json(Before(revision, commit).Deck, PayloadJson.Options);
+      }
+    }
+    catch (Exception exception) when (exception is InvalidDataException or LoadException)
+    {
+      return Refused(exception.Message);
     }
   }
 
@@ -1017,7 +1043,7 @@ public class Comparison
     try
     {
       edits = Patcher.Revert(File.ReadAllText(PreviewServer.SlideFile(current, now.Id)),
-        File.ReadAllText(PreviewServer.SlideFile(side.Presentation, was.Id)), path);
+        side.Presentation.Files.ReadAllText(PreviewServer.SlideFile(side.Presentation, was.Id)), path);
     }
     catch (PatchException exception)
     {
@@ -1066,19 +1092,23 @@ public class Comparison
     {
       return kept;
     }
-    Revision checkout = Revisions.Checkout(store.Root, revision, Directory.GetCurrentDirectory());
-    Presentation presentation = Revisions.Load(checkout);
+    Presentation presentation = Revisions.Load(store.Root, commit);
     var loaded = new Side(commit, Revisions.Describe(store.Root, commit), presentation,
-      PayloadBuilder.Build(presentation, 0, PresentationStore.MediaUrl), PresentationStore.Media(presentation));
+      PayloadBuilder.Build(presentation, 0, (path, fill) => PresentationStore.MediaUrl(presentation.Files, path, fill)),
+      PresentationStore.Media(presentation));
     Volatile.Write(ref sides, [.. sides.TakeLast(2), loaded]);
     return loaded;
   }
 
-  public bool TryGetMedia(string path, out string? contentType)
+  /// <summary>The files of the loaded revision at <paramref name="commit"/>, when it places or ships
+  /// <paramref name="path"/>.</summary>
+  public IFiles? Media(string path, string commit)
   {
-    contentType = PresentationStore.ServedType(path);
     Side[] loaded = Volatile.Read(ref sides);
-    return contentType is not null && loaded.Any(side => side.Media.Contains(path)) && File.Exists(path);
+    return loaded.FirstOrDefault(side => side.Commit == commit && side.Media.Contains(path))?.Presentation.Files is
+      IFiles files && files.Exists(path)
+      ? files
+      : null;
   }
 
   private static IResult Refused(string message, int status = StatusCodes.Status409Conflict)

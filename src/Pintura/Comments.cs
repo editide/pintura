@@ -106,24 +106,24 @@ public static class CommentFile
   /// <summary>Both files as read, each with its entries.</summary>
   private record Texts(string Live, List<Entry> Entries, string Archive, List<Entry> Archived);
 
-  public static List<Comment> Load(string root, string displayBase)
+  public static List<Comment> Load(string root, string displayBase, IFiles? files = null)
   {
-    return Load(Path.Combine(root, Name), displayBase, false);
+    return Load(Path.Combine(root, Name), displayBase, false, files ?? DiskFiles.Instance);
   }
 
-  private static List<Comment> Load(string path, string displayBase, bool archive)
+  private static List<Comment> Load(string path, string displayBase, bool archive, IFiles files)
   {
-    if (!File.Exists(path))
+    if (!files.Exists(path))
     {
       return [];
     }
-    return Read(SourceFile.For(path, displayBase).Load("comments"), archive).Select(entry => entry.Comment).ToList();
+    return Read(SourceFile.For(path, displayBase, files).Load("comments"), archive).Select(entry => entry.Comment).ToList();
   }
 
   /// <summary>The resolved comments, in the order they were resolved.</summary>
-  public static List<Comment> LoadResolved(string root, string displayBase)
+  public static List<Comment> LoadResolved(string root, string displayBase, IFiles? files = null)
   {
-    return Load(Path.Combine(root, ResolvedName), displayBase, true);
+    return Load(Path.Combine(root, ResolvedName), displayBase, true, files ?? DiskFiles.Instance);
   }
 
   private static List<Entry> Read(Node document, bool archive)

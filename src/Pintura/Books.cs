@@ -50,17 +50,20 @@ public interface IBookReader
   {
     return this;
   }
+
+  /// <summary>A reader of the books as a revision's tree holds them.</summary>
+  IBookReader At(GitTree tree)
+  {
+    return this;
+  }
 }
 
 /// <summary>Runs the Libreta CLI, <c>PINTURA_LIBRETA</c> or <c>libreta</c> on the path, and keeps each answer until a
-/// file in the book changes, so a reload for a slide's edit costs no Libreta start.</summary>
+/// file in the book changes, so a reload for a slide's edit costs no Libreta start. A revision's answers never
+/// change, so they're kept on disk too, by what git names the book's files.</summary>
 public class LibretaReader : IBookReader
 {
   public static readonly LibretaReader Shared = new LibretaReader();
-
-  /// <summary>Reads the copies of books extracted for revisions, each in a folder of its own, so that the versions
-  /// sharing a book share its answers.</summary>
-  public static readonly LibretaReader Extracted = new LibretaReader(byContent: true);
 
   private static readonly JsonSerializerOptions Json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
   private readonly Dictionary<string, (string Stamp, object Answer)> answers =
@@ -69,15 +72,44 @@ public class LibretaReader : IBookReader
   private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(30);
   private readonly string executable;
   private readonly TimeSpan runTimeout;
-  private readonly bool byContent;
+  private readonly string kept;
+  private readonly Lazy<string> build;
 
-  /// <param name="byContent">Whether to know a book by what its files hold rather than where they are and when they
-  /// were written, which costs reading them but answers every copy of a book from one Libreta run.</param>
-  public LibretaReader(string? executable = null, TimeSpan? runTimeout = null, bool byContent = false)
+  /// <param name="kept">The folder a revision's answers are kept in.</param>
+  public LibretaReader(string? executable = null, TimeSpan? runTimeout = null, string? kept = null)
   {
     this.executable = executable ?? Environment.GetEnvironmentVariable("PINTURA_LIBRETA") ?? "libreta";
     this.runTimeout = runTimeout ?? TimeSpan.FromMinutes(2);
-    this.byContent = byContent;
+    this.kept = kept ?? Temporary.Folder("answers");
+    build = new Lazy<string>(Build);
+  }
+
+  public IBookReader At(GitTree tree)
+  {
+    return new AtRevision(this, tree);
+  }
+
+  private sealed class AtRevision(LibretaReader reader, GitTree tree) : IBookReader
+  {
+    public IReadOnlyDictionary<string, BookLine> Lines(string root)
+    {
+      return reader.Kept(tree.BookKey(root), "lines", () => reader.Run(root, "--lines", "--json", "--at", tree.Commit),
+        ParseLines);
+    }
+
+    public BookView View(string root, string id)
+    {
+      RequireView(id);
+      return reader.Kept(tree.BookKey(root), $"view {id}",
+        () => reader.Run(root, "--view", id, "--json", "--at", tree.Commit), ParseView);
+    }
+
+    public string Page(string root)
+    {
+      return reader.Kept(tree.BookKey(root), "page", () => reader.Export(root, "--at", tree.Commit), page => page);
+    }
+
+
   }
 
   /// <summary>Checks whether a book changed once per book, rather than per question: a load asks one book dozens of
@@ -126,48 +158,58 @@ public class LibretaReader : IBookReader
 
   private string Page(string root, string stamp)
   {
-    return Cached(root, stamp, "page", () =>
+    return Cached(root, stamp, "page", () => Export(root));
+  }
+
+  private string Export(string root, params string[] options)
+  {
+    string file = Temporary.Folder("books", $"{Guid.NewGuid():N}.html");
+    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+    try
     {
-      string file = Temporary.Folder("books", $"{Guid.NewGuid():N}.html");
-      Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-      try
-      {
-        Run(root, "--export", file);
-        return File.ReadAllText(file);
-      }
-      finally
-      {
-        File.Delete(file);
-      }
-    });
+      Run(root, ["--export", file, .. options]);
+      return File.ReadAllText(file);
+    }
+    finally
+    {
+      File.Delete(file);
+    }
   }
 
   private IReadOnlyDictionary<string, BookLine> Lines(string root, string stamp)
   {
-    return Cached(root, stamp, "lines", () =>
-    {
-      List<LineAnswer> lines = Answer<List<LineAnswer>>(Run(root, "--lines", "--json"));
-      return lines
-        .Where(line => line.Error is null)
-        .ToDictionary(line => line.Name, line => new BookLine(line.Name, line.Label ?? line.Name, line.Units,
-          line.Columns ?? [], line.Exact ?? [], line.Display ?? []), StringComparer.Ordinal);
-    });
+    return Cached(root, stamp, "lines", () => ParseLines(Run(root, "--lines", "--json")));
   }
 
   private BookView View(string root, string id, string stamp)
+  {
+    RequireView(id);
+    return Cached(root, stamp, $"view {id}", () => ParseView(Run(root, "--view", id, "--json")));
+  }
+
+  private static IReadOnlyDictionary<string, BookLine> ParseLines(string output)
+  {
+    return Answer<List<LineAnswer>>(output)
+      .Where(line => line.Error is null)
+      .ToDictionary(line => line.Name, line => new BookLine(line.Name, line.Label ?? line.Name, line.Units,
+        line.Columns ?? [], line.Exact ?? [], line.Display ?? []), StringComparer.Ordinal);
+  }
+
+  private static BookView ParseView(string output)
+  {
+    ViewAnswer view = Answer<ViewAnswer>(output);
+    return new BookView(view.Id, view.Columns.Select(column => new BookColumn(column.Name, column.Label)).ToList(),
+      view.Rows.Select(row => new BookRow(row.Name, row.Label, row.Kind, row.Style, row.Indent ?? 0,
+        Signed(row.Exact, row.Contra), row.Display, row.Cells))
+        .ToList());
+  }
+
+  private static void RequireView(string id)
   {
     if (!Argument(id))
     {
       throw new BookException($"{id} isn't a view Libreta can show");
     }
-    return Cached(root, stamp, $"view {id}", () =>
-    {
-      ViewAnswer view = Answer<ViewAnswer>(Run(root, "--view", id, "--json"));
-      return new BookView(view.Id, view.Columns.Select(column => new BookColumn(column.Name, column.Label)).ToList(),
-        view.Rows.Select(row => new BookRow(row.Name, row.Label, row.Kind, row.Style, row.Indent ?? 0,
-          Signed(row.Exact, row.Contra), row.Display, row.Cells))
-          .ToList());
-    });
   }
 
   /// <summary>Has the book's open pages select a cell, and answers the page's address at it, in the server already
@@ -268,8 +310,7 @@ public class LibretaReader : IBookReader
 
   private T Cached<T>(string root, string stamp, string key, Func<T> read) where T : class
   {
-    // Known by content, a book's answers hold no path, so they serve any folder holding the same files.
-    string entry = $"{(byContent ? stamp : root)}\n{key}";
+    string entry = $"{root}\n{key}";
     lock (gate)
     {
       if (answers.TryGetValue(entry, out (string Stamp, object Answer) cached) && cached.Stamp == stamp)
@@ -285,24 +326,79 @@ public class LibretaReader : IBookReader
     return answer;
   }
 
+  /// <summary>A revision's answer to a question about a book, which git's names for what Libreta reads of the book
+  /// fix for good, so it's kept in memory and on disk, and asked again only of another Libreta build. A book the
+  /// revision lacks has no name, and its error isn't kept.</summary>
+  private T Kept<T>(string? book, string question, Func<string> ask, Func<string, T> parse) where T : class
+  {
+    if (book is null)
+    {
+      return parse(ask());
+    }
+    string entry = $"{build.Value}\n{book}\n{question}";
+    lock (gate)
+    {
+      if (answers.TryGetValue(entry, out (string Stamp, object Answer) cached))
+      {
+        return (T)cached.Answer;
+      }
+    }
+    string file = Path.Combine(kept, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(entry)))[..32]);
+    string text;
+    try
+    {
+      text = File.ReadAllText(file);
+    }
+    catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+    {
+      text = ask();
+      Directory.CreateDirectory(kept);
+      Files.Replace(file, text);
+    }
+    T answer = parse(text);
+    lock (gate)
+    {
+      answers[entry] = ("", answer);
+    }
+    return answer;
+  }
+
+  /// <summary>Names the Libreta build, which a rebuild changes, so answers a fix would change are asked again.
+  /// </summary>
+  private string Build()
+  {
+    string? path = Path.IsPathRooted(executable)
+      ? executable
+      : (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
+        .Select(folder => Path.Combine(folder, executable))
+        .FirstOrDefault(File.Exists);
+    if (path is null)
+    {
+      return executable;
+    }
+    var file = new FileInfo(path);
+    if (file.ResolveLinkTarget(true) is FileInfo target)
+    {
+      file = target;
+    }
+    // The apphost stays put across rebuilds; the assembly beside it is what changes.
+    var assembly = new FileInfo(Path.ChangeExtension(file.FullName, ".dll"));
+    if (assembly.Exists)
+    {
+      file = assembly;
+    }
+    return $"{file.FullName}\t{file.Length}\t{file.LastWriteTimeUtc.Ticks}";
+  }
+
   /// <summary>The path, size, and write time of every file Libreta reads of a book, which move whenever a fact or
-  /// formula does; known by content, each file's path from the book and a hash of what it holds.</summary>
+  /// formula does.</summary>
   private string Stamp(string root)
   {
     var text = new StringBuilder();
     foreach (string path in BookFiles(root))
     {
-      if (byContent)
-      {
-        text.Append(Path.GetRelativePath(root, path)).Append('\t')
-          .Append(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
-      }
-      else
-      {
-        var file = new FileInfo(path);
-        text.Append(path).Append('\t').Append(file.Length).Append('\t').Append(file.LastWriteTimeUtc.Ticks);
-      }
-      text.Append('\n');
+      var file = new FileInfo(path);
+      text.Append(path).Append('\t').Append(file.Length).Append('\t').Append(file.LastWriteTimeUtc.Ticks).Append('\n');
     }
     return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
   }
@@ -372,6 +468,10 @@ public class LibretaReader : IBookReader
         return output;
       }
       string problem = error.Result.Trim();
+      if (problem.StartsWith("Unknown option '--at'", StringComparison.Ordinal))
+      {
+        throw new BookException("this Libreta is too old to read a book at a revision; update it");
+      }
       throw new BookException(problem.Length > 0 ? $"Libreta: {problem}" : $"Libreta exited {process.ExitCode}");
     }
   }

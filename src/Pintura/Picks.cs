@@ -51,24 +51,24 @@ public static class PickFile
   /// dash's column.</summary>
   private record Entry(Pick Pick, int Start, int End, int Indent);
 
-  public static List<Pick> Load(string root, string displayBase)
+  public static List<Pick> Load(string root, string displayBase, IFiles? files = null)
   {
-    return Load(Path.Combine(root, Name), displayBase, false);
+    return Load(Path.Combine(root, Name), displayBase, false, files ?? DiskFiles.Instance);
   }
 
   /// <summary>The resolved picks, in the order they were resolved.</summary>
-  public static List<Pick> LoadResolved(string root, string displayBase)
+  public static List<Pick> LoadResolved(string root, string displayBase, IFiles? files = null)
   {
-    return Load(Path.Combine(root, ResolvedName), displayBase, true);
+    return Load(Path.Combine(root, ResolvedName), displayBase, true, files ?? DiskFiles.Instance);
   }
 
-  private static List<Pick> Load(string path, string displayBase, bool archive)
+  private static List<Pick> Load(string path, string displayBase, bool archive, IFiles files)
   {
-    if (!File.Exists(path))
+    if (!files.Exists(path))
     {
       return [];
     }
-    return Read(SourceFile.For(path, displayBase).Load("picks"), archive).Select(entry => entry.Pick).ToList();
+    return Read(SourceFile.For(path, displayBase, files).Load("picks"), archive).Select(entry => entry.Pick).ToList();
   }
 
   private static List<Entry> Read(Node document, bool archive)

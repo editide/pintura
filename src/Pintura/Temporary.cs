@@ -2,18 +2,21 @@ using System.Runtime.Versioning;
 
 namespace Pintura;
 
-/// <summary>Where Pintura keeps what it can make again: reads of decks, drawn pictures, exports, and revisions.</summary>
+/// <summary>Where Pintura keeps what it can make again: reads of decks, drawn pictures, exports, and Libreta's answers about revisions.</summary>
 public static class Temporary
 {
   /// <summary>A folder only this user reaches, since what it holds comes from their decks. Linux shares /tmp between
-  /// users, so there it is the user's cache folder; elsewhere the temporary folder is the user's own.</summary>
+  /// users, so there it is the user's cache folder; elsewhere the temporary folder is the user's own.
+  /// <c>PINTURA_CACHE</c> names another, as the tests do to leave the user's alone.</summary>
   public static string Folder(params string[] parts)
   {
-    string root = OperatingSystem.IsLinux()
-      ? Path.Combine(Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } cache
-        ? cache
-        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"), "pintura")
-      : Path.Combine(Path.GetTempPath(), "pintura");
+    string root = Environment.GetEnvironmentVariable("PINTURA_CACHE") is { Length: > 0 } chosen
+      ? chosen
+      : OperatingSystem.IsLinux()
+        ? Path.Combine(Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } cache
+          ? cache
+          : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"), "pintura")
+        : Path.Combine(Path.GetTempPath(), "pintura");
     if (OperatingSystem.IsLinux())
     {
       Restrict(root);

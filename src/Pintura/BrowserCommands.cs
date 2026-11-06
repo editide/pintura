@@ -108,8 +108,7 @@ public static class BrowserCommands
   }
 
   /// <summary>The findings the change introduced, each side checked as <c>--check</c> checks it: a revision is drawn
-  /// by a headless server of its own, over the folder it was extracted to. Exits 1 only on an error it introduced.
-  /// </summary>
+  /// by the working tree's server, which reads it from git. Exits 1 only on an error it introduced.</summary>
   private static async Task<int> CheckSince(string root, string revision, CommandLineOptions options,
     InstanceRegistry registry, TextWriter output)
   {
@@ -118,8 +117,8 @@ public static class BrowserCommands
     Presentation? named = null;
     async Task<List<Finding>> Findings(string? name)
     {
-      string drawn = root;
       Presentation presentation;
+      string query = "";
       try
       {
         if (name is null)
@@ -129,18 +128,18 @@ public static class BrowserCommands
         }
         else
         {
-          Revision checkout = Revisions.Checkout(root, name, Directory.GetCurrentDirectory());
-          drawn = checkout.Root;
-          presentation = Revisions.Load(checkout);
+          string commit = Revisions.Commit(root, name);
+          presentation = Revisions.Load(root, commit);
+          query = $"?base={commit}";
         }
       }
       catch (LoadException exception)
       {
         return [Checks.Structure(exception)];
       }
-      string url = await HeadlessServer.Find(drawn, registry);
+      string url = await HeadlessServer.Find(root, registry);
       using var client = new HttpClient { BaseAddress = new Uri($"{url}/"), Timeout = Timeout };
-      return Checks.All(presentation, await Measure(client, ""), FontSetting.Current(FontFolders.Files()),
+      return Checks.All(presentation, await Measure(client, query), FontSetting.Current(FontFolders.Files()),
         options.Export);
     }
     List<Finding> before = await Findings(first);
