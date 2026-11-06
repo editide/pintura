@@ -42,21 +42,23 @@ public class SlideSelection
   }
 
   /// <summary>The slides of <paramref name="slides"/> the list names, where <paramref name="id"/> gives a slide's id,
-  /// or null for a deck whose slides have none.</summary>
-  public List<T> Pick<T>(IReadOnlyList<T> slides, Func<T, string?> id)
+  /// or null for a deck whose slides have none, and <paramref name="aliases"/> any other names it answers to.</summary>
+  public List<T> Pick<T>(IReadOnlyList<T> slides, Func<T, string?> id, Func<T, IEnumerable<string>>? aliases = null)
   {
     foreach ((int _, int last) in ranges.Where(range => range.Last > slides.Count))
     {
       throw new ArgumentException($"no slide {last}; the deck has {slides.Count}");
     }
     List<string?> known = slides.Select(id).ToList();
-    foreach (string missing in ids.Where(wanted => !known.Contains(wanted)))
+    List<HashSet<string>> names = [.. slides.Select(slide =>
+      new HashSet<string>(aliases?.Invoke(slide) ?? [], StringComparer.Ordinal))];
+    foreach (string missing in ids.Where(wanted => !known.Contains(wanted) && !names.Any(set => set.Contains(wanted))))
     {
       throw new ArgumentException(known.All(candidate => candidate is null)
         ? $"no slide '{missing}': this deck's slides are picked by number"
         : $"no slide '{missing}'. Available: {string.Join(", ", known.OfType<string>())}");
     }
-    return slides.Where((slide, index) => ids.Contains(id(slide) ?? "") ||
+    return slides.Where((slide, index) => ids.Contains(id(slide) ?? "") || ids.Any(names[index].Contains) ||
       ranges.Any(range => index + 1 >= range.First && index + 1 <= range.Last)).ToList();
   }
 

@@ -102,8 +102,7 @@ public static class BrowserCommands
     {
       return findings;
     }
-    HashSet<string> picked = [.. presentation.WithVariants(only.Pick(presentation.Slides, slide => slide.Id))
-      .Select(slide => slide.Id)];
+    HashSet<string> picked = [.. presentation.Named(only).Select(slide => slide.Id)];
     return [.. findings.Where(finding => finding.Slide is null || picked.Contains(finding.Slide))];
   }
 

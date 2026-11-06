@@ -43,6 +43,15 @@ public class Presentation
       .Prepend(slide));
   }
 
+  /// <summary>The slides <paramref name="only"/> names, each pick's variants in its place, where any variant's stem
+  /// or the pick's id names the pick.</summary>
+  public IEnumerable<Slide> Named(SlideSelection only)
+  {
+    return WithVariants(only.Pick(Slides, slide => slide.Id, slide => slide.Pick is null
+      ? []
+      : Variants.Where(variant => variant.Pick == slide.Pick).Select(variant => variant.Id).Prepend(slide.Pick)));
+  }
+
   /// <summary>The slide with the stem, whether the deck draws it or a pick offers it as a later variant.</summary>
   public Slide? Find(string id)
   {

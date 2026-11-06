@@ -637,7 +637,7 @@ public static partial class DiffCommand
     DeckDiff diff = Differ.Compare(before, after);
     if (only is not null)
     {
-      HashSet<string> picked = [.. only.Pick(after.Slides, slide => slide.Id).Select(slide => slide.Id)];
+      HashSet<string> picked = [.. after.Named(only).Select(slide => slide.Id)];
       diff = new DeckDiff([.. diff.Slides.Where(slide => picked.Contains(slide.Id))],
         [.. diff.Causes.Where(cause => cause.Slides.Any(picked.Contains))]);
     }
@@ -751,7 +751,7 @@ public static partial class DiffCommand
   /// <paramref name="presentation"/>, by the number each had there, or for a slide the deck added, has.</summary>
   public static DeckDiff Only(DeckDiff diff, Presentation presentation, SlideSelection only)
   {
-    HashSet<int> numbers = [.. only.Pick(presentation.Slides, slide => slide.Id).Select(slide => slide.Number)];
+    HashSet<int> numbers = [.. presentation.Named(only).Select(slide => slide.Number)];
     List<SlideDiff> slides = diff.Slides.Where(slide => numbers.Contains(slide.Before ?? slide.After ?? 0)).ToList();
     return new DeckDiff(slides, []);
   }
