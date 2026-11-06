@@ -443,7 +443,11 @@ function changedStep(ids, changed, current, offset) {
 }
 
 function beforeSlide(id) {
-  return comparing() ? state.compare.before.slides.find((slide) => slide.id === id) || null : null;
+  if (!comparing()) {
+    return null;
+  }
+  const { slides, variants } = state.compare.before;
+  return [...slides, ...variants].find((slide) => slide.id === id) || null;
 }
 
 function removedSlide(id) {
