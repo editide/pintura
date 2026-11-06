@@ -675,6 +675,10 @@ public partial class Importer
       {
         options["axis"] = "secondary";
       }
+      if ((string?)entry["dash"] is string dash)
+      {
+        options["dash"] = dash;
+      }
       foreach ((string key, JsonNode? color) in entry["points"]?.AsObject() ?? new JsonObject())
       {
         options[key] = color?.DeepClone();

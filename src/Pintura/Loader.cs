@@ -2108,6 +2108,11 @@ public partial class PresentationLoader
       options.Axis = axis.AsChoice("secondary");
       options.Origins["axis"] = axis.Origin;
     }
+    if (map.Take("dash") is Node dash)
+    {
+      options.Dash = dash.AsChoice("solid", "dash", "dot");
+      options.Origins["dash"] = dash.Origin;
+    }
     if (map.Take("data_labels") is Node labels)
     {
       ReadLabels(labels, options.DataLabels, styles.Formats,
@@ -2251,6 +2256,12 @@ public partial class PresentationLoader
         throw Error(markerKey, drawn == "total"
           ? $"markers sit on a line's points, and {name} is a total; a total draws only its labels"
           : $"markers sit on a line's points, and {name} is drawn as {drawn}s; give it type: line");
+      }
+      if (options.Dash is not null && drawn != "line")
+      {
+        throw Error("dash", drawn == "total"
+          ? $"a dash is for a line, and {name} is a total; a total draws only its labels"
+          : $"a dash is for a line, and {name} is drawn as {drawn}s; give it type: line");
       }
       if (options.DataLabels.Show == "percent")
       {

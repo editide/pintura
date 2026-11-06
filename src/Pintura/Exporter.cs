@@ -1632,6 +1632,11 @@ public partial class Exporter
           ? new JsonObject { ["border"] = new JsonObject { ["color"] = own, ["weight"] = 2.25 } }
           : new JsonObject { ["fill"] = own };
       }
+      if (drawnAsLine && Text(Get(entry.Entry, "dash")) is string dash)
+      {
+        JsonObject point = (result["default_data_point"] ??= new JsonObject()).AsObject();
+        ((point["border"] ??= new JsonObject()).AsObject())["dash_type"] = dash;
+      }
       if (Get(entry.Entry, "points") is JsonNode points && !drawnAsLine && !waterfall)
       {
         result["data_points"] = Array(categories

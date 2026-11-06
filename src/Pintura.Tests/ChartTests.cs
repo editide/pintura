@@ -439,6 +439,24 @@ public class ChartTests
   }
 
   [Fact]
+  public void A_lines_dash_reaches_the_page_traced_to_its_line()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("type: clustered_column\ndata: revenue.csv\nseries:\n  AI: { type: line, dash: dash }");
+
+    // Act
+    ChartPayload chart = PayloadBuilder.Build(deck.Load(), 1, (path, _) => path).Slides[0].Items!
+      .Single(item => item.Id == "chart").Chart!;
+    SceneItem item = deck.Item("chart", "chart");
+
+    // Assert
+    chart.Series.Select(series => series.Dash).ShouldBe([null, "dash"]);
+    item.Properties["series.AI.dash"].Value.ShouldBe("dash");
+    item.Properties["series.AI.dash"].Origin!.Line.ShouldBe(4);
+  }
+
+  [Fact]
   public void The_secondary_axis_stays_off_until_a_line_is_on_it()
   {
     // Arrange
@@ -476,6 +494,7 @@ public class ChartTests
     LoadException totalPosition = Load("type: stacked_column\ndata: revenue.csv\nseries: { AI: { type: total, " +
       "data_labels: { position: center } } }");
     LoadException pie = Load("type: doughnut\ndata: revenue.csv\nseries: { AI: { data_labels: { show: value } } }");
+    LoadException dashedColumn = Load("type: clustered_column\ndata: revenue.csv\nseries: { AI: { dash: dot } }");
 
     // Assert
     unknown.Problem.ShouldBe("no series Energy in revenue.csv; its series are Space, AI");
@@ -486,6 +505,7 @@ public class ChartTests
     allSecondary.Problem.ShouldBe("every series is on the secondary axis; leave one on the value axis");
     totalPosition.Problem.ShouldBe("a total's labels sit past the end of its stack, so it takes no position");
     pie.Problem.ShouldBe("a pie's series take nothing of their own; series_colors colors its slices");
+    dashedColumn.Problem.ShouldBe("a dash is for a line, and AI is drawn as columns; give it type: line");
   }
 
   [Fact]

@@ -187,10 +187,11 @@ public record ChartPayload
 /// value, for a chart read from a book.</summary>
 /// <summary>Colors are a point's own color, by category, where the series colors any; on a line they outline its
 /// markers. <see cref="PointMarkers"/> are a line's points' own markers, over the series', by category, and
-/// <see cref="PointLabels"/> the points' own labels, null where a point takes the series'.</summary>
+/// <see cref="PointLabels"/> the points' own labels, null where a point takes the series'. <see cref="Dash"/> is a
+/// dashed line's <c>dash</c> or <c>dot</c>, null for a solid one.</summary>
 public record SeriesPayload(string Name, List<double?> Values, string Type, bool Secondary, LabelsPayload? Labels,
   MarkersPayload? Markers, List<TracePayload>? Traces = null, List<string?>? Colors = null,
-  List<MarkersPayload?>? PointMarkers = null, List<LabelsPayload?>? PointLabels = null);
+  List<MarkersPayload?>? PointMarkers = null, List<LabelsPayload?>? PointLabels = null, string? Dash = null);
 
 /// <summary>A null fill is the line's color.</summary>
 public record MarkersPayload(string Shape, double Size, string? Fill);
@@ -663,7 +664,8 @@ public static class PayloadBuilder
           Value($"{prefix}axis") is "secondary", Labels(prefix), Markers(prefix), traces,
           colors.Any(color => color is not null) ? colors : null,
           pointMarkers.Any(markers => markers is not null) ? pointMarkers : null,
-          pointLabels.Any(labels => labels is not null) ? pointLabels : null);
+          pointLabels.Any(labels => labels is not null) ? pointLabels : null,
+          Value($"{prefix}dash") is string dash and not "solid" ? dash : null);
       }).ToList(),
       Colors = ((List<Color>)Value("series_colors")!).Select(color => Hex(color, theme)).ToList(),
       ValueAxis = Axis("value_axis"),

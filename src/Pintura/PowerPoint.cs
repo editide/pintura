@@ -1285,12 +1285,18 @@ public partial class PowerPointMapping
     {
       stroke["stroke.width"] = Round(weight);
     }
-    string dash = (string?)style["border_dash_type"] ?? "solid";
-    if (dash != "solid")
+    if (Dash((string?)style["border_dash_type"]) is string dash)
     {
-      stroke["stroke.dash"] = dash.Contains("dot", StringComparison.Ordinal) ? "dot" : "dash";
+      stroke["stroke.dash"] = dash;
     }
     return stroke;
+  }
+
+  /// <summary>One of PowerPoint's dash patterns as the format's <c>dash</c> or <c>dot</c>, or null for a solid line.
+  /// </summary>
+  private static string? Dash(string? type)
+  {
+    return type is null or "solid" ? null : type.Contains("dot", StringComparison.Ordinal) ? "dot" : "dash";
   }
 
   /// <summary>A shape style's outer shadow as the model's dotted keys, its other effects having no match in the
@@ -2079,6 +2085,10 @@ public partial class PowerPointMapping
         ["type"] = seriesType,
         ["secondary"] = secondary
       };
+      if (seriesType == "line" && Dash((string?)entry["default_data_point"]?["border"]?["dash_type"]) is string dash)
+      {
+        json["dash"] = dash;
+      }
       JsonObject own = Labels(entry["default_data_label"], IsLine(entry), totals.Contains(entry));
       bool typed = seriesType != family;
       if (typed || !JsonNode.DeepEquals(own, chartLabels))

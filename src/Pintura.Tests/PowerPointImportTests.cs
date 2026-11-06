@@ -542,6 +542,27 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_dashed_line_comes_back_dashed()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = JsonNode.Parse(File.ReadAllText(Fixture("example.reads.json")))!.AsObject();
+    JsonNode ai = reads["slides"]![3]!["read"]!["chart_elements"]![0]!["series_list"]![2]!;
+    ai["chart_type"] = "line";
+    ai["default_data_point"] = JsonNode.Parse("""
+      { "border": { "color": { "scheme": "accent3" }, "dash_type": "system_dot" } }
+      """);
+
+    // Act
+    PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
+    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
+
+    // Assert
+    chart.ShouldContain("dash: dot");
+  }
+
+  [Fact]
   public void A_series_own_labels_come_back_as_its_points()
   {
     // Arrange

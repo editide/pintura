@@ -662,6 +662,10 @@ public class SceneBuilder
     {
       properties[$"{prefix}axis"] = new Resolved(axis, options.Origins["axis"]);
     }
+    if (options.Dash is string dash)
+    {
+      properties[$"{prefix}dash"] = new Resolved(dash, options.Origins["dash"]);
+    }
     ChartLabels own = options.DataLabels;
     var values = new Dictionary<string, object?>
     {
