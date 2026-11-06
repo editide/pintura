@@ -128,6 +128,32 @@ test('a line end snaps each axis on its own', () => {
   assert.deepEqual(point, [640, 300]);
 });
 
+test('a line end kept straight stays on its other end\'s axis, snapping only along the line', () => {
+  // Act
+  const { point, lines } = movePoint([450, 348], 3, -40, { x: [454], y: [306] }, 6, [450, 386]);
+
+  // Assert
+  assert.deepEqual(point, [450, 306]);
+  assert.deepEqual(lines, [{ axis: 'y', at: 306 }]);
+});
+
+test('a line end kept straight keeps a fractional other end\'s axis', () => {
+  // Act
+  const { point } = movePoint([142.5, 184], 40, 2, null, 6, [142.5, 172.5]);
+
+  // Assert
+  assert.deepEqual(point, [183, 172.5]);
+});
+
+test('a line end kept straight leans at 45 degrees when nearer that than either axis', () => {
+  // Act
+  const { point, lines } = movePoint([100, 100], 30, 22, { x: [131], y: [] }, 6, [100, 100]);
+
+  // Assert
+  assert.deepEqual(point, [126, 126]);
+  assert.deepEqual(lines, []);
+});
+
 test('a whole line moves both ends by the same snapped shift', () => {
   // Act
   const { from, to } = moveLine([700, 200], [600, 200], -158, 0, { x: [440], y: [] }, 6);
