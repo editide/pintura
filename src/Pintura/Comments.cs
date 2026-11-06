@@ -758,8 +758,7 @@ public static class CommentList
     string named = "";
     if (only is not null)
     {
-      HashSet<string> picked = [.. presentation.WithVariants(only.Pick(presentation.Slides, slide => slide.Id))
-        .Select(slide => slide.Id)];
+      HashSet<string> picked = [.. presentation.Named(only).Select(slide => slide.Id)];
       entries = [.. entries.Where(entry => picked.Contains(entry.Slide))];
       named = " on the slides named";
     }

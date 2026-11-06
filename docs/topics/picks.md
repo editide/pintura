@@ -36,6 +36,7 @@ Commit the variants, `picks.yaml`, and `presentation.yaml` together at the end o
 A pick takes one place and one slide number.
 The slide list and the grid show it as a card saying how many variants wait, so none is seen before the others; presenting and every export draw its first variant.
 Every variant is checked as any slide is, and `--slide`, `--element`, and `--screenshot` take a variant's stem.
+`--slides` takes any variant's stem or the pick's id, and names the pick with all its variants.
 Check each variant clean before offering it: the reviewer is choosing between takes, not spotting overflow.
 
 ## In the preview

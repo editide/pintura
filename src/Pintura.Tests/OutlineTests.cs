@@ -152,6 +152,28 @@ public class OutlineTests
       """);
   }
 
+  [Theory]
+  [InlineData("two")]
+  [InlineData("stacked")]
+  [InlineData("p4kx")]
+  public void A_variants_stem_or_its_picks_id_names_the_pick_with_all_its_variants(string name)
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/picks.yaml",
+      "- id: p4kx\n  variants:\n    - { slide: two, intent: Two charts }\n    - { slide: stacked, intent: One }");
+    deck.Write("deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nfields:\n  footer: x\nslides:\n" +
+      "  - one\n  - pick: p4kx");
+    deck.Write("deck/slides/stacked.yaml", "layout: content\ntitle: Stacked");
+
+    // Act
+    string outline = Outline(deck, true, SlideSelection.Parse(name));
+
+    // Assert
+    JsonDocument.Parse(outline).RootElement.EnumerateArray().Select(slide => slide.GetProperty("id").GetString())
+      .ShouldBe(["two", "stacked"]);
+  }
+
   [Fact]
   public void Outline_takes_the_slides_it_names_and_answers_in_json()
   {

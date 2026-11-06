@@ -32,7 +32,7 @@ public static class Outline
   {
     IEnumerable<Slide> slides = only is null
       ? presentation.Offered
-      : presentation.WithVariants(only.Pick(presentation.Slides, slide => slide.Id));
+      : presentation.Named(only);
     List<OutlineSlide> outline = [.. slides.Select(slide => Build(presentation, slide))];
     int exit = outline.Any(slide => slide.Error is not null) ? 1 : 0;
     if (json)
