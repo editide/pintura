@@ -2649,6 +2649,13 @@ public partial class PresentationLoader
         : throw overlap.Error("overlap is a percent of a bar's width, from -100 to 100");
       Set("overlap", overlap);
     }
+    if (map.Take("first_slice_angle") is Node angle)
+    {
+      target.FirstSliceAngle = angle.AsNumber() is double value and >= 0 and <= 360 && value == Math.Floor(value)
+        ? value
+        : throw angle.Error("first_slice_angle is whole degrees clockwise from twelve o'clock, from 0 to 360");
+      Set("first_slice_angle", angle);
+    }
     if (map.Take("connector_lines") is Node connectors)
     {
       target.ConnectorLines = connectors.AsBoolean();

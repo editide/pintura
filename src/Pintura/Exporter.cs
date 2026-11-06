@@ -1894,6 +1894,10 @@ public partial class Exporter
         }
       }
     }
+    if (pie && Number(Get(properties, "first_slice_angle")) is double angle)
+    {
+      element["first_slice_angle"] = Round(angle);
+    }
     if (type == "doughnut")
     {
       element["doughnut_hole_size"] = 50;

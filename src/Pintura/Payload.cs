@@ -169,6 +169,7 @@ public record ChartPayload
   public DateAxisPayload? Dates { get; init; }
   public double? GapWidth { get; init; }
   public double? Overlap { get; init; }
+  public double? FirstSliceAngle { get; init; }
   /// <summary>A waterfall's categories drawn as totals; its colors are an increase's, a decrease's, and a total's.
   /// </summary>
   public List<string>? Totals { get; init; }
@@ -678,6 +679,7 @@ public static class PayloadBuilder
         : null,
       GapWidth = Value("gap_width") as double?,
       Overlap = Value("overlap") as double?,
+      FirstSliceAngle = Value("first_slice_angle") as double?,
       Totals = Value("totals") as List<string>,
       ConnectorLines = Value("connector_lines") as bool?,
       PlotInsets = Value("plot.insets") as double[],

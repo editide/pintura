@@ -330,6 +330,23 @@ public class ExporterTests
   }
 
   [Fact]
+  public void A_pie_sends_the_angle_its_first_slice_starts_at()
+  {
+    // Arrange
+    JsonNode item = Json("""
+      { "properties": { "frame": [40, 100, 430, 380], "type": "pie", "categories": ["Founder", "Class A"],
+        "series": [{ "name": "Vote", "values": [50.1, 49.9] }], "series_colors": [{ "theme": "accent1" }],
+        "first_slice_angle": 180 } }
+      """);
+
+    // Act
+    JsonObject result = NewExporter().Chart(item);
+
+    // Assert
+    ShouldMatch(result["first_slice_angle"], "180");
+  }
+
+  [Fact]
   public void A_stacked_bar_chart_sends_its_categories_last_first_so_PowerPoint_draws_the_first_on_top()
   {
     // Arrange

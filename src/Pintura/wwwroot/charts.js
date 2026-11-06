@@ -690,8 +690,8 @@ function insideEnd(radius, angle, width, height) {
   return Math.max(0, (Math.sqrt(Math.max(0, reach * reach - 4 * (corner - radius * radius))) - reach) / 2);
 }
 
-// Pies start at twelve o'clock and run clockwise, as PowerPoint's do; a doughnut draws a ring per series, the
-// first innermost.
+// Pies start at twelve o'clock, or `firstSliceAngle` degrees past it, and run clockwise, as PowerPoint's do; a
+// doughnut draws a ring per series, the first innermost.
 function layoutPie(chart, box, context) {
   const { size, measure, out } = context;
   const lineHeight = size * 1.2;
@@ -723,7 +723,7 @@ function layoutPie(chart, box, context) {
     const total = series.values.reduce((sum, value) => sum + Math.abs(value ?? 0), 0);
     const inner = hole + thickness * ring;
     const outer = inner + thickness;
-    let angle = -Math.PI / 2;
+    let angle = -Math.PI / 2 + (chart.firstSliceAngle ?? 0) * Math.PI / 180;
     series.values.forEach((value, point) => {
       if (value === null || value === undefined || total === 0) {
         return;

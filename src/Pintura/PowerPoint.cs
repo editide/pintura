@@ -1892,6 +1892,10 @@ public partial class PowerPointMapping
       }
     }
     properties["series_colors"] = colors;
+    if (family == "pie")
+    {
+      properties["first_slice_angle"] = (double?)element["first_slice_angle"] ?? 0;
+    }
     if (family is "column" or "bar")
     {
       properties["gap_width"] = (double?)element["gap_width"] ?? 150;
