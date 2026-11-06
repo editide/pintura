@@ -26,6 +26,7 @@ A chart is a file in `charts/`, placed on a slide with `chart: <stem>`, and its 
 | `text` | `{ size, color, font }` for every label on the chart; what it leaves out comes from the base `text`. |
 
 `position` is `center`, `inside`, or `inside_base` on any column or bar chart, `outside` on clustered ones, waterfalls, and pies (past the bar's end, which for a negative value or a decrease is below or to the left), and `above`, `below`, `left`, `right`, or `center` on lines.
+A pie's `inside` labels sit as far out as they fit with half a font size to spare before the rim, as PowerPoint's inside end does.
 A doughnut's labels sit on its ring and take no position.
 
 What nothing sets is PowerPoint's default, which `--element` shows as such: `gap_width: 150`, `overlap: 0`, both axes visible, series colors `accent1` to `accent6`, a waterfall's connector lines on, and labels `outside` on clustered charts and waterfalls, `center` on stacked ones, `above` on lines, and `inside` on pies.

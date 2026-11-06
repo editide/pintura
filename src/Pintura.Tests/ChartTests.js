@@ -210,6 +210,30 @@ test('a pie shows percent labels of its one series and colors each slice', () =>
   assert.deepEqual(texts(primitives).map((text) => text.text), ['22%', '61%', '17%']);
 });
 
+test("a pie's inside labels sit half a font size in from the rim, however wide or small the pie", () => {
+  // Arrange
+  const labels = { show: 'value', position: 'inside', format: null };
+  const series = [{ name: '2026', values: [501, 499] }];
+  const large = chart({ type: 'pie', family: 'pie', categories: ['A', 'B'], series, valueAxis: null,
+    categoryAxis: null, labels });
+  const small = { ...large, text: { ...large.text, size: 14 } };
+
+  // Act
+  const drawn = [layoutChart(large, 400, 300, measure), layoutChart(small, 120, 100, measure)];
+
+  // Assert
+  drawn.forEach((primitives, index) => {
+    const [width, height, size] = index === 0 ? [400, 300, 10] : [120, 100, 14];
+    const inset = size * 0.5;
+    const radius = Math.min(width, height) / 2 - inset;
+    texts(primitives).forEach((label) => {
+      const corner = Math.hypot(Math.abs(label.x - width / 2) + measure(label.text) / 2,
+        Math.abs(label.y - height / 2) + size / 2);
+      assert.ok(Math.abs(corner - (radius - size * 0.5)) < 0.01, `${label.text} reaches ${corner} of ${radius}`);
+    });
+  });
+});
+
 test('a side legend lists stacked columns and lines from the top of the stack, as PowerPoint does', () => {
   // Arrange
   const columns = chart({ type: 'stacked_column', grouping: 'stacked', legend: 'right' });
