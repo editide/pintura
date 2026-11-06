@@ -25,6 +25,7 @@ public class TempFolder : IDisposable
 
   public void Dispose()
   {
+    GitObjects.Close(Root);
     // Git leaves its objects read-only, which Windows refuses to delete.
     foreach (string file in Directory.EnumerateFiles(Root, "*", SearchOption.AllDirectories))
     {

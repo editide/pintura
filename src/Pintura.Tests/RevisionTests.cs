@@ -105,6 +105,7 @@ public class RevisionTests
     }
     finally
     {
+      GitObjects.Close(link);
       Directory.Delete(link);
     }
   }

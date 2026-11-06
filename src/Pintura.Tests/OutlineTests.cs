@@ -114,7 +114,7 @@ public class OutlineTests
       only: SlideSelection.Parse("combinations"));
 
     // Assert
-    output.ToString().ShouldContain("       Adjusted EBITDA margin: 37% | 38% | 35%\n");
+    output.ToString().ReplaceLineEndings("\n").ShouldContain("       Adjusted EBITDA margin: 37% | 38% | 35%\n");
   }
 
   [Fact]
