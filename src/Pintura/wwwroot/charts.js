@@ -682,6 +682,14 @@ function slicePath(cx, cy, inner, outer, start, end) {
   return d;
 }
 
+// How far out along `angle` a label `width` × `height` goes before its farthest corner meets a circle of `radius`,
+// as PowerPoint sets an inside end label in from a pie's rim.
+function insideEnd(radius, angle, width, height) {
+  const reach = Math.abs(Math.cos(angle)) * width + Math.abs(Math.sin(angle)) * height;
+  const corner = (width * width + height * height) / 4;
+  return Math.max(0, (Math.sqrt(Math.max(0, reach * reach - 4 * (corner - radius * radius))) - reach) / 2);
+}
+
 // Pies start at twelve o'clock and run clockwise, as PowerPoint's do; a doughnut draws a ring per series, the
 // first innermost.
 function layoutPie(chart, box, context) {
@@ -733,7 +741,7 @@ function layoutPie(chart, box, context) {
         if (doughnut || labels.position === 'center') {
           at = arcPoint(cx, cy, doughnut ? (inner + outer) / 2 : outer / 2, middle);
         } else if (labels.position === 'inside') {
-          at = arcPoint(cx, cy, outer * 0.72, middle);
+          at = arcPoint(cx, cy, insideEnd(outer - size * 0.5, middle, measure(text, series.labels.bold), size), middle);
         } else {
           at = arcPoint(cx, cy, outer + size * 0.5, middle);
           const cos = Math.cos(middle);
