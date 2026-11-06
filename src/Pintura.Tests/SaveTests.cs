@@ -335,6 +335,35 @@ public class SaveTests
   }
 
   [Fact]
+  public void A_resolved_pick_saves_with_presentation_yaml_without_naming_the_theme()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nslides: [one, pick: p4kx]");
+    deck.Write("deck/picks.yaml", "- id: p4kx\n  variants:\n    - slide: two\n    - slide: three");
+    deck.Write("deck/slides/three.yaml", "layout: content\ntitle: Three");
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string root = deck.Folder.PathTo("deck");
+    Edit(deck, "deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nslides: [one, two]");
+    Edit(deck, "deck/picks.yaml", null);
+    Edit(deck, "deck/picks-resolved.yaml", "- id: p4kx\n  variants:\n    - slide: two\n    - slide: three\n" +
+      "  resolved:\n    by: Daniel\n    date: 2026-11-02 18:40\n    chosen: two");
+    Edit(deck, "deck/slides/three.yaml", null);
+    deck.Write("deck/picks-resolved.yaml", File.ReadAllText(deck.Folder.PathTo("deck/picks-resolved.yaml")) +
+      "\n    why: Says it plainly");
+
+    // Act
+    List<SavePart> parts = Saves.Parts(root, deck.Load());
+    string? mixed = Saves.Mixed(root, deck.Load());
+
+    // Assert
+    parts.Select(part => part.Label).ShouldBe(["presentation.yaml, removing slide three"]);
+    mixed.ShouldBe("the picks");
+  }
+
+  [Fact]
   public void Saving_outside_a_repository_starts_one_in_the_presentation()
   {
     // Arrange
