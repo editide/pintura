@@ -141,8 +141,10 @@ function resizeBox(box, handle, dx, dy, targets, threshold, aspect) {
   return { box: [left, top, right - left, bottom - top], lines };
 }
 
-// A line's end moved by dx and dy, snapped on each axis or on a whole point.
-function movePoint([x, y], dx, dy, targets, threshold) {
+// A line's end moved by dx and dy, snapped on each axis or on a whole point. Kept straight from the line's other end,
+// as with shift in PowerPoint, it turns in steps of 45 degrees: level or upright, it keeps that end's other axis
+// exactly and snaps only along the line; diagonal, it doesn't snap, which would bend it.
+function movePoint([x, y], dx, dy, targets, threshold, anchor) {
   const lines = [];
   const snap = (value, axis) => {
     const hit = targets && nearest([value], targets[axis], threshold);
@@ -152,7 +154,22 @@ function movePoint([x, y], dx, dy, targets, threshold) {
     lines.push({ axis, at: hit.at });
     return hit.at;
   };
-  return { point: [snap(x + dx, 'x'), snap(y + dy, 'y')], lines };
+  if (!anchor) {
+    return { point: [snap(x + dx, 'x'), snap(y + dy, 'y')], lines };
+  }
+  const [ax, ay] = anchor;
+  const vx = x + dx - ax;
+  const vy = y + dy - ay;
+  const step = ((Math.round(Math.atan2(vy, vx) / (Math.PI / 4)) % 4) + 4) % 4;
+  if (step === 0) {
+    return { point: [snap(x + dx, 'x'), ay], lines };
+  }
+  if (step === 2) {
+    return { point: [ax, snap(y + dy, 'y')], lines };
+  }
+  const sign = step === 1 ? 1 : -1;
+  const along = Math.round((vx + sign * vy) / 2);
+  return { point: [ax + along, ay + sign * along], lines };
 }
 
 // A whole line moved, snapped by the box its ends span.
@@ -743,7 +760,8 @@ function moveGesture(event) {
     showMoves(gesture.group);
   } else if (item.from) {
     const moved = gesture.handle
-      ? movePoint(item[gesture.handle], dx, dy, targets, threshold)
+      ? movePoint(item[gesture.handle], dx, dy, targets, threshold,
+        event.shiftKey ? item[gesture.handle === 'from' ? 'to' : 'from'] : null)
       : moveLine(item.from, item.to, dx, dy, targets, threshold);
     gesture.change = gesture.handle ? { [gesture.handle]: moved.point } : { from: moved.from, to: moved.to };
     lines = moved.lines;
