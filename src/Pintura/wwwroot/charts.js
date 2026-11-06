@@ -163,6 +163,7 @@ function legendEntries(chart) {
   const entries = names.map((name, index) => ({ name, index, color: colorAt(chart, index),
     line: !pie && seriesType(chart, chart.series[index]) === 'line',
     markers: pie ? null : chart.series[index].markers,
+    dash: pie ? null : chart.series[index].dash,
     total: !pie && seriesType(chart, chart.series[index]) === 'total' }))
     .filter((entry) => entry.color !== null && !entry.total);
   // PowerPoint lists a side legend of an upward stack from its top, so the entries line up with what they name.
@@ -183,7 +184,8 @@ function layoutLegend(chart, box, context) {
     const width = swatch(entry);
     const of = { part: 'legend', [chart.family === 'pie' ? 'point' : 'series']: entry.index };
     if (entry.line) {
-      out.push({ kind: 'line', x1: x, y1: y, x2: x + width, y2: y, stroke: entry.color, width: LINE_WIDTH, ...of });
+      out.push({ kind: 'line', x1: x, y1: y, x2: x + width, y2: y, stroke: entry.color, width: LINE_WIDTH,
+        dash: entry.dash, ...of });
       if (entry.markers) {
         out.push({ ...pointMarker(entry.markers, entry.color, x + width / 2, y), ...of });
       }
@@ -574,7 +576,7 @@ function layoutPlot(chart, box, context) {
     });
     const color = colorAt(chart, index);
     out.push({ kind: 'path', part: 'line', series: index, d: d.trim(), fill: 'none', stroke: color,
-      width: LINE_WIDTH });
+      width: LINE_WIDTH, dash: series.dash });
     points.forEach(([x, y, point]) => {
       const markers = series.pointMarkers?.[point] || series.markers;
       out.push(traced({ part: 'marker', ...(markers && markers.shape !== 'none'
@@ -824,7 +826,8 @@ function drawChart(chart, width, height) {
           x2: roundChart(primitive.x2),
           y2: roundChart(primitive.y2),
           stroke: primitive.stroke || 'none',
-          'stroke-width': primitive.width
+          'stroke-width': primitive.width,
+          'stroke-dasharray': primitive.dash ? dashArray(primitive.dash, primitive.width) : null
         }, svg);
         break;
       case 'path':
@@ -834,6 +837,7 @@ function drawChart(chart, width, height) {
           'fill-rule': 'evenodd',
           stroke: primitive.stroke || 'none',
           'stroke-width': primitive.width,
+          'stroke-dasharray': primitive.dash ? dashArray(primitive.dash, primitive.width) : null,
           'stroke-linejoin': primitive.join || 'round',
           'stroke-linecap': 'round'
         }, svg);

@@ -74,9 +74,10 @@ public record ExportCell(
 /// <summary>A chart series with its <see cref="Type"/>, the chart's family, <c>line</c> over columns, or a stack's
 /// <c>total</c>. A series with keys of its own carries its labels and markers resolved, as the chart's
 /// <c>data_labels.</c> and <c>markers.</c> keys; otherwise it takes the chart's. Points are its single points' own
-/// colors, as <c>points.{category}.color</c>.</summary>
+/// colors, as <c>points.{category}.color</c>. Dash is a dashed line's <c>dash</c> or <c>dot</c>.</summary>
 public record ExportSeries(string Name, List<double?> Values, string Type, bool Secondary,
-  Dictionary<string, object>? Labels, Dictionary<string, object>? Markers, Dictionary<string, object>? Points = null);
+  Dictionary<string, object>? Labels, Dictionary<string, object>? Markers, Dictionary<string, object>? Points = null,
+  string? Dash = null);
 
 /// <summary>A field run keeps its name; its text is empty in the theme and layouts for <c>slide</c> and
 /// <c>section</c>, which only a slide can fill.</summary>
@@ -219,7 +220,8 @@ public class ExportBuilder
     }
     return new ExportSeries(series.Name, series.Values, properties.GetValueOrDefault($"{prefix}type") as string
       ?? chart.Family, properties.GetValueOrDefault($"{prefix}axis") is "secondary", Own("data_labels"),
-      Own("markers"), Own("points") is { Count: > 0 } points ? points : null);
+      Own("markers"), Own("points") is { Count: > 0 } points ? points : null,
+      properties.GetValueOrDefault($"{prefix}dash") is string dash and not "solid" ? dash : null);
   }
 
   private ExportLevel Level(Level level)

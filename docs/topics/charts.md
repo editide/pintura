@@ -46,12 +46,13 @@ Maps merge key by key, so a chart writing `data_labels: { format: billions_of_do
 
 ## Series
 
-A series takes five keys of its own under `series`, by its name in the CSV:
+A series takes six keys of its own under `series`, by its name in the CSV:
 
 | Key | Value |
 | --- | --- |
 | `type` | `line`, a line over a column chart's columns, or `total`, a stack's total on a stacked column or bar chart. |
 | `axis` | `secondary`, for a line drawn against `secondary_axis`; one series at least stays on the value axis. |
+| `dash` | `solid`, the default, `dash`, or `dot`, for a line, such as a forecast or a target. |
 | `data_labels` | The chart's `data_labels` keys, layered over the chart's key by key. |
 | `markers` | The chart's `markers` keys, for a line, layered over the chart's key by key. |
 | `points` | By category, `{ color }` for a single column or bar in a color of its own, such as a year to pick out; on a line, `{ color, markers }` styles that point's marker, `color` outlining it and filling it unless `markers` names a `fill`, and `markers` taking the `markers` keys over the series' key by key; on any series, `data_labels` takes the `data_labels` keys over the series' key by key, for one label to stand out, show alone, or show none. A total's points take only `data_labels`, without a position. |

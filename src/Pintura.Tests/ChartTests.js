@@ -705,3 +705,15 @@ test("a waterfall's legend names its increases, decreases, and totals in their c
   assert.deepEqual(legend.filter((primitive) => primitive.kind === 'rect').map((swatch) => swatch.fill),
     ['#111111', '#222222', '#333333']);
 });
+test('a dashed series draws its line and its legend key dashed', () => {
+  // Arrange
+  const drawn = chart({ type: 'line', family: 'line', legend: 'bottom',
+    series: [{ name: 'Target', values: [4, 5], dash: 'dash' }] });
+
+  // Act
+  const primitives = layoutChart(drawn, 400, 300, measure);
+
+  // Assert
+  assert.equal(primitives.find((primitive) => primitive.part === 'line').dash, 'dash');
+  assert.equal(primitives.find((primitive) => primitive.part === 'legend' && primitive.kind === 'line').dash, 'dash');
+});

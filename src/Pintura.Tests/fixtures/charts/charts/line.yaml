@@ -6,6 +6,7 @@ data_labels: { show: value, format: billions_of_dollars, position: above }
 markers: { shape: diamond, size: 6 }
 series:
   Space:
+    dash: dash
     data_labels: { show: none }
     points:
       "2025": { data_labels: { show: value } }

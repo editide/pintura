@@ -572,6 +572,25 @@ public class ExporterTests
       """);
   }
 
+  [Fact]
+  public void A_dashed_line_is_dashed_in_its_color()
+  {
+    // Arrange
+    JsonNode item = Json("""
+      { "properties": { "frame": [40, 100, 430, 380], "type": "line", "categories": ["2024"],
+        "series": [{ "name": "Target", "values": [4], "type": "line", "secondary": false, "dash": "dot" }],
+        "series_colors": [{ "theme": "accent1" }] } }
+      """);
+
+    // Act
+    JsonArray series = NewExporter().Chart(item)["series_list"]!.AsArray();
+
+    // Assert
+    ShouldMatch(series[0]!["default_data_point"], """
+      { "border": { "color": { "scheme": "accent1" }, "weight": 2.25, "dash_type": "dot" } }
+      """);
+  }
+
   [Theory]
   [InlineData("left")]
   [InlineData("right")]
