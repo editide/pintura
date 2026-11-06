@@ -508,6 +508,7 @@ function renderTable(item, parent) {
     element('col', null, columns).style.width = `${width}px`;
   }
   const body = element('tbody', null, table);
+  const dashed = [];
   const rows = heights.map((height) => {
     const row = element('tr', null, body);
     if (height) {
@@ -531,14 +532,60 @@ function renderTable(item, parent) {
     // Borders sit centered on the cell's edge without adding to its row, as PowerPoint draws them.
     const sides = { top: cell.borderTop, bottom: cell.borderBottom, left: cell.borderLeft, right: cell.borderRight };
     for (const [side, stroke] of Object.entries(sides)) {
-      if (stroke) {
+      if (stroke && stroke.dash !== 'solid') {
+        dashed.push({ td, side, stroke });
+      } else if (stroke) {
         td.style.setProperty(`--border-${side}`, border(stroke));
         td.style.setProperty(`--border-${side}-width`, `${stroke.width}px`);
       }
     }
     cell.text.paragraphs.forEach((paragraph, index) => renderParagraph(paragraph, index, td));
   }
+  if (dashed.length > 0 && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => drawDashedRules(node, table, dashed)).observe(table);
+  }
   return node;
+}
+
+// A cell's dashed borders are drawn over the table as lines, a run of edges in one stroke along one rule as one line,
+// so the pattern carries across the cells it spans rather than starting again in each, as a border of each cell would.
+// Rows grow as their text lays out, so the lines are drawn again whenever the table's size changes.
+function drawDashedRules(node, table, dashed) {
+  const bounds = table.getBoundingClientRect();
+  const scale = bounds.width / table.offsetWidth || 1;
+  const edges = dashed.map(({ td, side, stroke }) => {
+    const box = td.getBoundingClientRect();
+    const [left, top] = [(box.left - bounds.left) / scale, (box.top - bounds.top) / scale];
+    const [right, bottom] = [left + box.width / scale, top + box.height / scale];
+    const [axis, at, from, to] = {
+      top: ['h', top, left, right], bottom: ['h', bottom, left, right],
+      left: ['v', left, top, bottom], right: ['v', right, top, bottom]
+    }[side];
+    return { axis, at, from, to, stroke };
+  });
+  node.querySelector(':scope > svg.rules')?.remove();
+  const svg = svgElement('svg', { class: 'rules' }, node);
+  for (const { axis, at, from, to, stroke } of ruleRuns(edges)) {
+    const [x1, y1, x2, y2] = axis === 'h' ? [from, at, to, at] : [at, from, at, to];
+    svgElement('line', { x1, y1, x2, y2, ...strokeAttributes(stroke) }, svg);
+  }
+}
+
+// Edges along one rule in one stroke, merged where they meet or overlap, as two cells sharing an edge both draw it.
+function ruleRuns(edges) {
+  const near = (a, b) => Math.abs(a - b) < 0.5;
+  const sorted = [...edges].sort((a, b) => a.axis.localeCompare(b.axis) || a.at - b.at || a.from - b.from);
+  const runs = [];
+  for (const edge of sorted) {
+    const run = runs.find((candidate) => candidate.axis === edge.axis && near(candidate.at, edge.at) &&
+      JSON.stringify(candidate.stroke) === JSON.stringify(edge.stroke) && edge.from <= candidate.to + 0.5);
+    if (run) {
+      run.to = Math.max(run.to, edge.to);
+    } else {
+      runs.push({ ...edge });
+    }
+  }
+  return runs;
 }
 
 // An area on a layout's stage, which only exists to be moved.
@@ -1058,5 +1105,6 @@ function hex([r, g, b]) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened, parseColor };
+  module.exports = { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened, parseColor,
+    ruleRuns };
 }

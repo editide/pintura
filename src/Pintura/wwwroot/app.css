@@ -1485,6 +1485,15 @@ body.ctrl-held #slide-frame [data-trace]:hover {
   z-index: 1;
 }
 
+.item.table > svg.rules {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
 .slide-error {
   position: absolute;
   inset: 0;

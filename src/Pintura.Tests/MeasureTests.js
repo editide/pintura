@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened, parseColor } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
+const { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened, parseColor, ruleRuns } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
 
 test('runs side by side on one line count once', () => {
   // Arrange
@@ -359,4 +359,37 @@ test('a computed color parses to its channels and alpha, and a gradient to nothi
   assert.deepEqual(parseColor('rgba(0, 0, 0, 0)'), [0, 0, 0, 0]);
   assert.deepEqual(parseColor('rgb(255 255 255 / 50%)'), [255, 255, 255, 0.5]);
   assert.equal(parseColor('url("#fade")'), null);
+});
+const dotted = { color: '#000000', width: 1, dash: 'dot' };
+const dashed = { color: '#000000', width: 1, dash: 'dash' };
+
+test('edges meeting in one stroke along one rule run as one line', () => {
+  // Arrange
+  const edges = [
+    { axis: 'h', at: 20, from: 100, to: 250, stroke: dotted },
+    { axis: 'h', at: 20, from: 0, to: 100, stroke: dotted },
+    { axis: 'h', at: 20, from: 100, to: 250, stroke: dotted }
+  ];
+
+  // Act
+  const runs = ruleRuns(edges);
+
+  // Assert
+  assert.deepEqual(runs, [{ axis: 'h', at: 20, from: 0, to: 250, stroke: dotted }]);
+});
+
+test('a gap, another stroke, or another rule starts a run of its own', () => {
+  // Arrange
+  const edges = [
+    { axis: 'h', at: 20, from: 0, to: 100, stroke: dotted },
+    { axis: 'h', at: 20, from: 150, to: 250, stroke: dotted },
+    { axis: 'h', at: 20, from: 250, to: 300, stroke: dashed },
+    { axis: 'v', at: 100, from: 0, to: 20, stroke: dotted }
+  ];
+
+  // Act
+  const runs = ruleRuns(edges);
+
+  // Assert
+  assert.equal(runs.length, 4);
 });
