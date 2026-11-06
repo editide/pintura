@@ -1,0 +1,6 @@
+layout: content
+title: A table cell wrapping onto one word
+elements:
+  - id: table
+    table: runt
+    frame: [40, 100, 295, 150]

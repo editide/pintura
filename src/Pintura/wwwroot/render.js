@@ -709,6 +709,11 @@ function measureTable(node) {
   const height = node.getBoundingClientRect().height / scale;
   const cells = [...node.querySelectorAll('td')].map((td) =>
     [...td.querySelectorAll('.paragraph')].reduce((sum, paragraph) => sum + countLines(textRects(paragraph)), 0));
+  // A narrow column often can't do better than two words on a cell's last line, so only one is flagged.
+  const runts = [...node.querySelectorAll('td')].flatMap((td) => [...td.querySelectorAll('.paragraph')]
+    .map((paragraph) => runt(paragraph, 1))
+    .filter(Boolean)
+    .map((found) => ({ ...found, row: Number(td.dataset.row), column: Number(td.dataset.column) })));
   return {
     id: node.dataset.id,
     owner: node.dataset.owner,
@@ -718,7 +723,8 @@ function measureTable(node) {
     paragraphs: cells,
     overflow: Math.max(0, Math.round((height - parseFloat(node.dataset.frameHeight)) * 10) / 10),
     height: Math.round(height * 10) / 10,
-    rows: [...node.querySelectorAll('tr')].map((tr) => Math.round(tr.getBoundingClientRect().height / scale * 10) / 10)
+    rows: [...node.querySelectorAll('tr')].map((tr) => Math.round(tr.getBoundingClientRect().height / scale * 10) / 10),
+    runts
   };
 }
 
@@ -758,7 +764,7 @@ function measureBox(node) {
     width: widens ? parseFloat(node.style.width) : undefined,
     tight: fit === 'none' && !box.classList.contains('unwrapped') && past === 0
       ? narrowed(box, scale, (text) => overflow(fit, text, frame, content)) : undefined,
-    runts: [...box.querySelectorAll('.paragraph')].map(runt).filter(Boolean)
+    runts: [...box.querySelectorAll('.paragraph')].map((paragraph) => runt(paragraph)).filter(Boolean)
   };
   node.style.transform = turned;
   measure.ink = [...box.querySelectorAll('.paragraph')].flatMap(textRects).filter((rect) => rect.width > 0)
@@ -766,8 +772,8 @@ function measureBox(node) {
   return measure;
 }
 
-// A paragraph's last line when wrapping leaves it two words or fewer, and fewer than a line above it.
-function runt(paragraph) {
+// A paragraph's last line when wrapping leaves it at most words, and fewer than a line above it.
+function runt(paragraph, most = 2) {
   const characters = [];
   const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
     acceptNode: (node) => node.classList?.contains('bullet') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
@@ -800,14 +806,14 @@ function runt(paragraph) {
   const start = shortLastLine(text, (first, second) => {
     const [a, b] = [rect(first), rect(second)];
     return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) >= Math.min(a.height, b.height) / 2;
-  });
+  }, most);
   return start === null ? null : { paragraph: Number(paragraph.dataset.paragraph), text: text.slice(start, end) };
 }
 
-// Where a wrapped paragraph's last line starts when it holds two words or fewer, given whether the characters at two
+// Where a wrapped paragraph's last line starts when it holds at most words, given whether the characters at two
 // indices share a line; null for a longer line, a paragraph on one line, a line a typed line break starts, or one
 // holding as many words as each line above it, as a label set a word to a line does, since rewording can't even it.
-function shortLastLine(text, sameLine) {
+function shortLastLine(text, sameLine, most = 2) {
   const end = text.replace(/[ \t\n]+$/, '').length;
   const starts = [];
   for (let index = 0; index < end; index++) {
@@ -818,7 +824,7 @@ function shortLastLine(text, sameLine) {
   }
   const words = starts.map((start, line) => text.slice(start, starts[line + 1] ?? end).trim().split(/[ \t\n]+/).length);
   const last = words.at(-1);
-  if (starts.length < 2 || last > 2 || text[starts.at(-1) - 1] === '\n') {
+  if (starts.length < 2 || last > most || text[starts.at(-1) - 1] === '\n') {
     return null;
   }
   return words.slice(0, -1).some((count) => count > last) ? starts.at(-1) : null;
