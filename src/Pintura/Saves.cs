@@ -122,8 +122,7 @@ public static class Saves
     List<string> themed = [];
     foreach (string path in edited.Order(StringComparer.Ordinal))
     {
-      if (path == scope.Manifest || path == scope.PickFile || path == scope.ResolvedPickFile ||
-        scope.Slide(path) is not null && CameOrWent(scope, path))
+      if (path == scope.Manifest || Picked(scope, path) || scope.Slide(path) is not null && CameOrWent(scope, path))
       {
         listed.Add(path);
       }
@@ -137,6 +136,18 @@ public static class Saves
       }
     }
     return [.. slides, .. new[] { listed, themed }.Where(files => files.Count > 0)];
+  }
+
+  private static bool Picked(VersionScope scope, string path)
+  {
+    return path == scope.PickFile || path == scope.ResolvedPickFile;
+  }
+
+  /// <summary>Whether a file is the theme's or another the deck shares, rather than a slide's, presentation.yaml or
+  /// a pick file.</summary>
+  private static bool Themed(VersionScope scope, string path)
+  {
+    return scope.Slide(path) is null && path != scope.Manifest && !Picked(scope, path);
   }
 
   private static bool CameOrWent(VersionScope scope, string path)
@@ -157,7 +168,7 @@ public static class Saves
     {
       parts.Add("presentation.yaml");
     }
-    if (files.Any(path => scope.Slide(path) is null && path != scope.Manifest))
+    if (files.Any(path => Themed(scope, path)))
     {
       parts.Add("the theme");
     }
@@ -367,7 +378,7 @@ public static class Saves
     HashSet<string> others = [.. pending.Changed.Where(path => !edited.Contains(path)).Select(scope.Slide)
       .OfType<string>()];
     bool listed = edited.Contains(scope.Manifest);
-    bool themed = edited.Any(path => scope.Slide(path) is null && path != scope.Manifest);
+    bool themed = edited.Any(path => Themed(scope, path));
     // A slide's changes that came from the list or the theme are the page's when it wrote them, unless the slide's
     // own file holds someone else's too.
     // Keeping a variant other than the one drawn in the pick's place would read as a slide added and one removed.
@@ -403,7 +414,11 @@ public static class Saves
     {
       parts.Add("presentation.yaml");
     }
-    if (mixed.Any(path => scope.Slide(path) is null && path != scope.Manifest))
+    if (mixed.Any(path => Picked(scope, path)))
+    {
+      parts.Add("the picks");
+    }
+    if (mixed.Any(path => Themed(scope, path)))
     {
       parts.Add("the theme");
     }
