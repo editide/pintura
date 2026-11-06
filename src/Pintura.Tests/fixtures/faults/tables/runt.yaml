@@ -1,0 +1,6 @@
+data: runt.csv
+style: plain
+header_rows: 1
+columns:
+  - { width: 175 }
+  - { width: 120, align: right }

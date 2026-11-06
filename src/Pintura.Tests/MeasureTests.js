@@ -247,6 +247,30 @@ test('a last line of three words is not short', () => {
   assert.equal(line, null);
 });
 
+test('a last line of two words is not short where one word is the most allowed', () => {
+  // Arrange
+  const text = 'Revenue grew in every region, led by Europe';
+  const start = text.indexOf('by');
+
+  // Act
+  const line = shortLastLine(text, sameLineFrom(start), 1);
+
+  // Assert
+  assert.equal(line, null);
+});
+
+test('a cell wrapping onto one word starts its last line at it', () => {
+  // Arrange
+  const text = 'Revenue grew in every region, led by Europe';
+  const start = text.indexOf('Europe');
+
+  // Act
+  const line = shortLastLine(text, sameLineFrom(start), 1);
+
+  // Assert
+  assert.equal(line, start);
+});
+
 test('a paragraph on one line has no short last line', () => {
   // Arrange
   const text = 'Revenue grew';

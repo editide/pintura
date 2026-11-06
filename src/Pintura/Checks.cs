@@ -252,7 +252,10 @@ public static class Checks
       {
         string words = runt.Text.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries).Length == 1
           ? "one word" : "two words";
-        string what = box.Paragraphs.Length == 1 ? "text" : $"paragraph {runt.Paragraph + 1}";
+        string paragraph = runt.Paragraph == 0 ? "" : $"paragraph {runt.Paragraph + 1} of ";
+        string what = runt.Row is int row
+          ? $"{paragraph}the cell at row {row}, column {runt.Column}"
+          : box.Paragraphs.Length == 1 ? "text" : $"paragraph {runt.Paragraph + 1}";
         return $"{what} wraps onto a last line of {words}, \"{runt.Text}\"";
       });
       candidates.Add(BoxCandidate(box, "warning", "runt", string.Join("; ", lines), box.Runts!.Count));

@@ -176,6 +176,25 @@ public class CheckTests
   }
 
   [Fact]
+  public void A_table_cell_wrapping_onto_one_word_names_its_row_and_column()
+  {
+    // Arrange
+    var measurement = new Measurement([], [Box("none", 0) with
+    {
+      Kind = "table",
+      Paragraphs = [1, 2, 1],
+      Runts = [new Runt(0, "Europe", 3, 2), new Runt(1, "total", 4, 1)]
+    }]);
+
+    // Act
+    List<Finding> findings = Checks.Text(measurement, new FontSetting(false, false));
+
+    // Assert
+    findings.ShouldHaveSingleItem().Message.ShouldBe("the cell at row 3, column 2 wraps onto a last line of one " +
+      "word, \"Europe\"; paragraph 2 of the cell at row 4, column 1 wraps onto a last line of one word, \"total\"");
+  }
+
+  [Fact]
   public void Shrunk_text_that_still_overflows_names_its_scale()
   {
     // Arrange
