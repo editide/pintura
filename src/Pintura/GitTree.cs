@@ -196,6 +196,43 @@ public sealed class GitObjects
     return Repositories.GetOrAdd(top, folder => new GitObjects(folder));
   }
 
+  /// <summary>Ends the readers of the repositories at or under a folder, which Windows can't delete while a process
+  /// started in it runs.</summary>
+  public static void Close(string folder)
+  {
+    folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+    StringComparison comparison = OperatingSystem.IsLinux()
+      ? StringComparison.Ordinal
+      : StringComparison.OrdinalIgnoreCase;
+    foreach (string top in Repositories.Keys)
+    {
+      string full = Path.GetFullPath(top);
+      if ((full.Equals(folder, comparison) || full.StartsWith(folder + Path.DirectorySeparatorChar, comparison)) &&
+        Repositories.TryRemove(top, out GitObjects? objects))
+      {
+        objects.Stop();
+      }
+    }
+  }
+
+  private void Stop()
+  {
+    lock (gate)
+    {
+      if (process is null)
+      {
+        return;
+      }
+      process.StandardInput.Close();
+      if (!process.WaitForExit(5000))
+      {
+        process.Kill();
+      }
+      process.Dispose();
+      process = null;
+    }
+  }
+
   public byte[] Read(string blob)
   {
     lock (gate)
