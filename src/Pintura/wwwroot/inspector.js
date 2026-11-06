@@ -71,6 +71,7 @@ const LABELS = {
   series_colors: 'Series colors',
   gap_width: 'Gap width',
   overlap: 'Overlap',
+  first_slice_angle: 'First slice angle',
   totals: 'Totals',
   connector_lines: 'Connector lines',
   header_rows: 'Header rows',
@@ -124,7 +125,7 @@ function unit(key) {
   if (PERCENTAGES.has(key)) {
     return '%';
   }
-  return key === 'rotate' ? '°' : '';
+  return key === 'rotate' || key === 'first_slice_angle' ? '°' : '';
 }
 
 // Formats from the server's display string, which diffs carry too, rather than its value.

@@ -873,6 +873,33 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_pie_comes_back_with_the_angle_its_first_slice_starts_at()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = Reads();
+    JsonArray charts = reads["slides"]![3]!["read"]!["chart_elements"]!.AsArray();
+    JsonObject pie = JsonNode.Parse("""
+      { "chart_data": { "0:Founder": { "0:Vote": 50.1 }, "1:Class A": { "0:Vote": 49.9 } },
+        "series_list": [{ "index": 0, "chart_type": "pie", "name": "Vote", "order": 0 }],
+        "first_slice_angle": 180 }
+      """)!.AsObject();
+    foreach (string key in new[] { "id", "position", "size" })
+    {
+      pie[key] = charts[0]![key]!.DeepClone();
+    }
+    charts[0] = pie;
+
+    // Act
+    PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
+    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Presentation imported = PresentationLoader.Load(output.PathTo("imported"));
+
+    // Assert
+    imported.Charts.Values.Single(candidate => candidate.Type == "pie").Properties.FirstSliceAngle.ShouldBe(180);
+  }
+
+  [Fact]
   public void A_point_labelled_where_its_chart_cant_place_it_takes_the_charts_default_rather_than_its_series()
   {
     // Arrange

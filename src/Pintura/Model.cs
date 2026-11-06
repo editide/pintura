@@ -665,7 +665,7 @@ public class ChartProperties
     "value_axis.format", "value_axis.gridlines", "value_axis.reverse", "secondary_axis.visible", "secondary_axis.min",
     "secondary_axis.max", "secondary_axis.step", "secondary_axis.format", "secondary_axis.reverse",
     "category_axis.visible", "category_axis.labels", "category_axis.format", "category_axis.step", "series_colors",
-    "gap_width", "overlap", "connector_lines", "markers.shape", "markers.size", "markers.fill", "plot.insets",
+    "gap_width", "overlap", "first_slice_angle", "connector_lines", "markers.shape", "markers.size", "markers.fill", "plot.insets",
     "text.font", "text.size", "text.color"
   ];
 
@@ -680,6 +680,8 @@ public class ChartProperties
   public List<Color>? SeriesColors { get; set; }
   public double? GapWidth { get; set; }
   public double? Overlap { get; set; }
+  /// <summary>Degrees clockwise from twelve o'clock where a pie's or doughnut's first slice starts.</summary>
+  public double? FirstSliceAngle { get; set; }
   /// <summary>A waterfall's lines from each bar's end across to the next bar.</summary>
   public bool? ConnectorLines { get; set; }
   /// <summary>What sits on each point of the chart's lines.</summary>
@@ -720,6 +722,7 @@ public class ChartProperties
       "series_colors" => SeriesColors,
       "gap_width" => GapWidth,
       "overlap" => Overlap,
+      "first_slice_angle" => FirstSliceAngle,
       "connector_lines" => ConnectorLines,
       "markers.shape" => Markers.Shape,
       "markers.size" => Markers.Size,

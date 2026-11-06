@@ -234,6 +234,18 @@ test("a pie's inside labels sit half a font size in from the rim, however wide o
   });
 });
 
+test("a pie turned 180 degrees starts its first slice at six o'clock, so a half runs up the left", () => {
+  // Arrange
+  const pie = chart({ type: 'pie', family: 'pie', categories: ['A', 'B'], series: [{ name: '2026', values: [1, 1] }],
+    valueAxis: null, categoryAxis: null, firstSliceAngle: 180 });
+
+  // Act
+  const slices = layoutChart(pie, 400, 300, measure).filter((primitive) => primitive.kind === 'path');
+
+  // Assert
+  assert.match(slices[0].d, /^M200 295 A145 145 0 0 1 200 5 /);
+});
+
 test('a side legend lists stacked columns and lines from the top of the stack, as PowerPoint does', () => {
   // Arrange
   const columns = chart({ type: 'stacked_column', grouping: 'stacked', legend: 'right' });

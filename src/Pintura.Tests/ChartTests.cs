@@ -275,6 +275,8 @@ public class ChartTests
     // Assert
     bar.Properties["overlap"].ShouldBe(new Resolved(100.0, null));
     pie.Properties.Keys.ShouldNotContain(key => key.Contains("axis") || key == "gap_width" || key == "overlap");
+    pie.Properties["first_slice_angle"].ShouldBe(new Resolved(0.0, null));
+    bar.Properties.Keys.ShouldNotContain("first_slice_angle");
   }
 
   [Fact]

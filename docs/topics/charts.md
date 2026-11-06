@@ -20,6 +20,7 @@ A chart is a file in `charts/`, placed on a slide with `chart: <stem>`, and its 
 | `category_axis` | `{ visible, labels, format, step }`; `labels: false` keeps the axis's line but drops its labels, as for logos placed beneath the categories; `format` names a date format, which makes the axis a time line, and `step` is the time between its labels, such as `7 days`, `1 month`, or `2 years`. |
 | `series_colors` | Colors in series order. |
 | `gap_width`, `overlap` | Bar spacing, in percent as in PowerPoint. |
+| `first_slice_angle` | Whole degrees, 0 to 360, clockwise from twelve o'clock where a pie's or doughnut's first slice starts; 180 puts the first of two halves on the left, the side its legend entry is on. |
 | `connector_lines` | `true` or `false`: a waterfall's lines from each bar's end across to the next bar. |
 | `plot` | `{ insets }`, `[left, top, right, bottom]` points of room between the frame and the plot with its axis labels, for data labels to take, such as above a line's peak; PowerPoint places its plot itself, so the export leaves them out. |
 | `markers` | `{ shape, size, fill }` on each point of the chart's lines; `shape` is `circle`, `square`, `diamond`, `triangle`, or `none`, the default; `size` is whole points across, from 2 to 72, 5 by default; `fill` defaults to the line's color. |
@@ -29,7 +30,7 @@ A chart is a file in `charts/`, placed on a slide with `chart: <stem>`, and its 
 A pie's `inside` labels sit as far out as they fit with half a font size to spare before the rim, as PowerPoint's inside end does.
 A doughnut's labels sit on its ring and take no position.
 
-What nothing sets is PowerPoint's default, which `--element` shows as such: `gap_width: 150`, `overlap: 0`, both axes visible, series colors `accent1` to `accent6`, a waterfall's connector lines on, and labels `outside` on clustered charts and waterfalls, `center` on stacked ones, `above` on lines, and `inside` on pies.
+What nothing sets is PowerPoint's default, which `--element` shows as such: `gap_width: 150`, `overlap: 0`, `first_slice_angle: 0`, both axes visible, series colors `accent1` to `accent6`, a waterfall's connector lines on, and labels `outside` on clustered charts and waterfalls, `center` on stacked ones, `above` on lines, and `inside` on pies.
 Stacked charts always overlap fully.
 Gridlines, the legend, the title, labels, and markers stay off until something sets them.
 A marker is outlined in its line's color and width, so `fill: light1` draws it hollow.

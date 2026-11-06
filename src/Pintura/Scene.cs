@@ -577,6 +577,14 @@ public class SceneBuilder
       properties.Remove("gap_width");
       properties.Remove("overlap");
     }
+    if (pie)
+    {
+      properties.TryAdd("first_slice_angle", new Resolved(0.0, null));
+    }
+    else
+    {
+      properties.Remove("first_slice_angle");
+    }
     if (chart.Type == "waterfall")
     {
       properties.TryAdd("connector_lines", new Resolved(true, null));
