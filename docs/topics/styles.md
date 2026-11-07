@@ -51,7 +51,7 @@ Name a format for what a number is (`millions_of_dollars`), not how it looks (`o
 | `scale` | Multiplies the value before display: `0.001` shows millions as billions, `100` shows a ratio as a percent. |
 | `decimals` | Digits after the decimal point, from 0 to 15. |
 | `separator` | `true` for thousands separators. |
-| `prefix`, `suffix` | Text around the number, such as `$` or `%`. |
+| `prefix`, `suffix` | Text around the number, such as `$` or `%`; a line feed, `"Average:\n"` in double quotes, breaks a data label there. |
 | `negative` | `parentheses` for `(125)` or `minus` for `-125`, around the prefix and suffix: `($19.6B)`, `-$19.6B`. |
 | `negative_style` | A style every negative number in this format takes. |
 
