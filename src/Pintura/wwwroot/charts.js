@@ -14,6 +14,11 @@ function formatGeneral(value) {
   return String(Number(value.toPrecision(10)));
 }
 
+// A format's prefix or suffix may break a label over lines, which stack centered on the label's position.
+function lineCount(text) {
+  return text.split('\n').length;
+}
+
 function formatNumber(value, format) {
   if (!format) {
     return formatGeneral(value);
@@ -262,7 +267,7 @@ function barLabel(labels, context, raw, across, from, to, horizontal, trace = (p
   const lineHeight = size * 1.2;
   const gap = size * 0.3;
   const forward = Math.sign(to - from) || (horizontal ? 1 : -1);
-  const extent = horizontal ? measure(text) : lineHeight;
+  const extent = horizontal ? measure(text) : lineHeight * lineCount(text);
   let along;
   switch (labels.position) {
     case 'outside':
@@ -404,13 +409,13 @@ function layoutCartesian(chart, box, context) {
     }
     inner = { ...inner, x: inner.x + left, width: Math.max(1, inner.width - left - right) };
   }
-  const half = size * 0.6;
   for (const primitive of drawn) {
     if (primitive.kind === 'text' && clipped.has(`${primitive.part}:${primitive.text}`)) {
       primitive.clipped = true;
     }
     if (primitive.kind === 'text' && primitive.part === 'label') {
       const [start, end] = span(primitive);
+      const half = size * 0.6 + (lineCount(primitive.text) - 1) * size * 1.2 / 2;
       const dx = Math.max(0, box.x - start) - Math.max(0, end - (box.x + box.width));
       const dy = Math.min(box.y + box.height - half, Math.max(box.y + half, primitive.y)) - primitive.y;
       primitive.x += dx;
@@ -644,12 +649,13 @@ function pointMarker(markers, color, x, y) {
 
 function lineLabel(labels, context, raw, x, y, trace) {
   const { size, out } = context;
+  const text = formatNumber(raw, labels.format);
   const gap = size * 0.4;
-  const offset = gap + size * 0.6;
+  const offset = gap + size * 0.6 + (lineCount(text) - 1) * size * 1.2 / 2;
   const along = { above: y - offset, below: y + offset }[labels.position] ?? y;
   const across = { left: x - gap, right: x + gap }[labels.position] ?? x;
   const anchor = { left: 'end', right: 'start' }[labels.position] ?? 'middle';
-  out.push(trace({ kind: 'text', part: 'label', x: across, y: along, text: formatNumber(raw, labels.format), anchor,
+  out.push(trace({ kind: 'text', part: 'label', x: across, y: along, text, anchor,
     color: labelColor(labels, raw), bold: labels.bold }));
 }
 
@@ -711,7 +717,9 @@ function layoutPie(chart, box, context) {
   });
   const outside = labels && !doughnut && labels.position === 'outside';
   const room = outside ? Math.max(0, ...texts.flat().filter(Boolean).map((text) => measure(text))) + size * 0.6 : 0;
-  const radius = Math.max(1, Math.min(box.width / 2 - room, box.height / 2 - (outside ? lineHeight + size * 0.6 : 0)));
+  const lines = Math.max(1, ...texts.flat().filter(Boolean).map(lineCount));
+  const radius = Math.max(1, Math.min(box.width / 2 - room,
+    box.height / 2 - (outside ? lineHeight * lines + size * 0.6 : 0)));
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
   const hole = doughnut ? radius * DOUGHNUT_HOLE : 0;
@@ -746,7 +754,7 @@ function layoutPie(chart, box, context) {
           at = arcPoint(cx, cy, outer + size * 0.5, middle);
           const cos = Math.cos(middle);
           anchor = Math.abs(cos) < 0.2 ? 'middle' : cos > 0 ? 'start' : 'end';
-          at[1] += Math.sin(middle) * lineHeight / 2;
+          at[1] += Math.sin(middle) * lineHeight * lineCount(text) / 2;
         }
         pending.push(traced({ kind: 'text', part: 'label', x: at[0], y: at[1], text, anchor,
           color: labelColor(series.labels, value), bold: series.labels.bold }, series, ring, point));
@@ -761,7 +769,8 @@ function layoutPie(chart, box, context) {
 function layoutChart(chart, width, height, measure) {
   const size = chart.text.size;
   const out = [];
-  const context = { size, out, measure: (text, bold = false) => measure(text, size, bold) };
+  const context = { size, out,
+    measure: (text, bold = false) => Math.max(...text.split('\n').map((line) => measure(line, size, bold))) };
   const inset = size * 0.5;
   let box = { x: inset, y: inset, width: Math.max(1, width - inset * 2), height: Math.max(1, height - inset * 2) };
   if (chart.title) {
@@ -807,6 +816,19 @@ function hoverValue(chart, { series: index, point }) {
     value: format ? formatNumber(value, format) : Number(value).toLocaleString('en-US'),
     of: [series.name, category].filter((part) => part !== undefined && part !== null && part !== '').join(' · ')
   };
+}
+
+function drawLines(node, text, lineHeight) {
+  const lines = text.split('\n');
+  if (lines.length === 1) {
+    node.textContent = text;
+    return;
+  }
+  lines.forEach((line, index) => {
+    const span = svgElement('tspan', { x: node.getAttribute('x'),
+      dy: roundChart(index === 0 ? -(lines.length - 1) * lineHeight / 2 : lineHeight) }, node);
+    span.textContent = line;
+  });
 }
 
 function drawChart(chart, width, height) {
@@ -861,7 +883,7 @@ function drawChart(chart, width, height) {
           'font-weight': primitive.bold ? 700 : null,
           fill: primitive.color || text.color
         }, svg);
-        node.textContent = primitive.text;
+        drawLines(node, primitive.text, (primitive.size || text.size) * 1.2);
         break;
       case 'hit':
         node = svgElement('circle', { cx: roundChart(primitive.x), cy: roundChart(primitive.y), r: primitive.r,

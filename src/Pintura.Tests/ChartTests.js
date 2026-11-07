@@ -609,6 +609,29 @@ test('a line\'s label left or right of its point sits level with it, its near en
   assert.deepEqual([left.anchor, left.x, left.y], ['end', above.x - gap, above.y + 10]);
 });
 
+test('a label of two lines grows away from its point above it, and centers on it beside it', () => {
+  // Arrange
+  const twoLines = { scale: 1, decimals: 0, separator: false, prefix: 'Average:\n', suffix: '', negative: 'minus' };
+  const drawn = (position, format) => {
+    const series = [{ name: 'Close', values: [100, 150, 200], type: 'line',
+      labels: { show: 'value', position, format } }];
+    return layoutChart(chart({ type: 'line', family: 'line', grouping: 'standard', series,
+      valueAxis: { visible: false, gridlines: false, min: 0, max: 200, step: 50 } }), 400, 200, measure);
+  };
+  const middle = (primitives) => primitives.filter((primitive) => primitive.part === 'label')[1];
+
+  // Act
+  const above = middle(drawn('above', null));
+  const aboveTwo = middle(drawn('above', twoLines));
+  const right = middle(drawn('right', null));
+  const rightTwo = middle(drawn('right', twoLines));
+
+  // Assert
+  assert.equal(aboveTwo.text, 'Average:\n150');
+  assert.equal(aboveTwo.y, above.y - 10 * 1.2 / 2);
+  assert.deepEqual([rightTwo.x, rightTwo.y], [right.x, right.y]);
+});
+
 test('a plot\'s insets make room around it and its axis labels, which data labels may take', () => {
   // Arrange
   const series = [{ name: 'Close', values: [100, 200], type: 'line',
