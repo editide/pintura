@@ -365,8 +365,28 @@ public partial class PresentationLoader
     }
   }
 
-  /// <summary>Resolves the reference into <see cref="references"/>, or says why it doesn't resolve.</summary>
+  /// <summary>Resolves the reference into <see cref="references"/>, or says why it doesn't resolve. A revision draws
+  /// one that doesn't as <c>#REF!</c>, since its book may have moved on in a commit its slides caught up with only
+  /// later, and comparing against it shouldn't lose the slide.</summary>
   private string? ReferenceProblem(Reference reference)
+  {
+    string? problem = Resolve(reference);
+    if (problem is null || files is not GitTree)
+    {
+      return problem;
+    }
+    references[reference.ToString()] = new BookValue
+    {
+      Text = "#REF!",
+      Book = reference.Book,
+      Line = reference.Line,
+      Column = reference.Column,
+      Origin = FindBook(reference.Book)?.Origin.At(reference.ToString()) ?? new Origin("", 0, 0)
+    };
+    return null;
+  }
+
+  private string? Resolve(Reference reference)
   {
     string name = reference.ToString();
     if (references.ContainsKey(name))

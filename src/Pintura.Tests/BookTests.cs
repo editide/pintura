@@ -700,6 +700,27 @@ public class BookTests
   }
 
   [Fact]
+  public void A_revision_draws_a_reference_its_book_no_longer_resolves_as_ref()
+  {
+    // Arrange
+    using DeckFixture deck = Deck("""
+      layout: content
+      title: ${acme::historical.segments.space_revenue["2025"]} in revenue
+      """);
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", "deck", "theme", "book");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+
+    // Act
+    Presentation committed = Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root, deck.Books);
+
+    // Assert
+    committed.Slides[0].Error.ShouldBeNull();
+    PayloadBuilder.Title(committed, committed.Slides[0]).ShouldBe("#REF! in revenue");
+    deck.Error().Problem.ShouldStartWith("no line historical.segments.space_revenue in book acme");
+  }
+
+  [Fact]
   public void A_books_key_at_a_revision_moves_with_its_files_and_the_formats_above_it_alone()
   {
     // Arrange
