@@ -365,6 +365,9 @@ public partial class PresentationLoader
     }
   }
 
+  /// <summary>What a revision draws for a number its book no longer has.</summary>
+  private const string Unresolved = "#REF!";
+
   /// <summary>Resolves the reference into <see cref="references"/>, or says why it doesn't resolve. A revision draws
   /// one that doesn't as <c>#REF!</c>, since its book may have moved on in a commit its slides caught up with only
   /// later, and comparing against it shouldn't lose the slide.</summary>
@@ -377,7 +380,7 @@ public partial class PresentationLoader
     }
     references[reference.ToString()] = new BookValue
     {
-      Text = "#REF!",
+      Text = Unresolved,
       Book = reference.Book,
       Line = reference.Line,
       Column = reference.Column,
@@ -2371,7 +2374,8 @@ public partial class PresentationLoader
 
   /// <summary>Series from a book's lines, over the columns the chart names or the first line's, or with
   /// <c>series_in: columns</c> a series from each column over the lines; a column's label, if it has one, names its
-  /// category or series.</summary>
+  /// category or series. A revision draws a line or column its book no longer has as gaps rather than failing the
+  /// chart, as it draws such a reference in text as <c>#REF!</c>.</summary>
   private (string Book, List<string> Lines, List<string> Columns, List<string> Categories, List<ChartSeries> Series)
     ReadChartLines(Node node, string seriesIn)
   {
@@ -2396,8 +2400,12 @@ public partial class PresentationLoader
       seriesMap.Done();
       if (!lines!.TryGetValue(lineNode.AsString(), out BookLine? line))
       {
-        throw lineNode.Error($"no line {lineNode.AsString()} in book {book.Id}; name it as libreta --lines lists it, " +
-          "from the book's folder");
+        if (files is not GitTree)
+        {
+          throw lineNode.Error($"no line {lineNode.AsString()} in book {book.Id}; name it as libreta --lines lists " +
+            "it, from the book's folder");
+        }
+        line = new BookLine(lineNode.AsString(), lineNode.AsString(), null, [], [], []);
       }
       string name = label ?? line.Label;
       if (picked.Any(other => other.Name == name))
@@ -2432,7 +2440,8 @@ public partial class PresentationLoader
     }
     if (columnsNode is null)
     {
-      columns.AddRange(picked[0].Line.Columns.Select(name => (name, name, node)));
+      BookLine first = picked.FirstOrDefault(entry => entry.Line.Columns.Count > 0).Line ?? picked[0].Line;
+      columns.AddRange(first.Columns.Select(name => (name, name, node)));
     }
     var values = new List<List<double?>>();
     foreach ((BookLine line, string _) in picked)
@@ -2441,11 +2450,11 @@ public partial class PresentationLoader
       foreach ((string name, string _, Node columnNode) in columns)
       {
         int column = line.Columns.IndexOf(name);
-        if (column < 0)
+        if (column < 0 && files is not GitTree)
         {
           throw columnNode.Error($"{line.Name} has no column {name}; its columns are " + And([.. line.Columns]));
         }
-        row.Add(PlainNumber.TryParse(line.Exact[column], out double value) ? value : null);
+        row.Add(column >= 0 && PlainNumber.TryParse(line.Exact[column], out double value) ? value : null);
       }
       values.Add(row);
     }
@@ -2922,6 +2931,8 @@ public partial class PresentationLoader
   private record ViewData(string View, List<List<string>> Values, List<List<string?>> Exact,
     List<List<(string Line, string Column)?>> Sources, List<string?> Styles, List<int> Indents);
 
+  /// <summary>A revision draws a column or line the view no longer has as <c>#REF!</c> cells rather than failing.
+  /// </summary>
   private ViewData ReadViewData(Node node)
   {
     MapNode map = node.WithTopic("books").AsMap();
@@ -2964,9 +2975,13 @@ public partial class PresentationLoader
       }
       string name = columnNode.AsString();
       int index = view.Columns.FindIndex(column => column.Name == name || column.Label == name);
-      columns.Add(index >= 0 ? index : throw columnNode.Error($"view {viewId} has no column {name}; its columns " +
-        $"are {And([.. view.Columns.Select(column => column.Label)])}"));
-      headers.Add(label ?? view.Columns[index].Label);
+      if (index < 0 && files is not GitTree)
+      {
+        throw columnNode.Error($"view {viewId} has no column {name}; its columns are " +
+          $"{And([.. view.Columns.Select(column => column.Label)])}");
+      }
+      columns.Add(index);
+      headers.Add(label ?? (index >= 0 ? view.Columns[index].Label : name));
     }
     if (columnsNode is null)
     {
@@ -2996,6 +3011,8 @@ public partial class PresentationLoader
       rows.Add(matches.Count switch
       {
         1 => label is null ? matches[0] : matches[0] with { Label = label },
+        0 when files is GitTree => new BookRow(null, label ?? name, "fact", null, 0, null,
+          [.. view.Columns.Select(_ => Unresolved)]),
         0 => throw lineNode.Error($"view {viewId} shows no line {name}"),
         _ => throw lineNode.Error($"{name} is {And([.. matches.Select(row => row.Name!)])} in view {viewId}; " +
           "name the one you mean in full")
@@ -3013,9 +3030,9 @@ public partial class PresentationLoader
     List<int> indents = [0];
     foreach (BookRow row in rows)
     {
-      values.Add([row.Label ?? "", .. columns.Select(column => row.Display?[column] ?? "")]);
-      exact.Add([null, .. columns.Select(column => row.Exact?[column])]);
-      sources.Add([null, .. columns.Select(column => row.Cells is not null
+      values.Add([row.Label ?? "", .. columns.Select(column => column < 0 ? Unresolved : row.Display?[column] ?? "")]);
+      exact.Add([null, .. columns.Select(column => column < 0 ? null : row.Exact?[column])]);
+      sources.Add([null, .. columns.Select(column => column < 0 ? null : row.Cells is not null
         ? (row.Cells[column].Line, row.Cells[column].Column)
         : row.Name is null
           ? ((string, string)?)null

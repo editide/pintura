@@ -407,6 +407,43 @@ public class BookTests
   }
 
   [Fact]
+  public void A_revision_draws_a_chart_line_or_column_its_book_no_longer_has_as_gaps()
+  {
+    // Arrange
+    using DeckFixture deck = Deck("""
+      layout: content
+      elements:
+        - id: chart
+          chart: revenue
+          frame: left
+      """);
+    deck.Write("deck/charts/revenue.yaml", """
+      type: clustered_column
+      data:
+        book: acme
+        columns: ["2024", H1 2025]
+        series:
+          - { line: historical.segments.connectivity_revenue }
+          - { line: historical.segments.space_revenue }
+      """);
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", "deck", "theme", "book");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+
+    // Act
+    Presentation committed = Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root, deck.Books);
+
+    // Assert
+    committed.Slides[0].Error.ShouldBeNull();
+    Chart chart = committed.Charts["revenue"];
+    chart.Categories.ShouldBe(["2024", "H1 2025"]);
+    chart.Series.Select(series => series.Name).ShouldBe(["Connectivity", "historical.segments.space_revenue"]);
+    chart.Series[0].Values.ShouldBe([7599, null]);
+    chart.Series[1].Values.ShouldBe([null, null]);
+    deck.Error().Problem.ShouldStartWith("no line historical.segments.space_revenue in book acme");
+  }
+
+  [Fact]
   public void A_table_presents_a_view_with_its_row_roles_as_row_styles()
   {
     // Arrange
@@ -449,6 +486,41 @@ public class BookTests
     }
     Cell(3, 2).ShouldBe("$7.6B");
     Cell(3, 3).ShouldBe("11,387");
+  }
+
+  [Fact]
+  public void A_revision_draws_a_view_column_or_line_its_book_no_longer_has_as_ref()
+  {
+    // Arrange
+    using DeckFixture deck = Deck("""
+      layout: content
+      elements:
+        - id: results
+          table: results
+          frame: content
+      """);
+    deck.Write("deck/tables/results.yaml", """
+      data:
+        view: acme::historical/segments
+        columns: ["2025", H1 2025]
+        lines: [connectivity_revenue, { line: space_revenue, label: Space }]
+      style: plain
+      """);
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", "deck", "theme", "book");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+
+    // Act
+    Presentation committed = Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root, deck.Books);
+
+    // Assert
+    committed.Slides[0].Error.ShouldBeNull();
+    committed.Tables["results"].Values.ShouldBe([
+      ["", "FY 2025", "H1 2025"],
+      ["Connectivity", "11,387", "#REF!"],
+      ["Space", "#REF!", "#REF!"]
+    ]);
+    deck.Error().Problem.ShouldStartWith("view historical/segments has no column H1 2025");
   }
 
   [Fact]
