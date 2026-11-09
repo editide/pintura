@@ -96,6 +96,7 @@ Everything else in the table file, `columns`, `rows`, `cells`, and `merge`, coun
 
 Every slide showing a number from a book redraws when a file in the book changes, with no edit to the presentation.
 Comparing against a revision reads the book as that commit left it, which needs the book in the presentation's repository.
+A reference in text that the book at that commit doesn't resolve draws as `#REF!` rather than failing its slide, since a book can move on a commit before the slides catch up.
 Holding Ctrl (Cmd on a Mac) underlines the linked numbers, and Ctrl-clicking one, in text, a table, or a chart's bar, slice, point, or label, opens the book in Libreta at that cell; the inspector has a button for each number in text or a table.
 
 ## Usual mistakes
