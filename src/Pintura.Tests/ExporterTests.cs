@@ -544,6 +544,24 @@ public class ExporterTests
   }
 
   [Fact]
+  public void A_category_axis_stroke_goes_as_the_axis_line()
+  {
+    // Arrange
+    JsonNode item = Json("""
+      { "properties": { "frame": [40, 100, 430, 380], "type": "clustered_column", "categories": ["2024"],
+        "series": [{ "name": "S", "values": [4] }], "category_axis.stroke.color": { "theme": "dark1" },
+        "category_axis.stroke.width": 1.5 } }
+      """);
+
+    // Act
+    JsonObject result = NewExporter().Chart(item);
+
+    // Assert
+    ShouldMatch(result["primary_category_axis"]!["axis_box_shape_style"],
+      """{ "border_color": { "scheme": "dk1" }, "border_weight": 1.5 }""");
+  }
+
+  [Fact]
   public void A_series_drawn_in_no_color_loses_its_legend_entry()
   {
     // Arrange

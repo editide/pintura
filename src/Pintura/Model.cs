@@ -664,8 +664,8 @@ public class ChartProperties
     "data_labels.bold", "value_axis.visible", "value_axis.min", "value_axis.max", "value_axis.step",
     "value_axis.format", "value_axis.gridlines", "value_axis.reverse", "secondary_axis.visible", "secondary_axis.min",
     "secondary_axis.max", "secondary_axis.step", "secondary_axis.format", "secondary_axis.reverse",
-    "category_axis.visible", "category_axis.labels", "category_axis.format", "category_axis.step", "series_colors",
-    "gap_width", "overlap", "first_slice_angle", "connector_lines", "markers.shape", "markers.size", "markers.fill", "plot.insets",
+    "category_axis.visible", "category_axis.labels", "category_axis.format", "category_axis.step",
+    "category_axis.stroke.color", "category_axis.stroke.width", "series_colors", "gap_width", "overlap", "first_slice_angle", "connector_lines", "markers.shape", "markers.size", "markers.fill", "plot.insets",
     "text.font", "text.size", "text.color"
   ];
 
@@ -719,6 +719,8 @@ public class ChartProperties
       "category_axis.labels" => CategoryAxis.Labels,
       "category_axis.format" => CategoryAxis.Format,
       "category_axis.step" => CategoryAxis.Step,
+      "category_axis.stroke.color" => CategoryAxis.Stroke.Color,
+      "category_axis.stroke.width" => CategoryAxis.Stroke.Width,
       "series_colors" => SeriesColors,
       "gap_width" => GapWidth,
       "overlap" => Overlap,
@@ -788,6 +790,9 @@ public class ChartCategoryAxis
   /// <summary>A date format, which makes the axis a time line over categories written as ISO dates.</summary>
   public string? Format { get; set; }
   public DateStep? Step { get; set; }
+  /// <summary>The axis's line; what it leaves out is the text's color shaded as PowerPoint's default, 0.75pt wide.
+  /// </summary>
+  public Stroke Stroke { get; init; } = new Stroke();
 }
 
 /// <summary>The time between a date axis's labels, such as 7 days or 1 month.</summary>

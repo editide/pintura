@@ -497,6 +497,24 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_category_axis_line_comes_back_as_its_stroke()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = JsonNode.Parse(File.ReadAllText(Fixture("example.reads.json")))!.AsObject();
+    reads["slides"]![3]!["read"]!["chart_elements"]![0]!["primary_category_axis"]!["axis_box_shape_style"] =
+      JsonNode.Parse("""{ "border_color": { "scheme": "dk1" }, "border_weight": 1.5 }""");
+
+    // Act
+    PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
+    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
+
+    // Assert
+    chart.ShouldContain("stroke: { color: dark1, width: 1.5 }");
+  }
+
+  [Fact]
   public void A_value_axis_with_no_label_position_comes_back_hidden_keeping_its_scale()
   {
     // Arrange

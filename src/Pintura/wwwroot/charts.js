@@ -593,9 +593,9 @@ function layoutPlot(chart, box, context) {
   if (showCategories) {
     out.push(horizontal
       ? { kind: 'line', part: 'category_axis', x1: baseline, y1: plot.y, x2: baseline, y2: plot.y + plot.height,
-        stroke: chart.axisColor, width: RULE_WIDTH }
+        stroke: chart.axisColor, width: chart.axisWidth ?? RULE_WIDTH }
       : { kind: 'line', part: 'category_axis', x1: plot.x, y1: baseline, x2: plot.x + plot.width, y2: baseline,
-        stroke: chart.axisColor, width: RULE_WIDTH });
+        stroke: chart.axisColor, width: chart.axisWidth ?? RULE_WIDTH });
   }
   if (showCategoryLabels) {
     if (dates) {

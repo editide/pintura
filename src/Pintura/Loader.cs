@@ -2652,6 +2652,23 @@ public partial class PresentationLoader
           : throw step.Error("a category axis's step is a time, such as 7 days, 1 month, or 2 years");
         Set("category_axis.step", step);
       }
+      if (axis.Take("stroke") is Node strokeNode)
+      {
+        MapNode stroke = strokeNode.AsMap();
+        if (stroke.Take("color") is Node color)
+        {
+          target.CategoryAxis.Stroke.Color = ReadColor(color, false);
+          Set("category_axis.stroke.color", color);
+        }
+        if (stroke.Take("width") is Node width)
+        {
+          target.CategoryAxis.Stroke.Width = width.AsNumber() is > 0 and double points
+            ? points
+            : throw width.Error("an axis's width is more than 0 points; hide the axis with visible: false");
+          Set("category_axis.stroke.width", width);
+        }
+        stroke.Done();
+      }
       axis.Done();
     }
     if (map.Take("series_colors") is Node colors)

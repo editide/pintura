@@ -1872,6 +1872,19 @@ public partial class Exporter
           ["label_position"] = IsFalse(Get(properties, "category_axis.labels")) ? "none" : waterfall ? "next_to" : "low"
         };
       element["primary_category_axis"] = categoryAxis;
+      var axisLine = new JsonObject();
+      if (Get(properties, "category_axis.stroke.color") is JsonNode axisColor)
+      {
+        axisLine["border_color"] = Color(axisColor);
+      }
+      if (Number(Get(properties, "category_axis.stroke.width")) is double axisWidth)
+      {
+        axisLine["border_weight"] = axisWidth;
+      }
+      if (axisLine.Count > 0 && !IsFalse(Get(properties, "category_axis.visible")))
+      {
+        categoryAxis["axis_box_shape_style"] = axisLine;
+      }
       if (Text(Get(properties, "category_axis.format")) is string { Length: > 0 } dates)
       {
         element["category_axis_type"] = "timeline";

@@ -351,6 +351,46 @@ public class ChartTests
   }
 
   [Fact]
+  public void A_category_axis_line_takes_its_stroke_from_the_chart_base_and_otherwise_shades_the_text()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("theme/styles.yaml", DeckFixture.Styles.Replace("  legend: bottom\n",
+      "  legend: bottom\n  category_axis: { stroke: { color: dark1, width: 1.5 } }\n"));
+    deck.Chart("type: clustered_column\ndata: revenue.csv");
+
+    // Act
+    ChartPayload chart = PayloadBuilder.Build(deck.Load(), 1, (path, _) => path).Slides[0].Items!
+      .Single(item => item.Id == "chart").Chart!;
+    SceneItem item = deck.Item("chart", "chart");
+    using var plain = new DeckFixture();
+    plain.Chart("type: clustered_column\ndata: revenue.csv");
+    ChartPayload shaded = PayloadBuilder.Build(plain.Load(), 1, (path, _) => path).Slides[0].Items!
+      .Single(item => item.Id == "chart").Chart!;
+
+    // Assert
+    chart.AxisColor.ShouldBe(chart.Text.Color);
+    chart.AxisWidth.ShouldBe(1.5);
+    item.Properties["category_axis.stroke.width"].Origin!.File.ShouldBe("theme/styles.yaml");
+    shaded.AxisColor.ShouldNotBe(shaded.Text.Color);
+    shaded.AxisWidth.ShouldBe(0.75);
+  }
+
+  [Fact]
+  public void A_category_axis_stroke_takes_only_a_color_and_a_width()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("type: clustered_column\ndata: revenue.csv\ncategory_axis: { stroke: { dash: dot } }");
+
+    // Act
+    Slide broken = deck.Load().Slides.Single(slide => slide.Id == "chart");
+
+    // Assert
+    broken.Error!.Message.ShouldContain("dash");
+  }
+
+  [Fact]
   public void A_plot_takes_insets_from_the_chart_and_a_wrong_count_is_an_error()
   {
     // Arrange
