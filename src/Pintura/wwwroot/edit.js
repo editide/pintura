@@ -1302,6 +1302,19 @@ function textOffset(paragraph, container, offset) {
   return paragraphText(range.cloneContents()).length;
 }
 
+// Characters before a selection's edge, as textOffset counts them, where an edge in a field's text takes in the whole
+// field, which formats as one character.
+function formatOffset(paragraph, container, offset, start) {
+  const node = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+  const field = node.closest('[data-field]');
+  if (!field || !paragraph.contains(field)) {
+    return textOffset(paragraph, container, offset);
+  }
+  const at = fieldOffset(field, container, offset, start);
+  const after = start ? at === fieldText(field).length : at !== 0;
+  return textOffset(paragraph, field.parentNode, [...field.parentNode.childNodes].indexOf(field) + (after ? 1 : 0));
+}
+
 // The point in a paragraph after that many of its characters, a field or a line break counting as one.
 function textPoint(paragraph, count) {
   let left = count;
@@ -1401,9 +1414,9 @@ async function formatText(mark) {
       return;
     }
     const start = paragraph.contains(range.startContainer)
-      ? textOffset(paragraph, range.startContainer, range.startOffset) : 0;
+      ? formatOffset(paragraph, range.startContainer, range.startOffset, true) : 0;
     const end = paragraph.contains(range.endContainer)
-      ? textOffset(paragraph, range.endContainer, range.endOffset) : paragraphText(paragraph).length;
+      ? formatOffset(paragraph, range.endContainer, range.endOffset, false) : paragraphText(paragraph).length;
     if (end > start) {
       ranges.push({ paragraph: index, start, end });
     }

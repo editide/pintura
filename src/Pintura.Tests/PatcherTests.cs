@@ -960,6 +960,19 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Unbolding_a_bold_field_drops_its_markers()
+  {
+    // Arrange
+    string slide = Slide.Replace("in ${date}", "in **${date}**");
+
+    // Act
+    string patched = Apply(slide, Format("bold", false, 0, 21, 22, slide));
+
+    // Assert
+    Changed(slide, patched).ShouldBe(["      Revenue of [$11.4B]{.positive} in ${date}"]);
+  }
+
+  [Fact]
   public void Unmarking_text_inside_a_span_keeps_the_span_whole()
   {
     // Arrange
