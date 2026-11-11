@@ -973,6 +973,32 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Removing_an_underline_drops_the_underlines_nested_in_it()
+  {
+    // Arrange
+    string slide = Slide.Replace("- Up **33%** on 2024", "- [Up[ ]{underline=true}33%]{underline=true} on 2024");
+
+    // Act
+    string patched = Apply(slide, Format("underline", false, 1, 0, 6, slide));
+
+    // Assert
+    Changed(slide, patched).ShouldBe(["      - Up 33% on 2024"]);
+  }
+
+  [Fact]
+  public void Underlining_over_an_underline_absorbs_it()
+  {
+    // Arrange
+    string slide = Slide.Replace("- Up **33%** on 2024", "- Up[ ]{underline=true}33% on 2024");
+
+    // Act
+    string patched = Apply(slide, Format("underline", true, 1, 0, 6, slide));
+
+    // Assert
+    Changed(slide, patched).ShouldBe(["      - [Up 33%]{underline=true} on 2024"]);
+  }
+
+  [Fact]
   public void Text_typed_before_formatting_is_written_with_it()
   {
     // Act

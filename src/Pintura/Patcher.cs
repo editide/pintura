@@ -1418,7 +1418,24 @@ public static partial class Patcher
   private static IEnumerable<string> Wrapped(string line, int from, int to, TextFormat format)
   {
     (string open, string close) = Markers(format.Mark, format.On);
-    yield return string.Concat(line[..from], open, line[from..to], close, line[to..]);
+    string inside = format.Mark == "underline" ? Unnested(line[from..to]) : line[from..to];
+    yield return string.Concat(line[..from], open, inside, close, line[to..]);
+  }
+
+  /// <summary>The text with the underline spans inside it unwrapped, since the underline around them covers them.
+  /// </summary>
+  private static string Unnested(string text)
+  {
+    (string open, string close) = Markers("underline", true);
+    for (int at = text.LastIndexOf(open, StringComparison.Ordinal); at >= 0;
+      at = at == 0 ? -1 : text.LastIndexOf(open, at - 1, StringComparison.Ordinal))
+    {
+      if (Bracketed(text, at) is (int closed, string closer) && closer == close)
+      {
+        text = string.Concat(text[..at], text[(at + 1)..closed], text[(closed + close.Length)..]);
+      }
+    }
+    return text;
   }
 
   /// <summary>The line with the markers around the selection removed, the nearest pairs first, and the text they
@@ -1438,7 +1455,8 @@ public static partial class Patcher
         int end = texts.Any(at => at >= to && at < closed) ? to : closed;
         string left = Remark(line[inner..start], open, close, mark != "underline");
         string right = Remark(line[end..closed], open, close, mark != "underline");
-        yield return string.Concat(line[..opened], left, line[start..end], right, line[(closed + close.Length)..]);
+        string inside = mark == "underline" ? Unnested(line[start..end]) : line[start..end];
+        yield return string.Concat(line[..opened], left, inside, right, line[(closed + close.Length)..]);
       }
     }
   }
