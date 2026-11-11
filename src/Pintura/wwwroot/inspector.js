@@ -686,6 +686,8 @@ function groupSummary(group, rows) {
         value('category_axis.visible') && `categories ${shown('category_axis.visible') ? 'shown' : 'hidden'}`,
         shown('category_axis.visible') && value('category_axis.labels') && !shown('category_axis.labels') &&
           'no category labels',
+        shown('category_axis.visible') && value('category_axis.stroke.color') &&
+          `axis line ${value('category_axis.stroke.color').text}`,
         value('value_axis.visible') && `values ${shown('value_axis.visible') ? 'shown' : 'hidden'}`,
         value('value_axis.gridlines') && (shown('value_axis.gridlines') ? 'gridlines' : 'no gridlines'),
         shown('value_axis.reverse') && 'values reversed',

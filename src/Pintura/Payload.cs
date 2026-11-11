@@ -179,6 +179,7 @@ public record ChartPayload
   public ChartTextPayload Text { get; init; } = new ChartTextPayload("", 0, "");
   public string GridColor { get; init; } = "";
   public string AxisColor { get; init; } = "";
+  public double AxisWidth { get; init; }
   /// <summary>The line between slices, in the theme's light1 as PowerPoint's default chart style draws it.</summary>
   public string EdgeColor { get; init; } = "";
 }
@@ -686,7 +687,10 @@ public static class PayloadBuilder
       Text = new ChartTextPayload(Family((string)Value("text.font")!, theme), Convert.ToDouble(Value("text.size")),
         text),
       GridColor = ColorMath.Luminance(text, 0.15, 0.85),
-      AxisColor = ColorMath.Luminance(text, 0.25, 0.75),
+      AxisColor = Value("category_axis.stroke.color") is Color axis
+        ? Hex(axis, theme)!
+        : ColorMath.Luminance(text, 0.25, 0.75),
+      AxisWidth = Value("category_axis.stroke.width") as double? ?? 0.75,
       EdgeColor = theme.Colors["light1"]
     };
   }

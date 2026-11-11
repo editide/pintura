@@ -1808,6 +1808,15 @@ public partial class PowerPointMapping
       {
         properties["category_axis.labels"] = false;
       }
+      JsonObject? axisLine = categoryAxis?["axis_box_shape_style"] as JsonObject;
+      if (Color(axisLine?["border_color"], where) is JsonObject { Count: > 0 } axisColor && axisColor["none"] is null)
+      {
+        properties["category_axis.stroke.color"] = axisColor;
+      }
+      if ((double?)axisLine?["border_weight"] is > 0 and double axisWidth)
+      {
+        properties["category_axis.stroke.width"] = axisWidth;
+      }
       if (categoryAxis?["base_time_unit"] is not null)
       {
         if (DatePattern((string?)categoryAxis["number_format"]) is string pattern)
