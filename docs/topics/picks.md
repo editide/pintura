@@ -5,7 +5,8 @@ The record is the point: a pick is a preference pair, which deleting the losing 
 
 ## Offering one
 
-Write each variant as an ordinary slide file, add the pick to `picks.yaml` beside `presentation.yaml`, and name the pick in `slides` where its slide goes:
+Write each variant as an ordinary slide file, add the pick to `picks.yaml` beside `presentation.yaml`, and name the pick in `slides` where its slide goes.
+When the pick replaces a slide, make that slide the first variant, under its own name, since whichever variant is kept takes that name:
 
 ```yaml
 - id: p4kx
@@ -46,7 +47,8 @@ Clicking a variant enlarges it, and the arrows or the mouse wheel flip through t
 Keep and None ask why in a dialog: optional for Keep, required for None.
 Pick first, then comment on or edit the slide kept, as any slide.
 
-Keep writes the kept slide in place of the pick's entry in `presentation.yaml`, deletes the other variants' files, moves any open comments on them to the slide kept, where the reviewer resolves them as any other, and moves the pick to the end of `picks-resolved.yaml`, with the order the variants were shown in, so a reviewer's lean towards a position shows across picks.
+Keep writes the variant kept over the first variant's file, and the first variant's name in place of the pick's entry in `presentation.yaml`, so the slide keeps its name, and with it its comments and its history across versions, which compare it with the first variant.
+It deletes the other variants' files, moves any open comments on them to the slide kept, where the reviewer resolves them as any other, and moves the pick to the end of `picks-resolved.yaml`, with the order the variants were shown in, so a reviewer's lean towards a position shows across picks.
 None does the same keeping the first variant in place, so the deck still draws, records `chosen: none`, and marks the slide `rejected: <pick id>`.
 Undo reopens the pick, its files, and its comments, as it does for a deleted slide.
 Save commits both files with the deck, as it does the comments.

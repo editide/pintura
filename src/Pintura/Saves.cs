@@ -381,14 +381,14 @@ public static class Saves
     bool themed = edited.Any(path => Themed(scope, path));
     // A slide's changes that came from the list or the theme are the page's when it wrote them, unless the slide's
     // own file holds someone else's too.
-    // Keeping a variant other than the one drawn in the pick's place would read as a slide added and one removed.
-    // Saving always takes the pick files, so a pick resolved since is said whatever else is saved.
+    // Keeping a variant writes it over the first and deletes the others, which would read as a slide reworded and
+    // others removed. Saving always takes the pick files, so a pick resolved since is said whatever else is saved.
     List<Pick> resolved = [.. before.Picks.Where(pick => after.Picks.All(open => open.Id != pick.Id))];
     HashSet<string> offered = [.. resolved.SelectMany(PickFile.Slides)];
     List<SlideDiff> slides = [.. diff.Slides
       .Where(slide => mine.Contains(slide.Id) || (listed || themed) && !others.Contains(slide.Id))
       .Where(slide => listed || slide.Status != "moved")
-      .Where(slide => slide.Status is not ("added" or "removed") || !offered.Contains(slide.Id))
+      .Where(slide => !offered.Contains(slide.Id))
       .Select(slide => listed ? slide : slide with { Moved = false })];
     List<int> picked = [.. resolved
       .Select(pick => before.Slides.FirstOrDefault(slide => slide.Pick == pick.Id)?.Number)
