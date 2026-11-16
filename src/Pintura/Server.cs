@@ -668,7 +668,7 @@ public static partial class PreviewServer
   {
     return SectionOrField().IsMatch(edit.Path) && edit.Source is not null && (edit.Value is not null ^
       edit.Restore is not null) && edit.Numbers is null && edit.Paragraphs is null && !edit.Delete &&
-      edit.Format is null;
+      edit.Formats is null;
   }
 
   [GeneratedRegex(@"^(fields\.[^.]+|slides\[[0-9]+\]\.section)$")]

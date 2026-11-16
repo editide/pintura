@@ -111,6 +111,7 @@ In the one-slide view, the mouse moves, resizes, and rewords what the slide owns
   Fields such as `${date}` stay as written, and an edit that would cross formatting, such as the edge of a bold run, is refused.
   Typing inside `${section}` renames the section in `presentation.yaml`, and inside a field `fields` defines rewrites its value there, so every slide showing it changes; `${slide}` and numbers from a book take no typing.
 - While rewording, a bar above the text, or Ctrl+B, Ctrl+I, and Ctrl+U, makes the selected words bold, italic, or underlined, writing `**`, `*`, or `[…]{underline=true}` around them, or takes the mark off where all of them have it.
+  With nothing selected, they turn the mark on or off for what is typed next at the caret, as Word does.
   Text a style makes bold or italic is changed in the style, and the title and placeholders take no formatting, since the layout decides their look.
 - With a text box, shape, or line selected, Fill and Outline at the top of the inspector open the theme's colors and their shades, its named colors, and PowerPoint's outline weights; hovering one previews it, and clicking it writes the element's own `fill` or `stroke`, such as `fill: accent2 lighter 40`.
   An outline picked where there was none gets `dark1` or a 1-point weight to go with it, and a fill or outline the element's style sets is overridden on the element, not changed in the style.
