@@ -375,6 +375,29 @@ public static class CommentFile
     return removed;
   }
 
+  /// <summary>Moves the open comments on <paramref name="from"/>, or only those in <paramref name="only"/>, to
+  /// <paramref name="to"/>, keeping their place in the file, and answers with their ids.</summary>
+  public static List<string> MoveSlide(Presentation presentation, string from, string to,
+    IReadOnlyCollection<string>? only = null)
+  {
+    return Rewrite(presentation, files =>
+    {
+      string text = files.Live;
+      var moved = new List<string>();
+      // From the last entry back, so rewriting one leaves the offsets of those before it as read.
+      for (int at = files.Entries.Count - 1; at >= 0; at--)
+      {
+        Comment comment = files.Entries[at].Comment;
+        if (comment.Slide == from && (only is null || only.Contains(comment.Id)))
+        {
+          text = Replace(text, files.Entries, at, comment with { Slide = to });
+          moved.Insert(0, comment.Id);
+        }
+      }
+      return (text, files.Archive, moved);
+    });
+  }
+
   /// <summary>Whoever git says is writing in the presentation's folder, or failing that the account.</summary>
   public static string Author(string root)
   {

@@ -33,9 +33,11 @@ public record PickChange(string? Pick = null, string? Keep = null, string? Why =
   List<string>? Shown = null, bool Revisit = false);
 
 /// <summary>What resolving a pick removed, for an undo to put back: the slide its entry in <c>slides</c> became, the
-/// open pick it went before, the other variants' files by stem, and the comments on them it resolved.</summary>
+/// open pick it went before, the other variants' files by stem, the comments on them it resolved, which only picks
+/// resolved before comments moved did, and the comments it moved to the slide kept, by the variant they were on.
+/// </summary>
 public record PickUndo(string Pick, string Kept, string? Before, Dictionary<string, string> Files,
-  List<string> Comments);
+  List<string> Comments, Dictionary<string, List<string>>? Moved = null);
 
 /// <summary>Reads <c>picks.yaml</c>, the picks waiting on the reviewer, and resolves them into
 /// <c>picks-resolved.yaml</c>, which records each offer with what was kept and why.</summary>
@@ -233,8 +235,9 @@ public static class PickFile
 
   /// <summary>Keeps one variant of a pick, or none of them, which keeps the first in place, marked rejected, so the
   /// deck still draws until it's redone: the pick's entry in <c>slides</c> becomes the slide kept, the other variants'
-  /// files go with their open comments, and the pick moves to the end of <c>picks-resolved.yaml</c>. Every file is
-  /// written or none is.</summary>
+  /// files go, their open comments move to the slide kept, which stands in the place they were made about, for the
+  /// reviewer to resolve with how each thread ended, and the pick moves to the end of <c>picks-resolved.yaml</c>.
+  /// Every file is written or none is.</summary>
   private static (PickChange Undo, Dictionary<string, string?> Wrote) Resolve(Presentation presentation, string id,
     string? keep, string? why, List<string>? shown, string author, DateTime now, Snapshot? seen)
   {
@@ -266,7 +269,7 @@ public static class PickFile
       List<string> dropped = [.. Slides(pick).Where(slide => slide != kept)];
       string? before = at + 1 < entries.Count ? entries[at + 1].Pick.Id : null;
       var deleted = new Dictionary<string, string>(StringComparer.Ordinal);
-      var comments = new List<string>();
+      var moved = new Dictionary<string, List<string>>(StringComparer.Ordinal);
       try
       {
         files.Write(files.List, Patcher.Settle(files.Read(files.List)!, id, kept));
@@ -283,7 +286,10 @@ public static class PickFile
           }
           files.Track(Path.Combine(presentation.Root, CommentFile.Name));
           files.Track(Path.Combine(presentation.Root, CommentFile.ResolvedName));
-          comments.AddRange(CommentFile.RemoveSlide(presentation, slide, author, now, seen).Select(each => each.Id));
+          if (CommentFile.MoveSlide(presentation, slide, kept) is { Count: > 0 } ids)
+          {
+            moved[slide] = ids;
+          }
         }
         string first = Path.Combine(presentation.Root, "slides", $"{kept}.yaml");
         if (keep is null && files.Read(first) is string slideText)
@@ -296,12 +302,12 @@ public static class PickFile
         files.Restore();
         throw;
       }
-      return (new PickChange(Reopen: new PickUndo(id, kept, before, deleted, comments)), files.Before);
+      return (new PickChange(Reopen: new PickUndo(id, kept, before, deleted, [], moved)), files.Before);
     }
   }
 
   /// <summary>Puts a resolved pick back as it was before it was resolved: its entry in <c>slides</c>, the variants'
-  /// files, its entry in <c>picks.yaml</c>, and the comments resolving it resolved.</summary>
+  /// files, its entry in <c>picks.yaml</c>, and the comments resolving it resolved or moved.</summary>
   private static (PickChange Undo, Dictionary<string, string?> Wrote) Reopen(Presentation presentation, PickUndo undo,
     DateTime now)
   {
@@ -350,6 +356,14 @@ public static class PickFile
             new CommentChange(Many: [.. undo.Comments.Select(comment => new CommentChange(Reopen: comment))]), "",
             now);
         }
+        if (undo.Moved is { Count: > 0 })
+        {
+          files.Track(Path.Combine(presentation.Root, CommentFile.Name));
+          foreach ((string slide, List<string> ids) in undo.Moved)
+          {
+            CommentFile.MoveSlide(presentation, undo.Kept, slide, ids);
+          }
+        }
       }
       catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
       {
@@ -361,8 +375,8 @@ public static class PickFile
   }
 
   /// <summary>Reopens a pick that kept none, as its undo would, with the variants it dropped read from the commit it
-  /// was resolved at and the comments resolving it resolved, so the reviewer can choose again after the undo is gone.
-  /// </summary>
+  /// was resolved at and any comments resolving it resolved, so the reviewer can choose again after the undo is gone.
+  /// The comments it moved stay on the first variant, to follow whichever is kept next.</summary>
   private static (PickChange Undo, Dictionary<string, string?> Wrote) Revisit(Presentation presentation, string id,
     DateTime now)
   {
