@@ -1364,12 +1364,18 @@ function textPoint(paragraph, count) {
   return walk(paragraph) || [paragraph, paragraph.childNodes.length];
 }
 
-// The text nodes with more than spaces in them that a range takes in.
+// The text nodes a range takes in more than spaces of, leaving out bullets and a node it only touches at an edge,
+// such as the next run's start where a selection ends after a bold run that closes mid-word.
 function selectedTexts(range) {
   const texts = [];
   const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
   for (let node = walker.currentNode; node; node = walker.nextNode()) {
-    if (node.nodeType === Node.TEXT_NODE && range.intersectsNode(node) && node.data.replace(/\u200B/g, '').trim()) {
+    if (node.nodeType !== Node.TEXT_NODE || !range.intersectsNode(node) || node.parentElement.closest('.bullet')) {
+      continue;
+    }
+    const from = node === range.startContainer ? range.startOffset : 0;
+    const to = node === range.endContainer ? range.endOffset : node.length;
+    if (node.data.slice(from, to).replace(/\u200B/g, '').trim()) {
       texts.push(node);
     }
   }
