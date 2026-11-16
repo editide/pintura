@@ -235,18 +235,20 @@ public class PickTests
     offered.Variants.Select(slide => slide.Id).ShouldBe(["stacked", "waterfall"]);
     offered.Picks.ShouldHaveSingleItem().Variants.Count.ShouldBe(3);
     kept.StatusCode.ShouldBe(HttpStatusCode.OK);
-    order.ShouldBe(["one", "waterfall"]);
+    order.ShouldBe(["one", "two"]);
     reopened.StatusCode.ShouldBe(HttpStatusCode.OK);
     File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml")).ShouldBe(list);
     served.Store.Deck.Picks.ShouldHaveSingleItem();
   }
 
   [Fact]
-  public void Keeping_a_variant_writes_it_in_the_picks_place_deletes_the_others_and_archives_the_pick()
+  public void Keeping_a_variant_writes_it_over_the_first_deletes_the_others_and_archives_the_pick()
   {
     // Arrange
     using DeckFixture deck = Offering();
-    deck.Write("deck/comments.yaml", "- id: c1\n  slide: waterfall\n  at: [0, 0]\n  text: Too busy");
+    deck.Write("deck/comments.yaml", "- id: c1\n  slide: two\n  at: [0, 0]\n  text: Hmm\n\n" +
+      "- id: c2\n  slide: stacked\n  at: [0, 0]\n  text: Better\n\n" +
+      "- id: c3\n  slide: waterfall\n  at: [0, 0]\n  text: Too busy");
 
     // Act
     (PickChange undo, _) = PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", "One chart says it",
@@ -254,20 +256,23 @@ public class PickTests
     Presentation kept = deck.Load();
 
     // Assert
-    kept.Slides.Select(slide => slide.Id).ShouldBe(["one", "stacked"]);
+    kept.Slides.Select(slide => slide.Id).ShouldBe(["one", "two"]);
     kept.Picks.ShouldBeEmpty();
-    kept.Comments.ShouldHaveSingleItem().Slide.ShouldBe("stacked");
-    File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml")).ShouldBe(List.Replace("pick: p4kx", "stacked") +
+    kept.Comments.Select(comment => (comment.Id, comment.Slide)).ShouldBe([("c1", "two"), ("c2", "two"),
+      ("c3", "two")]);
+    File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml")).ShouldBe(List.Replace("pick: p4kx", "two") +
       "\n");
     File.Exists(deck.Folder.PathTo("deck/picks.yaml")).ShouldBeFalse();
-    File.Exists(deck.Folder.PathTo("deck/slides/two.yaml")).ShouldBeFalse();
+    File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml")).ShouldBe("layout: content\ntitle: Stacked\n");
+    File.Exists(deck.Folder.PathTo("deck/slides/stacked.yaml")).ShouldBeFalse();
     File.Exists(deck.Folder.PathTo("deck/slides/waterfall.yaml")).ShouldBeFalse();
     File.ReadAllText(deck.Folder.PathTo("deck/picks-resolved.yaml")).ShouldBe(Picks + "\n  resolved:\n" +
       "    by: Daniel\n    date: 2026-11-02 18:40\n    rev: 8b21d07\n" +
       "    shown: { A: waterfall, B: two, C: stacked }\n    chosen: stacked\n    why: One chart says it\n");
     PickFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root)[0].Resolved!.Chosen.ShouldBe("stacked");
     File.Exists(deck.Folder.PathTo("deck/comments-resolved.yaml")).ShouldBeFalse();
-    undo.Reopen!.Moved!.Select(each => (each.Key, string.Join(",", each.Value))).ShouldBe([("waterfall", "c1")]);
+    undo.Reopen!.Moved!.Select(each => (each.Key, string.Join(",", each.Value)))
+      .ShouldBe([("stacked", "c2"), ("waterfall", "c3")]);
   }
 
   [Fact]
@@ -320,8 +325,10 @@ public class PickTests
   {
     // Arrange
     using DeckFixture deck = Offering();
-    deck.Write("deck/comments.yaml", "- id: c1\n  slide: waterfall\n  at: [0, 0]\n  text: Too busy");
-    string[] files = ["presentation.yaml", "picks.yaml", "comments.yaml", "slides/two.yaml", "slides/waterfall.yaml"];
+    deck.Write("deck/comments.yaml", "- id: c1\n  slide: waterfall\n  at: [0, 0]\n  text: Too busy\n\n" +
+      "- id: c2\n  slide: stacked\n  at: [0, 0]\n  text: Better");
+    string[] files = ["presentation.yaml", "picks.yaml", "comments.yaml", "slides/two.yaml", "slides/stacked.yaml",
+      "slides/waterfall.yaml"];
     string[] before = [.. files.Select(file => File.ReadAllText(deck.Folder.PathTo($"deck/{file}")))];
     (PickChange undo, _) = PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", null,
       Shown: ["two", "waterfall", "stacked"]), "Daniel", Now, Seen);
@@ -485,7 +492,7 @@ public class PickTests
     // Arrange
     using DeckFixture deck = Offering();
     PickFile.Apply(deck.Load(), new PickChange("p4kx", "stacked", null), "Daniel", Now, Seen);
-    deck.Write("deck/slides/stacked.yaml", $"rejected: {pick}\nlayout: content");
+    deck.Write("deck/slides/two.yaml", $"rejected: {pick}\nlayout: content");
 
     // Act
     Slide slide = deck.Load().Slides[1];

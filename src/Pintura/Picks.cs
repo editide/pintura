@@ -33,7 +33,7 @@ public record PickChange(string? Pick = null, string? Keep = null, string? Why =
   List<string>? Shown = null, bool Revisit = false);
 
 /// <summary>What resolving a pick removed, for an undo to put back: the slide its entry in <c>slides</c> became, the
-/// open pick it went before, the other variants' files by stem, the comments on them it resolved, which only picks
+/// open pick it went before, the variants' files it deleted or wrote over by stem, the comments on them it resolved, which only picks
 /// resolved before comments moved did, and the comments it moved to the slide kept, by the variant they were on.
 /// </summary>
 public record PickUndo(string Pick, string Kept, string? Before, Dictionary<string, string> Files,
@@ -234,10 +234,11 @@ public static class PickFile
   }
 
   /// <summary>Keeps one variant of a pick, or none of them, which keeps the first in place, marked rejected, so the
-  /// deck still draws until it's redone: the pick's entry in <c>slides</c> becomes the slide kept, the other variants'
-  /// files go, their open comments move to the slide kept, which stands in the place they were made about, for the
-  /// reviewer to resolve with how each thread ended, and the pick moves to the end of <c>picks-resolved.yaml</c>.
-  /// Every file is written or none is.</summary>
+  /// deck still draws until it's redone. The first variant is the slide the pick was offered against, so the variant
+  /// kept is written over its file and the pick's entry in <c>slides</c> becomes its name: the slide keeps its name,
+  /// and with it its history across versions and its comments. The other variants' files go, their open comments move
+  /// to it, for the reviewer to resolve with how each thread ended, and the pick moves to the end of
+  /// <c>picks-resolved.yaml</c>. Every file is written or none is.</summary>
   private static (PickChange Undo, Dictionary<string, string?> Wrote) Resolve(Presentation presentation, string id,
     string? keep, string? why, List<string>? shown, string author, DateTime now, Snapshot? seen)
   {
@@ -265,8 +266,8 @@ public static class PickFile
       {
         throw new PatchException($"pick {id}'s variants changed since they were shown", true);
       }
-      string kept = keep ?? pick.Variants[0].Slide;
-      List<string> dropped = [.. Slides(pick).Where(slide => slide != kept)];
+      string kept = pick.Variants[0].Slide;
+      List<string> others = [.. Slides(pick).Where(slide => slide != kept)];
       string? before = at + 1 < entries.Count ? entries[at + 1].Pick.Id : null;
       var deleted = new Dictionary<string, string>(StringComparer.Ordinal);
       var moved = new Dictionary<string, List<string>>(StringComparer.Ordinal);
@@ -276,7 +277,18 @@ public static class PickFile
         var resolution = new PickResolution(author, Stamp(now), seen?.Rev, shown, keep ?? None, why);
         files.Write(files.PicksPath, Without(live, entries, at));
         files.Write(files.ResolvedPath, Append(archive, archived, Archived(live, entries[at], resolution)));
-        foreach (string slide in dropped)
+        string first = Path.Combine(presentation.Root, "slides", $"{kept}.yaml");
+        if (keep is not null && keep != kept)
+        {
+          string chosen = files.Read(Path.Combine(presentation.Root, "slides", $"{keep}.yaml"))
+            ?? throw new PatchException($"slides/{keep}.yaml is gone", true);
+          if (files.Read(first) is string offered)
+          {
+            deleted[kept] = offered;
+          }
+          files.Write(first, chosen);
+        }
+        foreach (string slide in others)
         {
           string path = Path.Combine(presentation.Root, "slides", $"{slide}.yaml");
           if (files.Read(path) is string text)
@@ -291,7 +303,6 @@ public static class PickFile
             moved[slide] = ids;
           }
         }
-        string first = Path.Combine(presentation.Root, "slides", $"{kept}.yaml");
         if (keep is null && files.Read(first) is string slideText)
         {
           files.Write(first, $"rejected: {YamlWriter.Text(id)}\n{Unmarked(slideText, null)}");
@@ -330,7 +341,7 @@ public static class PickFile
         foreach ((string slide, string text) in undo.Files)
         {
           string path = Path.Combine(presentation.Root, "slides", $"{slide}.yaml");
-          if (File.Exists(path))
+          if (slide != undo.Kept && File.Exists(path))
           {
             throw new PatchException($"slides/{slide}.yaml exists again, so reopening pick {undo.Pick} was dropped",
               true);

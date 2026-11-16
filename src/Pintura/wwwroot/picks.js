@@ -310,18 +310,18 @@ function askWhy(pick, keep) {
   why.focus();
 }
 
-// Keeps a variant, or with none, the first in place, and shows the slide kept.
+// Keeps a variant, written over the first, which names the slide in the pick's place, or with none, the first, and
+// shows that slide.
 function resolvePick(pick, keep, why, shown) {
   picking.pick = null;
   picking.index = null;
-  select(keep || pick.variants[0].slide);
+  select(pick.variants[0].slide);
   sendPick({ pick: pick.id, keep, why: why || null, shown }, pick.variants[0].slide);
 }
 
-// Undoing a keep shows the pick reopened, in its first variant's place, and redoing it the slide kept.
+// Undoing or redoing a keep shows the slide in the pick's place, named for its first variant either way.
 function sendPick(change, first, kind = 'edit') {
-  return post('api/picks', change,
-    (undo) => (undo ? { slide: undo.reopen ? first : undo.keep || first, first, pick: undo } : null), kind);
+  return post('api/picks', change, (undo) => (undo ? { slide: first, first, pick: undo } : null), kind);
 }
 
 function installPicks() {
