@@ -901,7 +901,7 @@ public class PatcherTests
   {
     return new ValueEdit("elements.takeaway.text", Patcher.SourceAt(slide, "elements.takeaway.text"),
       Paragraphs: paragraphs ?? ["Revenue of $11.4B in ￼", "Up 33% on 2024"],
-      Format: new TextFormat(mark, on, [new FormatRange(paragraph, start, end)]));
+      Formats: [new TextFormat(mark, on, [new FormatRange(paragraph, start, end)])]);
   }
 
   [Fact]
@@ -1023,6 +1023,34 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Text_typed_inside_a_bold_run_and_unbolded_splits_the_run_around_it()
+  {
+    // Act
+    string patched = Apply(Slide, Format("bold", false, 1, 5, 6,
+      paragraphs: ["Revenue of $11.4B in ￼", "Up 33x% on 2024"]));
+
+    // Assert
+    Changed(Slide, patched).ShouldBe(["      - Up **33**x**%** on 2024"]);
+  }
+
+  [Fact]
+  public void Each_format_applies_in_turn()
+  {
+    // Arrange
+    ValueEdit edit = Format("bold", true, 0, 0, 7) with
+    {
+      Formats = [new TextFormat("bold", true, [new FormatRange(0, 0, 7)]),
+        new TextFormat("italic", true, [new FormatRange(0, 0, 7)])]
+    };
+
+    // Act
+    string patched = Apply(Slide, edit);
+
+    // Assert
+    Changed(Slide, patched).ShouldBe(["      ***Revenue*** of [$11.4B]{.positive} in ${date}"]);
+  }
+
+  [Fact]
   public void Undoing_formatting_restores_the_markup_as_written()
   {
     // Act
@@ -1048,7 +1076,7 @@ public class PatcherTests
     // Act
     PatchException exception = Should.Throw<PatchException>(() => Apply(Slide, new ValueEdit("title",
       "Connectivity revenue nearly tripled", Paragraphs: ["Connectivity revenue nearly tripled"],
-      Format: new TextFormat("bold", true, [new FormatRange(0, 0, 12)]))));
+      Formats: [new TextFormat("bold", true, [new FormatRange(0, 0, 12)])])));
 
     // Assert
     exception.Message.ShouldContain("layout");

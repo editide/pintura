@@ -455,8 +455,10 @@ function sendMove(move, kind = 'edit') {
 }
 
 // An edit, an undo, or a redo. Each lands its answer on the other's stack, and a new edit forgets what was undone.
+// True when the server took it.
 async function post(url, request, entry, kind) {
   editing.busy = true;
+  let ok = false;
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -464,7 +466,8 @@ async function post(url, request, entry, kind) {
       body: JSON.stringify(request)
     });
     const body = await response.json().catch(() => ({}));
-    const undo = response.ok ? entry(body.undo) : null;
+    ok = response.ok;
+    const undo = ok ? entry(body.undo) : null;
     if (!response.ok) {
       const failed = body.error || `the edit failed (${response.status})`;
       notice(kind === 'edit' ? failed : `couldn't ${kind}: ${failed}`);
@@ -484,6 +487,7 @@ async function post(url, request, entry, kind) {
   if (editing.queued.length > 0) {
     stepHistory(editing.queued.shift());
   }
+  return ok;
 }
 
 // A press on an item starts dragging it, or the whole group where it is one of a group's; on the slide's empty space
@@ -1249,15 +1253,25 @@ function finishText(commit) {
   const changed = after.length !== editor.before.length || after.some((text, index) => text !== editor.before[index]);
   const edits = commit ? fieldEdits(editor) : [];
   if (commit && changed) {
-    edits.unshift({ path: editor.item.edit.text.path, source: editor.item.edit.text.source, paragraphs: after });
+    const formats = armedFormats(editor.flow);
+    edits.unshift({ path: editor.item.edit.text.path, source: editor.item.edit.text.source, paragraphs: after,
+      ...(formats.length > 0 && { formats }) });
   }
   if (edits.length > 0) {
-    return send(editor.slide, edits);
+    return sendRewording(editor.slide, edits);
   }
   if (editing.reloadPending) {
     afterEditing();
   } else {
     renderSlide();
+  }
+}
+
+// Formatting the file refuses, such as unbolding text its style makes bold, would take the words typed with it, so
+// once the refusal shows, the words are sent again without it.
+async function sendRewording(slide, edits) {
+  if (!(await send(slide, edits)) && edits.some((edit) => edit.formats)) {
+    await send(slide, edits.map(({ formats, ...edit }) => edit));
   }
 }
 
@@ -1369,9 +1383,11 @@ function markFormatBar() {
   if (!bar || !editing.text || selection.rangeCount === 0) {
     return;
   }
-  const texts = editing.text.flow.contains(selection.anchorNode) ? selectedTexts(selection.getRangeAt(0)) : [];
+  const inside = editing.text.flow.contains(selection.anchorNode);
+  const texts = inside ? selectedTexts(selection.getRangeAt(0)) : [];
   for (const [mark] of FORMAT_MARKS) {
-    const pressed = texts.length > 0 && texts.every((node) => marked(node, mark, editing.text.flow));
+    const armed = inside && selection.isCollapsed ? armedMark(selection.anchorNode, mark) : null;
+    const pressed = armed ?? (texts.length > 0 && texts.every((node) => marked(node, mark, editing.text.flow)));
     bar.querySelector(`.format-${mark}`).setAttribute('aria-pressed', String(pressed));
   }
 }
@@ -1401,9 +1417,12 @@ async function formatText(mark) {
   if (!editor || editing.busy) {
     return;
   }
-  if (selection.isCollapsed || !editor.flow.contains(selection.anchorNode) ||
-    !editor.flow.contains(selection.focusNode)) {
+  if (!editor.flow.contains(selection.anchorNode) || !editor.flow.contains(selection.focusNode)) {
     notice('Select the text to format first');
+    return;
+  }
+  if (selection.isCollapsed) {
+    armCaret(mark);
     return;
   }
   const range = selection.getRangeAt(0);
@@ -1430,9 +1449,9 @@ async function formatText(mark) {
   editing.text = null;
   hideFormatBar();
   const edit = { path: item.edit.text.path, source: item.edit.text.source, paragraphs: paragraphTexts(editor.flow),
-    format: { mark, on, ranges } };
+    formats: [...armedFormats(editor.flow), { mark, on, ranges }] };
   editor.flow.contentEditable = 'false';
-  await send(editor.slide, [edit]);
+  await sendRewording(editor.slide, [edit]);
   const fresh = currentSlide().id === editor.slide &&
     [...slideStage().querySelectorAll('.item')].find((candidate) => {
       const drawn = currentSlide().items[Number(candidate.dataset.index)];
@@ -1454,6 +1473,69 @@ async function formatText(mark) {
     getSelection().removeAllRanges();
     getSelection().addRange(restored);
   });
+}
+
+// A mark turned on or off at the caret, as Word does with nothing selected, takes in what is typed there next: the
+// caret moves into a span drawn with the marks it was armed with, listed in its data-marks, and the text the span
+// holds is formatted with them once written.
+function armCaret(mark) {
+  const selection = getSelection();
+  const node = selection.anchorNode;
+  if (caretField('inherit') || caretField('false')) {
+    notice('Select the field to format it');
+    return;
+  }
+  const holder = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement).closest('.armed');
+  let span = holder && holder.textContent.replace(/\u200B/g, '') === '' ? holder : null;
+  const on = !(armedMark(node, mark) ?? marked(node, mark, editing.text.flow));
+  if (!span) {
+    span = document.createElement('span');
+    span.className = 'armed';
+    span.dataset.marks = '{}';
+    // The caret has no place in an empty span without something there to hold it.
+    span.append('\u200B');
+    selection.getRangeAt(0).insertNode(span);
+  }
+  const marks = { ...JSON.parse(span.dataset.marks), [mark]: on };
+  span.dataset.marks = JSON.stringify(marks);
+  span.style.fontWeight = marks.bold === undefined ? '' : marks.bold ? 'bold' : 'normal';
+  span.style.fontStyle = marks.italic === undefined ? '' : marks.italic ? 'italic' : 'normal';
+  // An underline drawn under the text around the span can't be taken off inside it, so turning one off shows on
+  // the button, and in the text only once written.
+  span.style.textDecorationLine = marks.underline ? 'underline' : '';
+  selection.collapse(span.firstChild, span.firstChild.length);
+  markFormatBar();
+}
+
+// Whether the nearest armed span around a node turns a mark on or off, or null where none sets it.
+function armedMark(node, mark) {
+  const flow = editing.text.flow;
+  for (let at = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement; at && at !== flow;
+    at = at.parentElement) {
+    const marks = at.classList.contains('armed') ? JSON.parse(at.dataset.marks) : {};
+    if (mark in marks) {
+      return marks[mark];
+    }
+  }
+  return null;
+}
+
+// Each armed span's marks over the text typed in it, outer spans first, so one armed inside another has the last word.
+function armedFormats(flow) {
+  const paragraphs = [...flow.querySelectorAll('.paragraph')];
+  const formats = [];
+  for (const span of flow.querySelectorAll('.armed')) {
+    const paragraph = span.closest('.paragraph');
+    const start = textOffset(paragraph, span, 0);
+    const end = textOffset(paragraph, span, span.childNodes.length);
+    if (end <= start) {
+      continue;
+    }
+    for (const [mark, on] of Object.entries(JSON.parse(span.dataset.marks))) {
+      formats.push({ mark, on, ranges: [{ paragraph: paragraphs.indexOf(paragraph), start, end }] });
+    }
+  }
+  return formats;
 }
 
 // #endregion

@@ -25,11 +25,11 @@ public class PatchException : Exception
 /// absent, and either numbers to a hundredth of a point, for a frame or a point, each paragraph's text with
 /// <see cref="Patcher.FieldMark"/> where a field sits, a scalar <paramref name="Value"/> such as a color or a width, or
 /// the source to restore, as an undo writes back. A delete removes the element at the path; a restore without a
-/// source puts one back after the element named by <paramref name="After"/>, or first. A format applies to the
+/// source puts one back after the element named by <paramref name="After"/>, or first. Formats apply in turn to the
 /// paragraphs once reworded.
 /// </summary>
 public record ValueEdit(string Path, string? Source, double[]? Numbers = null, List<string>? Paragraphs = null,
-  string? Restore = null, bool Delete = false, string? After = null, TextFormat? Format = null, string? Value = null,
+  string? Restore = null, bool Delete = false, string? After = null, List<TextFormat>? Formats = null, string? Value = null,
   string? File = null);
 
 /// <summary>Bold, italic, or underline turned on or off over stretches of paragraphs, in characters of the text the
@@ -825,11 +825,13 @@ public static partial class Patcher
       paragraphs.RemoveAt(paragraphs.Count - 1);
     }
     string updated = Reword(value, paragraphs, plain, context);
-    if (edit.Format is TextFormat format)
+    if (edit.Formats is { Count: > 0 } formats)
     {
-      updated = plain
-        ? throw new PatchException("the title and placeholders take plain text, and the layout decides their look")
-        : Format(updated, format, context);
+      if (plain)
+      {
+        throw new PatchException("the title and placeholders take plain text, and the layout decides their look");
+      }
+      updated = formats.Aggregate(updated, (written, format) => Format(written, format, context));
     }
     if (updated == value)
     {
