@@ -256,7 +256,7 @@ public class PickTests
     // Assert
     kept.Slides.Select(slide => slide.Id).ShouldBe(["one", "stacked"]);
     kept.Picks.ShouldBeEmpty();
-    kept.Comments.ShouldBeEmpty();
+    kept.Comments.ShouldHaveSingleItem().Slide.ShouldBe("stacked");
     File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml")).ShouldBe(List.Replace("pick: p4kx", "stacked") +
       "\n");
     File.Exists(deck.Folder.PathTo("deck/picks.yaml")).ShouldBeFalse();
@@ -266,8 +266,8 @@ public class PickTests
       "    by: Daniel\n    date: 2026-11-02 18:40\n    rev: 8b21d07\n" +
       "    shown: { A: waterfall, B: two, C: stacked }\n    chosen: stacked\n    why: One chart says it\n");
     PickFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root)[0].Resolved!.Chosen.ShouldBe("stacked");
-    CommentFile.LoadResolved(deck.Folder.PathTo("deck"), deck.Folder.Root)[0].Resolved!.Outcome.ShouldBe("removed");
-    undo.Reopen!.Comments.ShouldBe(["c1"]);
+    File.Exists(deck.Folder.PathTo("deck/comments-resolved.yaml")).ShouldBeFalse();
+    undo.Reopen!.Moved!.Select(each => (each.Key, string.Join(",", each.Value))).ShouldBe([("waterfall", "c1")]);
   }
 
   [Fact]
@@ -446,7 +446,7 @@ public class PickTests
     RevisionTests.Git(deck.Folder.Root, "add", ".");
     RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "offered");
     string root = deck.Folder.PathTo("deck");
-    string[] files = ["presentation.yaml", "picks.yaml", "comments.yaml", "slides/two.yaml", "slides/stacked.yaml",
+    string[] files = ["presentation.yaml", "picks.yaml", "slides/two.yaml", "slides/stacked.yaml",
       "slides/waterfall.yaml"];
     string[] offered = [.. files.Select(file => File.ReadAllText(Path.Combine(root, file)))];
     var seen = new Snapshot(Revisions.Run(root, "rev-parse", "HEAD").Output.Trim(), false, new HashSet<string>());
@@ -458,6 +458,7 @@ public class PickTests
     // Assert
     files.Select(file => File.ReadAllText(Path.Combine(root, file))).ShouldBe(offered);
     File.Exists(Path.Combine(root, "picks-resolved.yaml")).ShouldBeFalse();
+    deck.Load().Comments.ShouldHaveSingleItem().Slide.ShouldBe("two");
     (undo.Pick, undo.Keep, undo.Why).ShouldBe(("p4kx", null, "No"));
   }
 

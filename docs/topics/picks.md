@@ -46,7 +46,7 @@ Clicking a variant enlarges it, and the arrows or the mouse wheel flip through t
 Keep and None ask why in a dialog: optional for Keep, required for None.
 Pick first, then comment on or edit the slide kept, as any slide.
 
-Keep writes the kept slide in place of the pick's entry in `presentation.yaml`, deletes the other variants' files, resolves any open comments on them as `removed`, and moves the pick to the end of `picks-resolved.yaml`, with the order the variants were shown in, so a reviewer's lean towards a position shows across picks.
+Keep writes the kept slide in place of the pick's entry in `presentation.yaml`, deletes the other variants' files, moves any open comments on them to the slide kept, where the reviewer resolves them as any other, and moves the pick to the end of `picks-resolved.yaml`, with the order the variants were shown in, so a reviewer's lean towards a position shows across picks.
 None does the same keeping the first variant in place, so the deck still draws, records `chosen: none`, and marks the slide `rejected: <pick id>`.
 Undo reopens the pick, its files, and its comments, as it does for a deleted slide.
 Save commits both files with the deck, as it does the comments.
