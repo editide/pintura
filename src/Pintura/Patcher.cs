@@ -819,7 +819,7 @@ public static partial class Patcher
       edit.Path.StartsWith("placeholders.", StringComparison.Ordinal);
     string value = scalar.Value ?? "";
     // Text can't end on an empty paragraph, so one left by deleting the last line's words goes with them.
-    List<string> paragraphs = edit.Paragraphs!.ToList();
+    List<string> paragraphs = edit.Paragraphs!.Count > 0 ? edit.Paragraphs.ToList() : [""];
     while (paragraphs.Count > 1 && paragraphs[^1].Length == 0)
     {
       paragraphs.RemoveAt(paragraphs.Count - 1);

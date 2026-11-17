@@ -425,6 +425,19 @@ public class PatcherTests
   }
 
   [Fact]
+  public void A_title_with_fields_deleted_whole_is_written_empty()
+  {
+    // Arrange
+    const string slide = "layout: content\ntitle: \"${date} of notes, as of ${slide}\"\n";
+
+    // Act
+    string patched = Apply(slide, new ValueEdit("title", Patcher.SourceAt(slide, "title")!, Paragraphs: []));
+
+    // Assert
+    patched.ShouldBe("layout: content\ntitle: \"\"\n");
+  }
+
+  [Fact]
   public void Undoing_a_placeholder_reworded_to_nothing_writes_its_words_back()
   {
     // Arrange
