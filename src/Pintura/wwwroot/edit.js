@@ -2,7 +2,8 @@
 
 // Mouse edits on the slide view: handles on the selected item, dragging, resizing, and arrow-key nudges that snap to
 // the slide, its areas and placeholders, and other items, a box dragged across the slide that selects several items
-// to move or delete together, rewording text in place on a click on it or on the selected item, deleting
+// to move or delete together, rewording text in place on a click on it or on the selected item, or with its words
+// selected by a drag across them, deleting
 // an element, and reordering slides by dragging them in the sidebar. An edit goes to the
 // server as the values it writes and the source each replaces; the server patches the file, and the page redraws
 // from it, so nothing lives only in the page. The server answers each edit with the edit that writes it back, which
@@ -303,7 +304,7 @@ function itemNode(index) {
 }
 
 // Handles on the selected item: eight on a box, one on each end of a line, none on a rotated box or on an item the
-// slide doesn't own, and grips along a box's edges while its words are reworded. A group has no handles, only a box
+// slide doesn't own, and grips along the edges of a box whose words can be reworded. A group has no handles, only a box
 // around it all, and a box drawn across the slide shows while it picks one.
 function drawSelection() {
   const stage = slideStage();
@@ -343,8 +344,8 @@ function drawSelection() {
   if (item.edit.locked) {
     return;
   }
-  // Inside the box a press selects words being reworded, so its edges take the press that moves it.
-  if (editing.text) {
+  // A press on the box's words selects them, so its edges take the press that moves it.
+  if (editing.text || item.edit.text) {
     for (const side of ['n', 'e', 's', 'w']) {
       element('div', `grip ${side}`, box);
     }
@@ -490,8 +491,9 @@ async function post(url, request, entry, kind) {
   return ok;
 }
 
-// A press on an item starts dragging it, or the whole group where it is one of a group's; on the slide's empty space
-// or the pasteboard around it, a box that picks what it touches, adding to the selection with Shift or Ctrl.
+// A press on an item starts dragging it, or the whole group where it is one of a group's; outside a group, a press on
+// words that can be reworded starts a drag that selects them; on the slide's empty space or the pasteboard around it, a box that picks
+// what it touches, adding to the selection with Shift or Ctrl.
 function startGesture(event) {
   // Every click follows a press, so what a press before it set no longer stands.
   editing.suppressClick = false;
@@ -508,7 +510,8 @@ function startGesture(event) {
     return;
   }
   const handle = event.target.closest('.handle');
-  const node = handle ? selectedNode() : event.target.closest('#slide-frame .item');
+  const grip = event.target.closest('.selection .grip');
+  const node = handle || grip ? selectedNode() : event.target.closest('#slide-frame .item');
   const slide = currentSlide();
   const stage = slideStage();
   if (!node) {
@@ -528,7 +531,55 @@ function startGesture(event) {
     }
     return;
   }
-  editing.gesture = itemGesture(event, node, handle ? handle.dataset.handle || handle.dataset.end : null);
+  const grouped = selectedIndexes().length > 1 && selectedIndexes().includes(Number(node.dataset.index));
+  const words = !handle && !grip && !grouped && !event.shiftKey && !event.ctrlKey && !event.metaKey &&
+    event.target.closest('.rewordable .text-flow');
+  editing.gesture = words
+    ? { pointer: event.pointerId, startX: event.clientX, startY: event.clientY, started: false,
+      words: { node, press: event } }
+    : itemGesture(event, node, handle ? handle.dataset.handle || handle.dataset.end : null);
+}
+
+// The caret nearest a point on the screen, where it falls inside the flow.
+function caretAt(flow, x, y) {
+  const caret = document.caretPositionFromPoint?.(x, y);
+  return caret && flow.contains(caret.offsetNode) ? caret : null;
+}
+
+// A drag across an item's words selects it, rewords it, and selects the words from the press to the pointer.
+function selectWords(gesture, event) {
+  const flow = editing.text?.flow;
+  if (!gesture.started) {
+    gesture.started = true;
+    const { node, press } = gesture.words;
+    const paragraph = press.target.closest('.paragraph');
+    selectItem({
+      slide: currentSlide().id,
+      index: Number(node.dataset.index),
+      id: node.dataset.id,
+      owner: node.dataset.owner,
+      paragraph: paragraph ? Number(paragraph.dataset.paragraph) : null,
+      cell: null,
+      point: null
+    });
+    beginText(node, (begun) => {
+      const anchor = caretAt(begun, press.clientX, press.clientY);
+      if (anchor) {
+        getSelection().collapse(anchor.offsetNode, anchor.offset);
+      }
+    });
+    if (!editing.text) {
+      editing.gesture = null;
+      return;
+    }
+    document.getElementById('slide-frame').setPointerCapture(event.pointerId);
+    selectWords(gesture, event);
+    return;
+  }
+  const focus = flow && caretAt(flow, event.clientX, event.clientY);
+  if (focus) {
+    getSelection().extend(focus.offsetNode, focus.offset);
+  }
 }
 
 function itemGesture(press, node, handle) {
@@ -586,6 +637,10 @@ function moveGesture(event) {
     if (Math.hypot(screenX, screenY) < DRAG_PIXELS) {
       return;
     }
+    if (gesture.words) {
+      selectWords(gesture, event);
+      return;
+    }
     const stuck = gesture.marquee ? null : (gesture.group?.items || [gesture.item]).find((item) => !movable(item));
     if (stuck) {
       notice(unmoved(stuck));
@@ -613,6 +668,10 @@ function moveGesture(event) {
   }
   if (gesture.marquee) {
     moveMarquee(gesture, event);
+    return;
+  }
+  if (gesture.words) {
+    selectWords(gesture, event);
     return;
   }
   let dx = screenX / gesture.scale;
@@ -675,6 +734,9 @@ function endGesture(event) {
     return;
   }
   editing.suppressClick = true;
+  if (gesture.words) {
+    return;
+  }
   if (gesture.marquee) {
     selectGroup(gesture.marquee.picked);
     afterEditing();

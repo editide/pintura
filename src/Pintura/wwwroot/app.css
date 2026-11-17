@@ -1524,9 +1524,14 @@ body.ctrl-held #slide-frame [data-trace]:hover {
   cursor: default;
 }
 
-/* Clicking an element's text rewords it; dragging it still moves the element. */
+/* Clicking an element's text rewords it, and dragging across it selects its words. */
 #slide-frame:not(.reviewing) .item.rewordable .text-flow {
   cursor: text;
+}
+
+/* Dragging any item of a group moves the group. */
+#slide-frame.grouped .item.selected .text-flow {
+  cursor: move;
 }
 
 body.moving,
