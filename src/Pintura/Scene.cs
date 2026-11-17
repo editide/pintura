@@ -279,6 +279,7 @@ public class SceneBuilder
           : new Resolved(styles.PictureFit ?? "contain", styles.Origins.GetValueOrDefault("picture.fit"));
         Set("crop", element.Crop);
         Set("alt", element.Alt);
+        Set("link", element.Link);
         Set("style", element.Style);
         if (PresentationLoader.Svg(element.PicturePath!))
         {

@@ -517,6 +517,13 @@ public class LoaderTests
       }, "outside the presentation" },
     { "a link that runs script", deck => deck.Write("deck/slides/two.yaml", Note("[Hi](javascript:alert(1))")),
       "a link is http" },
+    { "a picture link that runs script", deck =>
+      {
+        deck.Write("deck/media/logo.png", "");
+        File.WriteAllBytes(deck.Folder.PathTo("deck/media/logo.png"), Images.Png(10, 10));
+        deck.Write("deck/slides/two.yaml", "layout: content\nelements:\n  - id: logo\n    picture: ../media/logo.png\n" +
+          "    link: javascript:alert(1)\n    frame: [40, 100, 40, 40]");
+      }, "a link is http" },
     { "a picture that isn't one", deck =>
       {
         deck.Write("deck/notes.txt", "secret");

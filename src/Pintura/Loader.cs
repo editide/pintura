@@ -1718,6 +1718,7 @@ public partial class PresentationLoader
     string? fit = null;
     double[]? crop = null;
     string? alt = null;
+    string? link = null;
     if (kind == "picture")
     {
       Node pictureNode = Take("picture")!;
@@ -1758,6 +1759,14 @@ public partial class PresentationLoader
         crop = Crop(cropNode, picture, picturePath);
       }
       alt = Take("alt")?.AsString();
+      if (Take("link") is Node linkNode)
+      {
+        link = linkNode.AsString().Trim();
+        if (!Pintura.Markup.WebLink(link))
+        {
+          throw linkNode.Error($"a link is http, https, or mailto, not {link}");
+        }
+      }
     }
 
     string? chart = null;
@@ -1818,6 +1827,7 @@ public partial class PresentationLoader
       Fit = fit,
       Crop = crop,
       Alt = alt,
+      Link = link,
       Chart = chart,
       Table = table,
       Origin = entry.Origin.At($"elements.{id}"),

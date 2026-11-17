@@ -1373,6 +1373,11 @@ body.ctrl-held #slide-frame [data-trace]:hover {
   text-decoration: underline !important;
 }
 
+/* And which pictures a Ctrl-click opens the link of. */
+body.ctrl-held #slide-frame a.picture-item {
+  cursor: pointer;
+}
+
 #slide-frame::after {
   content: "";
   position: absolute;

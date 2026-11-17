@@ -229,6 +229,8 @@ public class Element
   public string? Fit { get; init; }
   public double[]? Crop { get; init; }
   public string? Alt { get; init; }
+  /// <summary>Where clicking the picture leads: <c>http</c>, <c>https</c>, or <c>mailto</c>, as a link in text.</summary>
+  public string? Link { get; init; }
   public string? Chart { get; init; }
   public string? Table { get; init; }
   [JsonIgnore] public string? PicturePath { get; init; }

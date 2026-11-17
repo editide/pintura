@@ -61,6 +61,7 @@ const LABELS = {
   end: 'End arrow',
   picture: 'File',
   alt: 'Alt text',
+  link: 'Link',
   crop: 'Crop',
   chart: 'Chart file',
   table: 'Table file',
@@ -82,7 +83,7 @@ const POINTS = new Set(['size', 'space_before', 'space_after', 'indent', 'hangin
   'markers.size', 'shadow.blur', 'shadow.distance']);
 const PERCENTAGES = new Set(['gap_width', 'overlap']);
 // Names a file gives, which read as written rather than as words.
-const LITERAL = new Set(['style', 'row_style', 'chart', 'table', 'data', 'picture', 'alt', 'title']);
+const LITERAL = new Set(['style', 'row_style', 'chart', 'table', 'data', 'picture', 'alt', 'link', 'title']);
 const POSITION = new Set(['frame', 'from', 'to', 'rotate', 'flip', 'opacity']);
 const TEXT = new Set(['style', 'font', 'size', 'color', 'bold', 'italic', 'underline', 'align', 'valign',
   'space_before', 'space_after', 'line_spacing', 'insets', 'fit', 'wrap', 'columns']);
@@ -229,7 +230,7 @@ function kindSummary(detail) {
 
 const CHART_FILE = new Set(['chart', 'type', 'style', 'data', 'title', 'totals']);
 const TABLE_FILE = new Set(['table', 'style', 'data']);
-const PICTURE = new Set(['picture', 'alt', 'crop', 'fit']);
+const PICTURE = new Set(['picture', 'alt', 'link', 'crop', 'fit']);
 
 // The section a property is read in, by what the element is.
 function groupOf(kind, key, text) {

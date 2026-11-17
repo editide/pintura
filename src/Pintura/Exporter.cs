@@ -1350,6 +1350,10 @@ public partial class Exporter
     {
       gaps.Add("picture alt text isn't exported");
     }
+    if (Truthy(Get(properties, "link")))
+    {
+      gaps.Add("picture links aren't exported");
+    }
     JsonObject placed = Box(frame);
     var element = new JsonObject
     {

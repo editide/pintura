@@ -386,7 +386,12 @@ function renderArc(item, parent) {
 }
 
 function renderPicture(item, parent) {
-  const node = element('div', 'item picture-item', parent);
+  const node = element(item.link ? 'a' : 'div', 'item picture-item', parent);
+  if (item.link) {
+    node.href = item.link;
+    node.target = '_blank';
+    node.rel = 'noopener';
+  }
   node.picture = item;
   place(node, item.frame);
   transform(item, node);

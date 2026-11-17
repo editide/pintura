@@ -400,7 +400,7 @@ public static partial class Markup
     return string.CompareOrdinal(text, position, token, 0, token.Length) == 0;
   }
 
-  private static bool WebLink(string link)
+  public static bool WebLink(string link)
   {
     return Uri.TryCreate(link, UriKind.Absolute, out Uri? uri) && uri.Scheme is "http" or "https" or "mailto";
   }
