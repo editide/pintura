@@ -708,6 +708,7 @@ function markSelection(indexes = selectedIndexes()) {
   for (const index of indexes) {
     document.querySelector(`#slide-frame .item[data-index="${index}"]`)?.classList.add('selected');
   }
+  document.getElementById('slide-frame')?.classList.toggle('grouped', indexes.length > 1);
   drawSelection();
 }
 
