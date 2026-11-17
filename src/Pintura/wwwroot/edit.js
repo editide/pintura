@@ -570,6 +570,10 @@ function caretAt(flow, x, y) {
   if (!caret || !flow.contains(caret.offsetNode)) {
     return null;
   }
+  const bullet = afterBullet(caret.offsetNode, caret.offset);
+  if (bullet) {
+    return { offsetNode: bullet[0], offset: bullet[1] };
+  }
   const node = caret.offsetNode.nodeType === Node.ELEMENT_NODE ? caret.offsetNode : caret.offsetNode.parentElement;
   const field = node.closest('[data-field]');
   if (!field || field.contentEditable !== 'false') {
@@ -577,6 +581,21 @@ function caretAt(flow, x, y) {
   }
   const after = caret.offsetNode.nodeType === Node.TEXT_NODE && caret.offset * 2 > caret.offsetNode.length;
   return { offsetNode: field.parentNode, offset: [...field.parentNode.childNodes].indexOf(field) + Number(after) };
+}
+
+// The point just after a paragraph's bullet, where a point in the bullet or before it belongs, since the bullet is
+// drawn rather than written and a selection ending in it is one the browser won't delete; null for a point past it.
+function afterBullet(container, offset) {
+  const node = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+  const paragraph = node.closest('.paragraph');
+  const bullet = paragraph?.querySelector(':scope > .bullet');
+  if (!bullet) {
+    return null;
+  }
+  const after = document.createRange();
+  after.setStartAfter(bullet);
+  return after.comparePoint(container, offset) < 0 || bullet.contains(container)
+    ? [after.startContainer, after.startOffset] : null;
 }
 
 // A drag across an item's words selects it, rewords it, and selects the words from the press to the pointer.
@@ -1051,7 +1070,7 @@ function textKey(event) {
   const marks = { b: 'bold', i: 'italic', u: 'underline' };
   const mark = (event.ctrlKey || event.metaKey) && !event.altKey && marks[event.key.toLowerCase()];
   if (!mark && (event.key.length === 1 || event.key === 'Backspace' || event.key === 'Delete')) {
-    widenOverFields();
+    settleSelection();
   }
   const locked = caretField('false');
   if (mark) {
@@ -1114,8 +1133,9 @@ function stepCaret(direction, extend) {
 }
 
 // A selection reaching into a field taking no typing from outside it takes the whole field, so deleting or typing
-// over it replaces the field rather than being refused for the part of it selected.
-function widenOverFields() {
+// over it replaces the field rather than being refused for the part of it selected, and one reaching into a bullet
+// ends after it.
+function settleSelection() {
   const selection = getSelection();
   if (selection.isCollapsed || selection.rangeCount === 0) {
     return;
@@ -1133,11 +1153,17 @@ function widenOverFields() {
   const anchor = document.createRange();
   anchor.setStart(selection.anchorNode, selection.anchorOffset);
   const backward = anchor.comparePoint(selection.focusNode, selection.focusOffset) < 0;
+  const start = afterBullet(range.startContainer, range.startOffset);
+  const end = afterBullet(range.endContainer, range.endOffset);
   if (first) {
     range.setStartBefore(first);
+  } else if (start) {
+    range.setStart(...start);
   }
   if (last) {
     range.setEndAfter(last);
+  } else if (end) {
+    range.setEnd(...end);
   }
   const [from, to] = backward ? [[range.endContainer, range.endOffset], [range.startContainer, range.startOffset]]
     : [[range.startContainer, range.startOffset], [range.endContainer, range.endOffset]];
