@@ -561,10 +561,22 @@ function startGesture(event) {
     : itemGesture(event, node, handle ? handle.dataset.handle || handle.dataset.end : null);
 }
 
-// The caret nearest a point on the screen, where it falls inside the flow.
+// The caret nearest a point on the screen, taken in from beyond the flow's edges, as a drag past them selects to the
+// line's end, and moved out of a field taking no typing to its nearer side, which a selection takes whole or not at all.
 function caretAt(flow, x, y) {
-  const caret = document.caretPositionFromPoint?.(x, y);
-  return caret && flow.contains(caret.offsetNode) ? caret : null;
+  const box = flow.getBoundingClientRect();
+  const caret = document.caretPositionFromPoint?.(Math.min(Math.max(x, box.left + 1), box.right - 1),
+    Math.min(Math.max(y, box.top + 1), box.bottom - 1));
+  if (!caret || !flow.contains(caret.offsetNode)) {
+    return null;
+  }
+  const node = caret.offsetNode.nodeType === Node.ELEMENT_NODE ? caret.offsetNode : caret.offsetNode.parentElement;
+  const field = node.closest('[data-field]');
+  if (!field || field.contentEditable !== 'false') {
+    return caret;
+  }
+  const after = caret.offsetNode.nodeType === Node.TEXT_NODE && caret.offset * 2 > caret.offsetNode.length;
+  return { offsetNode: field.parentNode, offset: [...field.parentNode.childNodes].indexOf(field) + Number(after) };
 }
 
 // A drag across an item's words selects it, rewords it, and selects the words from the press to the pointer.
@@ -1015,7 +1027,8 @@ function beginText(node, place) {
     field.before('\u200B');
     field.after('\u200B');
   }
-  editing.text = { slide: currentSlide().id, node, item, flow, fields, before: paragraphTexts(flow) };
+  editing.text = { slide: currentSlide().id, node, item, flow, fields, before: paragraphTexts(flow),
+    shell: flow.querySelector('.paragraph')?.cloneNode(false) };
   node.classList.add('editing');
   drawSelection();
   flow.contentEditable = 'true';
@@ -1025,6 +1038,7 @@ function beginText(node, place) {
   flow.addEventListener('keydown', textKey);
   flow.addEventListener('beforeinput', textInput);
   flow.addEventListener('paste', textPaste);
+  flow.addEventListener('input', keepParagraph);
   flow.addEventListener('blur', () => finishText(true), { once: true });
 }
 
@@ -1036,6 +1050,9 @@ function textKey(event) {
   }
   const marks = { b: 'bold', i: 'italic', u: 'underline' };
   const mark = (event.ctrlKey || event.metaKey) && !event.altKey && marks[event.key.toLowerCase()];
+  if (!mark && (event.key.length === 1 || event.key === 'Backspace' || event.key === 'Delete')) {
+    widenOverFields();
+  }
   const locked = caretField('false');
   if (mark) {
     event.preventDefault();
@@ -1094,6 +1111,37 @@ function stepCaret(direction, extend) {
       return;
     }
   }
+}
+
+// A selection reaching into a field taking no typing from outside it takes the whole field, so deleting or typing
+// over it replaces the field rather than being refused for the part of it selected.
+function widenOverFields() {
+  const selection = getSelection();
+  if (selection.isCollapsed || selection.rangeCount === 0) {
+    return;
+  }
+  const range = selection.getRangeAt(0);
+  const locked = (node) => {
+    const field = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement).closest('[data-field]');
+    return field && editing.text.flow.contains(field) && field.contentEditable === 'false' ? field : null;
+  };
+  const first = locked(range.startContainer);
+  const last = locked(range.endContainer);
+  if (first && first === last) {
+    return;
+  }
+  const anchor = document.createRange();
+  anchor.setStart(selection.anchorNode, selection.anchorOffset);
+  const backward = anchor.comparePoint(selection.focusNode, selection.focusOffset) < 0;
+  if (first) {
+    range.setStartBefore(first);
+  }
+  if (last) {
+    range.setEndAfter(last);
+  }
+  const [from, to] = backward ? [[range.endContainer, range.endOffset], [range.startContainer, range.startOffset]]
+    : [[range.startContainer, range.startOffset], [range.endContainer, range.endOffset]];
+  selection.setBaseAndExtent(...from, ...to);
 }
 
 // A caret at the start of a field taking no typing, before Backspace, or at its end, before Delete, moves out past the
@@ -1234,6 +1282,22 @@ function textInput(event) {
   if (fieldInput(range, data)) {
     event.preventDefault();
   }
+}
+
+// Deleting every word takes the paragraph holding them with it, and what is typed next would land outside any, so the
+// flow gets an empty one again, in the first paragraph's style, to type into.
+function keepParagraph() {
+  const { flow, shell } = editing.text ?? {};
+  if (!flow || !shell || flow.querySelector('.paragraph')) {
+    return;
+  }
+  const paragraph = shell.cloneNode(false);
+  paragraph.append(...flow.childNodes);
+  if (!paragraph.firstChild) {
+    paragraph.append('​');
+  }
+  flow.append(paragraph);
+  getSelection().collapse(paragraph, paragraph.childNodes.length - Number(paragraph.lastChild.nodeName === 'BR'));
 }
 
 function textPaste(event) {
