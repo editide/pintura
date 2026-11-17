@@ -1473,9 +1473,9 @@ async function stepSlideChanges(direction) {
     return;
   }
   stepping = true;
-  const history = document.getElementById('slide-history');
+  const panel = document.getElementById('slide-history');
   const button = document.getElementById(direction < 0 ? 'history-older' : 'history-newer');
-  history.setAttribute('aria-busy', 'true');
+  panel.setAttribute('aria-busy', 'true');
   button.setAttribute('aria-busy', 'true');
   const label = document.getElementById('versions-label');
   const shown = label.textContent;
@@ -1515,7 +1515,7 @@ async function stepSlideChanges(direction) {
     renderToolbar();
   } finally {
     stepping = false;
-    history.removeAttribute('aria-busy');
+    panel.removeAttribute('aria-busy');
     button.removeAttribute('aria-busy');
   }
 }
