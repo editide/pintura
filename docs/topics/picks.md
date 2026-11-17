@@ -102,6 +102,7 @@ pintura presentations/q3 --picks --resolved
 - It errors on a pick with fewer than two variants or more than three, and on a variant whose slide doesn't exist.
 - A slide both in `slides` and in a pick, a slide in two picks, and a `pick:` naming no open pick stop the presentation loading.
 - The export draws each open pick's first variant and each rejected slide, and lists them among its warnings.
+- The shared HTML carries none of the picks: no other variant, intent, or why, so a reader sees only the slides drawn.
 
 ## Usual mistakes
 

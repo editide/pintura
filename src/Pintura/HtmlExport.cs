@@ -74,12 +74,18 @@ public static class HtmlExport
     DeckPayload deck = PayloadBuilder.Build(presentation, 0,
       (path, fill) => uris.GetOrAdd((path, fill), key => DataUri(key.Item1, key.Item2, pictures)));
     // What the preview needs to write edits back names the files on this machine, and a sent file has no use for it;
-    // the reviewers' comments are for the authors, not whoever the file is sent to.
+    // the reviewers' comments and picks, with the variants they turned down and why, are for the authors, not whoever
+    // the file is sent to.
     deck = deck with
     {
       Comments = [],
+      Variants = [],
+      Picks = [],
+      Resolved = [],
       Slides = deck.Slides.Select(slide => slide with
       {
+        Pick = null,
+        Rejected = null,
         Items = slide.Items?.Select(item => item with { Edit = new EditPayload() }).ToList()
       }).ToList()
     };
