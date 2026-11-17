@@ -68,6 +68,7 @@ The export draws PowerPoint's own arc, whose yellow handles move its ends.
 | `fit` | `contain`, `cover`, or `stretch`; the theme's `picture` base sets the default. |
 | `crop` | `[left, top, right, bottom]`, the pixels trimmed from each of the image's edges before fitting, not the corners of the part kept. |
 | `alt` | Alternative text. |
+| `link` | Where clicking the picture leads, `http`, `https`, or `mailto`, as for a link in text: a click when presenting or in the shared HTML, a Ctrl-click in the preview. The export leaves it out. |
 | `fill` | An SVG's one color: every fill and stroke in it but `none` takes it, as for an icon. |
 | `stroke` | An outline around the image, `{ color, width, dash }`; the picture's style sets the default. |
 | `shadow` | A drop shadow under the image, or `none` (see Shadows); the picture's style sets the default. |

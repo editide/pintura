@@ -95,6 +95,7 @@ public record ItemPayload
   public string? Fit { get; init; }
   public double[]? Crop { get; init; }
   public string? Alt { get; init; }
+  public string? Link { get; init; }
   public TextPayload? Text { get; init; }
   public ChartPayload? Chart { get; init; }
   public TablePayload? Table { get; init; }
@@ -476,6 +477,7 @@ public static class PayloadBuilder
       Fit = item.Kind == "picture" ? Get<string>("fit") : null,
       Crop = Get<double[]>("crop"),
       Alt = Get<string>("alt"),
+      Link = Get<string>("link"),
       Text = item.Paragraphs is null ? null : Text(item, theme),
       Chart = item.Chart is null ? null : Chart(item.Chart, properties, theme),
       Table = item.Table is null ? null : Table(item.Table, theme)

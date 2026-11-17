@@ -889,6 +889,14 @@ document.getElementById('slide-view').addEventListener('click', (event) => {
     trace(JSON.parse(traced.dataset.trace));
     return;
   }
+  // A click on a linked picture selects it, as on any other; Ctrl-click follows the link, as a traced number does.
+  const linked = event.target.closest('a.picture-item');
+  if (linked && (event.ctrlKey || event.metaKey)) {
+    return;
+  }
+  if (linked) {
+    event.preventDefault();
+  }
   if (reviewing()) {
     return;
   }
@@ -1010,7 +1018,12 @@ document.querySelector('.toolbar').addEventListener('click', (event) => {
   actions[button.dataset.action]();
 });
 
-document.getElementById('present').addEventListener('click', () => step(1));
+document.getElementById('present').addEventListener('click', (event) => {
+  // A link opens in its own tab and leaves the slide where it is.
+  if (!event.target.closest('a')) {
+    step(1);
+  }
+});
 installWheelNavigation(document.getElementById('slide-view'));
 installZoom(document.getElementById('slide-view'));
 installZoom(document.getElementById('grid'));

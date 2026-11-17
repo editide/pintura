@@ -130,6 +130,29 @@ public class PayloadTests
   }
 
   [Fact]
+  public void A_pictures_link_reaches_the_page()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/media/logo.png", "");
+    File.WriteAllBytes(deck.Folder.PathTo("deck/media/logo.png"), Images.Png(10, 10));
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      elements:
+        - id: logo
+          picture: ../media/logo.png
+          link: https://example.com
+          frame: [40, 100, 40, 40]
+      """);
+
+    // Act
+    ItemPayload logo = Slide(deck, "two").Items!.Single(item => item.Id == "logo");
+
+    // Assert
+    logo.Link.ShouldBe("https://example.com");
+  }
+
+  [Fact]
   public void An_arc_draws_in_its_frame_between_its_angles_with_the_themes_line_stroke()
   {
     // Arrange

@@ -249,6 +249,25 @@ public class ExporterTests
   }
 
   [Fact]
+  public void A_pictures_link_is_a_gap()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    folder.Write("shot.png", "not read");
+    Exporter exporter = NewExporter();
+    JsonNode item = Json($$"""
+      { "kind": "picture", "properties": { "picture": {{JsonValue.Create(folder.PathTo("shot.png")).ToJsonString()}},
+        "frame": [0, 0, 100, 50], "fit": "stretch", "link": "https://example.com" } }
+      """);
+
+    // Act
+    exporter.Picture(item);
+
+    // Assert
+    exporter.Gaps.ShouldBe(["picture links aren't exported"]);
+  }
+
+  [Fact]
   public void A_shadow_goes_as_the_shape_styles_effects_its_opacity_as_the_colors_alpha()
   {
     // Arrange
