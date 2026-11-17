@@ -22,7 +22,7 @@ function stops(start, length) {
 }
 
 // The positions moving items snap to, in points: the slide's edges and middle, and the edges and middles of its
-// areas, placeholders, and every item but those moving, by index.
+// areas, placeholders, and every item but those moving, by index, each by the box it is drawn as.
 function snapTargets(slide, size, skip) {
   const targets = { x: [0, size[0] / 2, size[0]], y: [0, size[1] / 2, size[1]] };
   const add = ([left, top, width, height]) => {
@@ -37,7 +37,7 @@ function snapTargets(slide, size, skip) {
       return;
     }
     if (item.frame) {
-      add(item.frame);
+      add(itemBox(item));
     } else if (item.from) {
       targets.x.push(item.from[0], item.to[0]);
       targets.y.push(item.from[1], item.to[1]);
@@ -168,10 +168,11 @@ function moveLine(from, to, dx, dy, targets, threshold) {
   };
 }
 
-// The box an item spans: its frame, or the box a line's ends span.
+// The box an item spans: the one it is drawn as, which text that grows to fit sizes rather than its frame, or the box
+// a line's ends span.
 function itemBox(item) {
   if (item.frame) {
-    return item.frame;
+    return item.drawn || item.frame;
   }
   const [x1, y1] = item.from;
   const [x2, y2] = item.to;
@@ -225,7 +226,7 @@ function boxPicks(items, box) {
       }
       return;
     }
-    const [x, y, w, h] = item.frame;
+    const [x, y, w, h] = itemBox(item);
     const touches = x <= left + width && x + w >= left && y <= top + height && y + h >= top;
     const holds = x <= left && y <= top && x + w >= left + width && y + h >= top + height;
     if (touches && !holds) {
@@ -235,7 +236,7 @@ function boxPicks(items, box) {
   return picked;
 }
 
-// Items moved together, snapped by the box around them all, each shifted as that box is.
+// Items moved together, snapped by the box around them all as drawn, each frame shifted as that box is.
 function moveGroup(items, dx, dy, targets, threshold) {
   const box = unionBox(items.map(itemBox));
   const moved = moveBox(box, dx, dy, targets, threshold);
@@ -301,6 +302,20 @@ function stageScale(stage) {
 
 function itemNode(index) {
   return document.querySelector(`#slide-frame .item[data-index="${index}"]`);
+}
+
+// Each item that text growing to fit draws other than its frame says the box it is drawn as.
+function laidOut(items) {
+  return items.map((item, index) => {
+    const node = item.frame && item.text?.fit === 'grow' && itemNode(index);
+    return node ? { ...item, drawn: drawnBox(node) } : item;
+  });
+}
+
+function drawnBox(node) {
+  const height = parseFloat(node.style.height);
+  return [parseFloat(node.style.left), parseFloat(node.style.top), parseFloat(node.style.width),
+    Number.isNaN(height) ? node.offsetHeight : height];
 }
 
 // Handles on the selected item: eight on a box, one on each end of a line, none on a rotated box or on an item the
@@ -392,10 +407,16 @@ function showMoves(move) {
     if (item.from) {
       move.nodes[at] = redrawItem(move.indexes[at], move.nodes[at], { ...item, ...change });
     } else {
-      move.nodes[at].style.left = `${Math.round(change.frame[0])}px`;
-      move.nodes[at].style.top = `${Math.round(change.frame[1])}px`;
+      showMove(move.nodes[at], item, change);
     }
   });
+}
+
+// A box shown where it would land, which for text widened to fit is off its frame by as much as before.
+function showMove(node, item, change) {
+  const [left, top] = itemBox(item);
+  node.style.left = `${Math.round(change.frame[0] - item.frame[0] + left)}px`;
+  node.style.top = `${Math.round(change.frame[1] - item.frame[1] + top)}px`;
 }
 
 // Why an item stays put under the mouse.
@@ -587,20 +608,21 @@ function itemGesture(press, node, handle) {
   const index = Number(node.dataset.index);
   const indexes = selectedIndexes();
   const group = !handle && indexes.length > 1 && indexes.includes(index) ? indexes : null;
+  const items = laidOut(slide.items);
   return {
     slide: slide.id,
     pointer: press.pointerId,
     startX: press.clientX,
     startY: press.clientY,
     index,
-    item: slide.items[index],
+    item: items[index],
     node,
     handle,
     started: false,
     scale: stageScale(slideStage()),
-    targets: snapTargets(slide, state.deck.size, group || [index]),
+    targets: snapTargets({ ...slide, items }, state.deck.size, group || [index]),
     change: null,
-    group: group && { indexes: group, items: group.map((at) => slide.items[at]), nodes: group.map(itemNode) }
+    group: group && { indexes: group, items: group.map((at) => items[at]), nodes: group.map(itemNode) }
   };
 }
 
@@ -701,11 +723,10 @@ function moveGesture(event) {
     lines = resized.lines;
     redraw(gesture, { ...item, frame: resized.box });
   } else {
-    const moved = moveBox(item.frame, dx, dy, targets, threshold);
-    gesture.change = { frame: moved.box };
+    const moved = moveGroup([item], dx, dy, targets, threshold);
+    gesture.change = moved.changes[0];
     lines = moved.lines;
-    gesture.node.style.left = `${Math.round(moved.box[0])}px`;
-    gesture.node.style.top = `${Math.round(moved.box[1])}px`;
+    showMove(gesture.node, item, gesture.change);
   }
   drawSnaps(slideStage(), lines);
   drawSelection();
@@ -720,7 +741,7 @@ function moveMarquee(gesture, event) {
   const y = [gesture.startY, event.clientY].map((value) => (value - origin.top) / scale);
   const marquee = gesture.marquee;
   marquee.box = [Math.min(...x), Math.min(...y), Math.abs(x[1] - x[0]), Math.abs(y[1] - y[0])];
-  marquee.picked = [...new Set([...marquee.kept, ...boxPicks(currentSlide().items || [], marquee.box)])];
+  marquee.picked = [...new Set([...marquee.kept, ...boxPicks(laidOut(currentSlide().items || []), marquee.box)])];
   markSelection(marquee.picked);
 }
 
@@ -768,7 +789,8 @@ function nudgeKey(event) {
     return true;
   }
   const slide = currentSlide();
-  const items = indexes.map((index) => slide.items[index]);
+  const drawn = laidOut(slide.items);
+  const items = indexes.map((index) => drawn[index]);
   const stuck = items.find((item) => !movable(item));
   if (stuck) {
     notice(unmoved(stuck));

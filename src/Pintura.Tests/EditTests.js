@@ -290,3 +290,26 @@ test('a box whose paragraphs align differently takes the picked alignment on the
   // Assert
   assert.deepEqual(edits, [{ path: 'title.align', source: undefined, value: 'center' }]);
 });
+
+test('a box grown to its text snaps by the box it is drawn as, keeping the frame it is written with', () => {
+  // Arrange
+  const note = { frame: [490, 301, 430, 190], drawn: [490, 301, 430, 120] };
+
+  // Act
+  const { changes, lines } = moveGroup([note], 0, 38, { x: [], y: [462] }, 6);
+
+  // Assert
+  assert.deepEqual(changes, [{ frame: [490, 342, 430, 190] }]);
+  assert.deepEqual(lines, [{ axis: 'y', at: 462 }]);
+});
+
+test('a box grown to its text is a target by the box it is drawn as', () => {
+  // Arrange
+  const grown = { items: [{ frame: [490, 301, 430, 190], drawn: [490, 301, 430, 120] }, { frame: [40, 140, 430, 322] }] };
+
+  // Act
+  const targets = snapTargets(grown, [960, 540], [1]);
+
+  // Assert
+  assert.ok(targets.y.includes(421) && !targets.y.includes(491));
+});
