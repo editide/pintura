@@ -142,6 +142,43 @@ public class HtmlExportTests
   }
 
   [Fact]
+  public void The_page_draws_an_open_picks_first_variant_and_carries_none_of_the_others_or_their_intents()
+  {
+    // Arrange
+    using DeckFixture fixture = PickTests.Offering();
+
+    // Act
+    string html = HtmlExport.Build(fixture.Load(), Assets);
+
+    // Assert
+    JsonElement deck = Deck(html);
+    deck.GetProperty("slides").EnumerateArray().Select(slide => slide.GetProperty("id").GetString())
+      .ShouldBe(["one", "two"]);
+    deck.GetRawText().ShouldNotContain("\"Waterfall\"", Case.Sensitive);
+    html.ShouldNotContain("Two charts, side by side");
+    html.ShouldNotContain("One stacked chart");
+    html.ShouldNotContain("p4kx");
+  }
+
+  [Theory]
+  [InlineData("stacked")]
+  [InlineData(null)]
+  public void The_page_carries_no_resolved_pick_nor_why_the_reviewer_chose_it(string? keep)
+  {
+    // Arrange
+    using DeckFixture fixture = PickTests.Offering();
+    PickFile.Apply(fixture.Load(), new PickChange("p4kx", keep, "PRIVATE_WHY"), "Daniel",
+      new DateTime(2026, 11, 2, 18, 40, 0), new Snapshot("8b21d07", false, new HashSet<string>()));
+
+    // Act
+    string html = HtmlExport.Build(fixture.Load(), Assets);
+
+    // Assert
+    html.ShouldNotContain("PRIVATE_");
+    html.ShouldNotContain("p4kx");
+  }
+
+  [Fact]
   public void The_page_carries_each_books_own_page_whole()
   {
     // Arrange
