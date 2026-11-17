@@ -16,6 +16,7 @@ q3-board-update/
 `pintura --new <folder>` creates one: the default theme copied into `theme/`, to read and change, and a cover slide.
 
 Slides, charts, and tables are named by file stem: `revenue` means `slides/revenue.yaml`.
+A slide's comments and its history across versions go by its name, so rename one only when the name has stopped describing it: move its comments' `slide` to the new name, and commit the rename with the edit, since the versions follow a slide to the name it had by the renames git records.
 Paths are relative to the file that names them.
 
 ## Keys

@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { changeMarks, changedStep, chartParts, shownDeck, textChanges, textDiff, textMarks, versionDay, versionTime } =
+const { changeMarks, changedStep, chartParts, earlierName, shownDeck, textChanges, textDiff, textMarks, versionDay,
+  versionTime } =
   require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'compare.js'));
 
 function words(...paragraphs) {
@@ -315,4 +316,16 @@ test("a version stepped to takes the working tree's pick resolutions, so a pick 
 
   // Assert
   assert.deepEqual(shown.resolved, deck.resolved);
+});
+
+test('a slide renamed since the revision is found there under the name it had', () => {
+  // Arrange
+  const renamed = { renamed: { 'revenue-profile': 'revenue-customers-chart' } };
+
+  // Act
+  const names = ['revenue-profile', 'cover'].map((id) => earlierName(renamed, id));
+
+  // Assert
+  assert.deepEqual(names, ['revenue-customers-chart', 'cover']);
+  assert.equal(earlierName({ slides: [] }, 'cover'), 'cover');
 });

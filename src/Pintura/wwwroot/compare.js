@@ -442,12 +442,18 @@ function changedStep(ids, changed, current, offset) {
   return current;
 }
 
+// The name the earlier side of a diff has a slide under, which differs when the slide was renamed since.
+function earlierName(diff, id) {
+  return diff?.renamed?.[id] || id;
+}
+
 function beforeSlide(id) {
   if (!comparing()) {
     return null;
   }
   const { slides, variants } = state.compare.before;
-  return [...slides, ...variants].find((slide) => slide.id === id) || null;
+  const name = earlierName(state.compare.diff, id);
+  return [...slides, ...variants].find((slide) => slide.id === name) || null;
 }
 
 function removedSlide(id) {
@@ -811,6 +817,6 @@ function renderSlideChanges(slide, panel) {
 // #endregion
 
 if (typeof module !== 'undefined') {
-  module.exports = { changeMarks, changedStep, chartParts, shownDeck, textChanges, textDiff, textMarks, versionDay,
-    versionTime };
+  module.exports = { changeMarks, changedStep, chartParts, earlierName, shownDeck, textChanges, textDiff, textMarks,
+    versionDay, versionTime };
 }
