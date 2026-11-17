@@ -232,6 +232,104 @@ public class ServerTests
     step.GetProperty("head").GetProperty("subject").GetString().ShouldBe("bigger titles");
   }
 
+  [Fact]
+  public async Task Compare_pairs_a_slide_renamed_since_the_revision_with_the_slide_it_was()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", RevisionTests.Body("Results"));
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string first = Revisions.Commit(deck.Folder.Root, "HEAD");
+    RevisionTests.Rename(deck, "two", "results", "Retitled");
+    await using Served served = await Served.Start(deck);
+
+    // Act
+    System.Text.Json.JsonElement diff = (await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+      $"{served.Url}/api/compare?base={first}")).GetProperty("diff");
+
+    // Assert
+    System.Text.Json.JsonElement slide = diff.GetProperty("slides").EnumerateArray().Single();
+    slide.GetProperty("id").GetString().ShouldBe("results");
+    slide.GetProperty("status").GetString().ShouldBe("changed");
+    diff.GetProperty("renamed").GetProperty("results").GetString().ShouldBe("two");
+  }
+
+  [Fact]
+  public async Task A_slide_s_history_follows_it_through_its_renames_under_the_name_each_version_has_it_by()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", RevisionTests.Body("First"));
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    var commits = new List<string> { Revisions.Commit(deck.Folder.Root, "HEAD") };
+    void Version(Action change)
+    {
+      change();
+      commits.Add(Revisions.Commit(deck.Folder.Root, "HEAD"));
+    }
+    Version(() => RevisionTests.Rename(deck, "two", "results", "Second"));
+    Version(() =>
+    {
+      deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: Third");
+      RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-am", "third");
+    });
+    Version(() =>
+    {
+      deck.Write("deck/slides/results.yaml", RevisionTests.Body("Fourth"));
+      RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-am", "fourth");
+    });
+    Version(() => RevisionTests.Rename(deck, "results", "outcome"));
+    await using Served served = await Served.Start(deck);
+
+    // Act
+    string history = $"{served.Url}/api/history";
+    System.Text.Json.JsonElement older = await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+      $"{history}?slide=outcome&before={commits[4]}");
+    System.Text.Json.JsonElement oldest = await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+      $"{history}?slide=results&before={commits[2]}");
+    System.Text.Json.JsonElement newer = await served.Client.GetFromJsonAsync<System.Text.Json.JsonElement>(
+      $"{history}?slide=two&after={commits[0]}");
+    HttpResponseMessage pastNewest = await served.Client.GetAsync($"{history}?slide=results&after={commits[3]}");
+
+    // Assert
+    (older.GetProperty("head").GetProperty("number").GetInt32(), older.GetProperty("slide").GetString())
+      .ShouldBe((4, "results"));
+    (oldest.GetProperty("head").GetProperty("number").GetInt32(), oldest.GetProperty("slide").GetString())
+      .ShouldBe((2, "results"));
+    (newer.GetProperty("head").GetProperty("number").GetInt32(), newer.GetProperty("slide").GetString())
+      .ShouldBe((2, "results"));
+    pastNewest.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    (await pastNewest.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("slide").GetString()
+      .ShouldBe("outcome");
+  }
+
+  [Fact]
+  public async Task Reverting_a_renamed_slide_writes_it_back_as_the_slide_it_was()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", RevisionTests.Body("Results"));
+    string committed = File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml"));
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string first = Revisions.Commit(deck.Folder.Root, "HEAD");
+    RevisionTests.Rename(deck, "two", "results", "Retitled");
+    await using Served served = await Served.Start(deck);
+    var revert = new { @base = first, slide = "results" };
+
+    // Act
+    HttpResponseMessage reverted = await served.Client.PostAsJsonAsync($"{served.Url}/api/revert", revert);
+
+    // Assert
+    reverted.StatusCode.ShouldBe(HttpStatusCode.OK);
+    File.ReadAllText(deck.Folder.PathTo("deck/slides/results.yaml")).ShouldBe(committed);
+  }
+
   // The fixture as the first version, then one version per slide retitled, answering each version's commit, oldest
   // first.
   private static string[] CommitVersions(DeckFixture deck, params (string File, string Title)[] retitles)

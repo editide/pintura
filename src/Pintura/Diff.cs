@@ -6,7 +6,12 @@ namespace Pintura;
 
 /// <summary>What changed between two versions of a presentation: the slides that differ, and the theme and layout
 /// values that restyled elements, each named once.</summary>
-public record DeckDiff(List<SlideDiff> Slides, List<CauseDiff> Causes);
+public record DeckDiff(List<SlideDiff> Slides, List<CauseDiff> Causes)
+{
+  /// <summary>Each slide renamed since the earlier version, changed or not, with the name it had there; a slide's
+  /// diff goes by its later name.</summary>
+  public Dictionary<string, string>? Renamed { get; init; }
+}
 
 /// <summary>A slide added, removed, changed, or only moved. Moved is whether the slide left the order the others
 /// keep, so inserting a slide doesn't move the ones after it.</summary>
@@ -39,8 +44,11 @@ public record CauseDiff(string Origin, string Key, string? Before, string? After
 public static partial class Differ
 {
   /// <summary>Matches slides by file and elements by id, or with <paramref name="byPosition"/>, slides by number and
-  /// items by kind and drawing order, for a deck whose ids didn't survive a trip through PowerPoint.</summary>
-  public static DeckDiff Compare(Presentation before, Presentation after, bool byPosition = false)
+  /// items by kind and drawing order, for a deck whose ids didn't survive a trip through PowerPoint.
+  /// <paramref name="renamed"/> gives later slides' earlier names, as <see cref="Revisions.Renamed"/> finds them.
+  /// </summary>
+  public static DeckDiff Compare(Presentation before, Presentation after, bool byPosition = false,
+    IReadOnlyDictionary<string, string>? renamed = null)
   {
     Func<Slide, string> identity = byPosition ? slide => slide.Number.ToString(CultureInfo.InvariantCulture)
       : slide => slide.Id;
@@ -48,21 +56,32 @@ public static partial class Differ
     List<Slide> offered = byPosition ? before.Slides : [.. before.Offered];
     Dictionary<string, Slide> earlier = offered.ToDictionary(identity);
     Dictionary<string, Slide> later = after.Slides.ToDictionary(identity);
+    // A file deleted and another added that resembles it pairs only when neither name is on both sides.
+    Dictionary<string, string> names = byPosition || renamed is null ? [] : renamed
+      .Where(pair => later.ContainsKey(pair.Key) && !earlier.ContainsKey(pair.Key) &&
+        earlier.ContainsKey(pair.Value) && !later.ContainsKey(pair.Value))
+      .ToDictionary();
+    string Was(Slide slide)
+    {
+      return names.GetValueOrDefault(identity(slide), identity(slide));
+    }
+    HashSet<string> continued = [.. after.Slides.Select(Was)];
     HashSet<string> kept = Kept(
-      offered.Select(identity).Where(later.ContainsKey).ToList(),
-      after.Slides.Select(identity).Where(earlier.ContainsKey).ToList());
+      offered.Select(identity).Where(continued.Contains).ToList(),
+      after.Slides.Select(Was).Where(earlier.ContainsKey).ToList());
 
     var slides = new List<SlideDiff>();
     foreach (Slide slide in after.Slides)
     {
-      if (!earlier.TryGetValue(identity(slide), out Slide? previous))
+      if (!earlier.TryGetValue(Was(slide), out Slide? previous))
       {
         slides.Add(new SlideDiff { Id = slide.Id, Status = "added", After = slide.Number });
         continue;
       }
       SlideDiff diff = Slide(before, previous, after, slide, byPosition) with
       {
-        Moved = !kept.Contains(identity(slide))
+        Id = byPosition ? previous.Id : slide.Id,
+        Moved = !kept.Contains(Was(slide))
       };
       if (diff.Changes.Count > 0 || diff.Items.Count > 0)
       {
@@ -74,9 +93,9 @@ public static partial class Differ
       }
     }
     slides.AddRange(before.Slides
-      .Where(slide => !later.ContainsKey(identity(slide)))
+      .Where(slide => !continued.Contains(identity(slide)))
       .Select(slide => new SlideDiff { Id = slide.Id, Status = "removed", Before = slide.Number }));
-    return new DeckDiff(slides, Causes(slides));
+    return new DeckDiff(slides, Causes(slides)) { Renamed = names.Count > 0 ? names : null };
   }
 
   /// <summary>The longest run of slides both orders share, so the rest are the ones that moved.</summary>
@@ -636,12 +655,16 @@ public static partial class DiffCommand
     string first = ends[0].Length == 0 ? "HEAD" : ends[0];
     Presentation before = Revisions.Load(root, first);
     Presentation after = ends.Length == 1 ? PresentationLoader.Load(root) : Revisions.Load(root, ends[1]);
-    DeckDiff diff = Differ.Compare(before, after);
+    DeckDiff diff = Differ.Compare(before, after,
+      renamed: Revisions.Renamed(root, first, ends.Length == 1 ? "HEAD" : ends[1]));
     if (only is not null)
     {
       HashSet<string> picked = [.. after.Named(only).Select(slide => slide.Id)];
-      diff = new DeckDiff([.. diff.Slides.Where(slide => picked.Contains(slide.Id))],
-        [.. diff.Causes.Where(cause => cause.Slides.Any(picked.Contains))]);
+      diff = diff with
+      {
+        Slides = [.. diff.Slides.Where(slide => picked.Contains(slide.Id))],
+        Causes = [.. diff.Causes.Where(cause => cause.Slides.Any(picked.Contains))]
+      };
     }
     if (json)
     {
@@ -833,6 +856,13 @@ public static partial class DiffCommand
     return new DeckDiff(slides, diff.Causes.Where(cause => !keys.Contains(cause.Key)).ToList());
   }
 
+  private static string Name(DeckDiff diff, SlideDiff slide)
+  {
+    return diff.Renamed is not null && diff.Renamed.TryGetValue(slide.Id, out string? was)
+      ? $"{slide.Id} (was {was})"
+      : slide.Id;
+  }
+
   public static void Write(DeckDiff diff, string heading, TextWriter output)
   {
     output.WriteLine(heading);
@@ -842,7 +872,7 @@ public static partial class DiffCommand
       output.WriteLine("no changes");
       return;
     }
-    int width = diff.Slides.Max(slide => slide.Id.Length);
+    int width = diff.Slides.Max(slide => Name(diff, slide).Length);
     foreach (SlideDiff slide in diff.Slides)
     {
       string number = slide.After?.ToString(CultureInfo.InvariantCulture) ?? "–";
@@ -853,7 +883,7 @@ public static partial class DiffCommand
         "changed" when slide.Moved => $"changed, moved from {slide.Before}",
         _ => slide.Status
       };
-      output.WriteLine($"{number,2} {slide.Id.PadRight(width)}  {status}");
+      output.WriteLine($"{number,2} {Name(diff, slide).PadRight(width)}  {status}");
       Changes(slide.Changes, "    ", output);
       int restyled = 0;
       foreach (ItemDiff item in slide.Items)

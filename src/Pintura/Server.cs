@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -832,8 +833,9 @@ public record RevertRequest(string Base, string Slide, string? Id = null, string
 public record ComparePayload(string Base, string Commit, DeckVersion Version, DeckPayload Before, DeckDiff Diff,
   DeckVersion? LastSave = null, DeckVersion? Head = null, DeckPayload? After = null, List<string>? Latest = null);
 
-/// <summary>A version that changed a slide as drawn, and the version before it.</summary>
-public record SlideStep(DeckVersion Base, DeckVersion Head);
+/// <summary>A version that changed a slide as drawn, and the version before it, with the name the slide has at the
+/// later one.</summary>
+public record SlideStep(DeckVersion Base, DeckVersion Head, string Slide);
 
 /// <summary>Compares the working tree against a revision for the page. The last two revisions are loaded once per
 /// commit, and the diff again only when the commit or the working tree's model moves, which a line moving without the
@@ -845,9 +847,12 @@ public class Comparison
   private Side[] sides = [];
   private (string? Base, string Commit, string? Head, Presentation After, string Json)? answer;
   private readonly object historyGate = new object();
-  // The slides each version changed as drawn against the version before it, by the version's commit; commits never
-  // change, so neither do these.
-  private readonly Dictionary<string, HashSet<string>> changedSlides = new Dictionary<string, HashSet<string>>();
+  // The slides each version changed as drawn against the version before it, and those it renamed, by the version's
+  // commit; commits never change, so neither do these.
+  private readonly Dictionary<string, (HashSet<string> Changed, Dictionary<string, string> Renamed)> changedSlides =
+    new Dictionary<string, (HashSet<string>, Dictionary<string, string>)>();
+  private readonly ConcurrentDictionary<(string From, string To), Dictionary<string, string>> renames =
+    new ConcurrentDictionary<(string, string), Dictionary<string, string>>();
 
   public Comparison(PresentationStore store)
   {
@@ -878,10 +883,13 @@ public class Comparison
         {
           Side earlier = Before(revision!, commit);
           Side later = Before(head!, headCommit);
-          HashSet<string> since = [.. Differ.Compare(later.Presentation, current).Slides
-            .Where(slide => slide.Status != "moved").Select(slide => slide.Id)];
+          DeckDiff latest = Differ.Compare(later.Presentation, current, renamed: Renamed(headCommit));
+          // A slide renamed since takes its comments under a name the version doesn't know it by.
+          HashSet<string> since = [.. latest.Slides.Where(slide => slide.Status != "moved").Select(slide => slide.Id),
+            .. latest.Renamed?.Values.AsEnumerable() ?? []];
           payload = new ComparePayload(revision!, commit, earlier.Version, earlier.Deck,
-            Differ.Compare(earlier.Presentation, later.Presentation), Head: later.Version, After: later.Deck,
+            Differ.Compare(earlier.Presentation, later.Presentation, renamed: Renamed(commit, headCommit)),
+            Head: later.Version, After: later.Deck,
             Latest: [.. later.Presentation.Slides.Select(slide => slide.Id).Where(id => !since.Contains(id))]);
         }
         else
@@ -907,8 +915,9 @@ public class Comparison
   /// <summary>The newest version no later than <paramref name="before"/> that changed a slide as drawn, or the oldest
   /// later than <paramref name="after"/>, with the version before it; not found past either end of the versions.
   /// </summary>
-  /// <summary>The nearest version before or after one that changed the slide. A page that stops waiting stops the
-  /// walk at the next version, keeping what it learned of those it passed.</summary>
+  /// <summary>The nearest version before or after one that changed the slide, which is named as that one has it and
+  /// followed through its renames. A page that stops waiting stops the walk at the next version, keeping what it
+  /// learned of those it passed.</summary>
   public IResult Step(string slide, string? before, string? after, CancellationToken aborted = default)
   {
     try
@@ -935,14 +944,26 @@ public class Comparison
         foreach (int candidate in candidates)
         {
           aborted.ThrowIfCancellationRequested();
-          if (Changed(slide, versions[candidate], versions[candidate + 1], loaded))
+          if (Changes(slide, versions[candidate], versions[candidate + 1], loaded) is not var (changed, renamed))
           {
-            return Results.Json(new SlideStep(versions[candidate + 1], versions[candidate]), PayloadJson.Options);
+            continue;
           }
+          string? was = renamed.GetValueOrDefault(slide);
+          string? now = renamed.FirstOrDefault(pair => pair.Value == slide).Key;
+          string here = before is not null ? slide : now ?? slide;
+          if (changed.Contains(here))
+          {
+            return Results.Json(new SlideStep(versions[candidate + 1], versions[candidate], here),
+              PayloadJson.Options);
+          }
+          slide = before is not null ? was ?? slide : here;
         }
       }
-      return Refused($"no {(before is not null ? "earlier" : "later")} version changed {slide}",
-        StatusCodes.Status404NotFound);
+      return Results.Json(new
+      {
+        Error = $"no {(before is not null ? "earlier" : "later")} version changed {slide}",
+        Slide = slide
+      }, PayloadJson.Options, statusCode: StatusCodes.Status404NotFound);
     }
     catch (Exception exception) when (exception is InvalidDataException or LoadException)
     {
@@ -950,22 +971,25 @@ public class Comparison
     }
   }
 
-  // Each slide's file draws only that slide, so a version that changed only other slides' files is passed over without
-  // loading it. Called under the history gate.
-  private bool Changed(string slide, DeckVersion version, DeckVersion previous, Dictionary<string, Presentation> loaded)
+  // What a version changed and renamed, or null when it changed only other slides' files: each slide's file draws only
+  // that slide, so such a version is passed over without loading it. Called under the history gate.
+  private (HashSet<string> Changed, Dictionary<string, string> Renamed)? Changes(string slide, DeckVersion version,
+    DeckVersion previous, Dictionary<string, Presentation> loaded)
   {
-    if (!changedSlides.TryGetValue(version.Commit, out HashSet<string>? changed))
+    if (!changedSlides.TryGetValue(version.Commit, out (HashSet<string>, Dictionary<string, string>) changes))
     {
       VersionScope scope = Revisions.Scope(store.Root);
       List<string> files = Revisions.ChangedFiles(scope, previous.Commit, version.Commit);
       if (files.All(file => scope.Slide(file) is string touched && touched != slide))
       {
-        return false;
+        return null;
       }
-      changed = [.. Differ.Compare(Load(previous.Commit), Load(version.Commit)).Slides.Select(entry => entry.Id)];
-      changedSlides[version.Commit] = changed;
+      DeckDiff diff = Differ.Compare(Load(previous.Commit), Load(version.Commit),
+        renamed: Renamed(previous.Commit, version.Commit));
+      changes = ([.. diff.Slides.Select(entry => entry.Id)], diff.Renamed ?? []);
+      changedSlides[version.Commit] = changes;
     }
-    return changed.Contains(slide);
+    return changes;
 
     Presentation Load(string commit)
     {
@@ -1019,7 +1043,10 @@ public class Comparison
       return Refused(exception.Message);
     }
     Slide? now = current.Slides.FirstOrDefault(slide => slide.Id == request.Slide);
-    Slide? was = side.Presentation.Slides.FirstOrDefault(slide => slide.Id == request.Slide);
+    Slide? was = side.Presentation.Slides.FirstOrDefault(slide => slide.Id == request.Slide) ??
+      (Renamed(side.Commit).TryGetValue(request.Slide, out string? name)
+        ? side.Presentation.Slides.FirstOrDefault(slide => slide.Id == name)
+        : null);
     if (now is null || was is null)
     {
       return Refused($"{request.Slide} was {(now is null ? "removed" : "added")} since {request.Base}; revert it in " +
@@ -1081,7 +1108,16 @@ public class Comparison
   private ComparePayload Compare(string revision, string commit, Presentation current)
   {
     Side side = Before(revision, commit);
-    return new ComparePayload(revision, commit, side.Version, side.Deck, Differ.Compare(side.Presentation, current));
+    return new ComparePayload(revision, commit, side.Version, side.Deck,
+      Differ.Compare(side.Presentation, current, renamed: Renamed(commit)));
+  }
+
+  /// <summary>The slides renamed between two commits, or since one as far as the last commit, which is as far as git
+  /// knows the working tree's names.</summary>
+  private Dictionary<string, string> Renamed(string from, string? to = null)
+  {
+    to ??= Revisions.Commit(store.Root, "HEAD");
+    return renames.GetOrAdd((from, to), ends => Revisions.Renamed(store.Root, ends.From, ends.To));
   }
 
   // Three: with nothing unsaved the page compares against the last save and then the version before it, and between

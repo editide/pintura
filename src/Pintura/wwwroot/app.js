@@ -1465,7 +1465,9 @@ const historyTimeout = 60000;
 let stepping = false;
 
 async function stepSlideChanges(direction) {
-  const slide = currentSlide()?.id;
+  const current = currentSlide()?.id;
+  // The server follows the slide from the version stepped from, by the name that version has it under.
+  const slide = current && direction < 0 ? earlierName(state.compare?.diff, current) : current;
   const from = direction < 0 ? state.compare?.commit || compareBase() : state.compare?.head?.commit;
   if (!slide || !from || stepping) {
     return;
@@ -1490,11 +1492,17 @@ async function stepSlideChanges(direction) {
         : "Can't reach the server to step through versions");
       return;
     }
-    const found = response.ok ? await response.json() : null;
+    const answer = await response.json().catch(() => null);
+    const found = response.ok ? answer : null;
     if (!found && direction < 0) {
       label.textContent = shown;
       notice('No earlier version changed this slide');
       return;
+    }
+    // The version stepped to may have the slide under another name, which is the one to stay on.
+    if (answer?.slide && answer.slide !== current) {
+      state.current = answer.slide;
+      history.replaceState(null, '', `#${encodeURIComponent(answer.slide)}`);
     }
     const newest = found && state.saving && found.head.number === state.saving.next - 1 && !state.saving.unsaved;
     if (!found || newest) {

@@ -395,5 +395,84 @@ public class DiffTests
       .ShouldBe([("stacked", "changed", false), ("two", "removed", false)]);
   }
 
+  [Fact]
+  public void A_renamed_slide_diffs_against_the_slide_it_was_rather_than_showing_as_added_and_removed()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Presentation before = deck.Load();
+    string list = File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml"));
+    deck.Write("deck/presentation.yaml", list.Replace("- two", "- results"));
+    File.Delete(deck.Folder.PathTo("deck/slides/two.yaml"));
+    deck.Write("deck/slides/results.yaml", "layout: content\ntitle: Retitled");
+    var renamed = new Dictionary<string, string> { ["results"] = "two" };
+
+    // Act
+    DeckDiff diff = Differ.Compare(before, deck.Load(), renamed: renamed);
+
+    // Assert
+    diff.Slides.Select(slide => (slide.Id, slide.Status, slide.Before, slide.After, slide.Moved))
+      .ShouldBe([("results", "changed", 2, 2, false)]);
+    diff.Renamed.ShouldBe(renamed);
+  }
+
+  [Fact]
+  public void A_slide_only_renamed_is_no_change_but_is_named_as_renamed()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Presentation before = deck.Load();
+    string list = File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml"));
+    deck.Write("deck/presentation.yaml", list.Replace("- two", "- results"));
+    File.Move(deck.Folder.PathTo("deck/slides/two.yaml"), deck.Folder.PathTo("deck/slides/results.yaml"));
+    var renamed = new Dictionary<string, string> { ["results"] = "two" };
+
+    // Act
+    DeckDiff diff = Differ.Compare(before, deck.Load(), renamed: renamed);
+
+    // Assert
+    diff.Slides.ShouldBeEmpty();
+    diff.Renamed.ShouldBe(renamed);
+  }
+
+  [Fact]
+  public void A_rename_from_a_slide_still_in_the_deck_pairs_nothing()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Presentation before = deck.Load();
+    string list = File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml"));
+    deck.Write("deck/presentation.yaml", $"{list.TrimEnd()}\n  - results\n");
+    deck.Write("deck/slides/results.yaml", "layout: content\ntitle: Retitled");
+
+    // Act
+    DeckDiff diff = Differ.Compare(before, deck.Load(), renamed: new Dictionary<string, string> { ["results"] = "two" });
+
+    // Assert
+    diff.Slides.Select(slide => (slide.Id, slide.Status)).ShouldBe([("results", "added")]);
+    diff.Renamed.ShouldBeNull();
+  }
+
+  [Fact]
+  public void The_listing_names_a_renamed_slide_with_the_name_it_had()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", RevisionTests.Body("Results"));
+    RevisionTests.Git(deck.Folder.Root, "init", "-q");
+    RevisionTests.Git(deck.Folder.Root, "add", ".");
+    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    RevisionTests.Rename(deck, "two", "results", "Retitled");
+    var output = new StringWriter();
+
+    // Act
+    DiffCommand.Run(deck.Folder.PathTo("deck"), "HEAD~1", false, output);
+
+    // Assert
+    string[] lines = output.ToString().ReplaceLineEndings("\n").Split('\n');
+    lines.ShouldContain(" 2 results (was two)  changed");
+    lines.ShouldNotContain(line => line.Contains("removed"));
+  }
+
 
 }

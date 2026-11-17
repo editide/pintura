@@ -189,6 +189,7 @@ The picker beside Save offers the latest changes above the versions of the prese
 Choosing a version writes its commit into the address as `?base=`, and choosing the latest changes clears it.
 The picker names both ends of what the page shows, as `v11 → v12`, or `v12 → unsaved` over changes not yet saved.
 In the slide view, the arrows beside it, or `[` and `]`, step through the versions that changed the slide on screen as drawn, each against the version before it, so a round of an agent's changes shows apart from the nudges either side of it.
+The steps follow the slide through its renames, showing it under the name each version has it by.
 Finding the step loads each version it passes over that changed more than other slides' files, which can take seconds where the presentation draws from a book; the arrow spins meanwhile, takes no other press, and gives up after a minute, keeping what it learned for the next step.
 A version stepped to is written into the address as `?base=` and `?head=`, and drawn in the working tree's place, so the slide doesn't take edits until stepping past the newest returns to the latest changes.
 It keeps the comments as they are now, pinned to its elements, so each round reads against what asked for it and what the agent marked.
@@ -206,6 +207,7 @@ With edits in more than one place, the box lists each slide, `presentation.yaml`
 A slide deleted or restored goes with `presentation.yaml`, since a version that lists a slide it lacks doesn't load.
 Outside a repository, or before its first commit, Save takes the whole presentation, leaving out of the files git doesn't have yet all but YAML and the pictures and CSVs the YAML names, so an export or a screenshot left in the folder stays out; outside a repository, it starts one in the presentation's folder.
 The sidebar and the grid mark each slide added, changed, or moved since, and list the slides the revision had and the working tree doesn't under the sidebar.
+A slide renamed since, in a commit, is the slide it was: it flips to the revision, marks its changes, and reverts as any other.
 Two keys review the changes:
 
 | Key | Review |
@@ -234,6 +236,9 @@ pintura presentations/example --diff --slides 3-5
 A long text shows only the words that changed, with a little of what surrounds them.
 Values compare as drawn, so a style edit reaches every element that takes it, and a slide number that shifts because a slide was added before it is no change.
 A slide counts as moved only when it left the order the others keep.
+A slide whose file was renamed between the two is compared with the slide it was, and listed as `revenue-profile (was revenue-customers-chart)`, with the names under `renamed` in the JSON.
+Git says which files those are, by how much of each stayed the same, commit by commit between the two revisions, so a slide renamed in one commit and rewritten over many more is still followed.
+A rename not yet committed isn't git's to tell, so until then the slide lists as one removed and another added.
 A revision reads its books as the same commit left them, so a restated fact shows as a change; a book outside the repository can't be compared.
 An element whose `id` changed counts as removed and added.
 `--slides` keeps the slides it names, by id, number, or range, and the theme and layout changes that reach them, so an agent working beside others sees only its own.

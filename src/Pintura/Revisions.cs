@@ -18,6 +18,7 @@ public record VersionScope(string Top, string Presentation, List<string> Saved, 
   public string PickFile => InPresentation(Pintura.PickFile.Name);
   public string ResolvedPickFile => InPresentation(Pintura.PickFile.ResolvedName);
   public string Manifest => InPresentation("presentation.yaml");
+  public string Slides => InPresentation("slides");
 
   /// <summary>Comments are about a version rather than part of one.</summary>
   public string[] Comments => [$":(exclude){CommentFile}", $":(exclude){ResolvedFile}"];
@@ -154,6 +155,47 @@ public static class Revisions
       throw new InvalidDataException(error.Trim());
     }
     return [.. output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+  }
+
+  /// <summary>The slides renamed between two revisions, each one's name at <paramref name="to"/> with its name at
+  /// <paramref name="from"/>, as git tells a renamed file from one removed and another added: by how much of it stayed.
+  /// The renames of each commit between the two are chained, since a slide edited over many versions may share little
+  /// with what it was; revisions neither of which leads to the other are compared directly. The working tree's own
+  /// renames aren't git's until committed.</summary>
+  public static Dictionary<string, string> Renamed(string root, string from, string to)
+  {
+    VersionScope scope = Scope(root);
+    string[] detect = ["-c", "core.quotepath=off"];
+    string[] renames = ["-M", "--diff-filter=R", "--name-status"];
+    bool chained = Run(scope.Top, "merge-base", "--is-ancestor", from, to).Exit == 0;
+    (int exit, string output, string error) = chained
+      ? Run(scope.Top, [.. detect, "log", "--first-parent", "--format=%x1e", .. renames, $"{from}..{to}", "--",
+        scope.Slides])
+      : Run(scope.Top, [.. detect, "diff", .. renames, from, to, "--", scope.Slides]);
+    if (exit != 0)
+    {
+      throw new InvalidDataException(error.Trim());
+    }
+    // Each name a slide has had on the way back, with the name it ends under.
+    var ends = new Dictionary<string, string>(StringComparer.Ordinal);
+    foreach (string commit in output.Split('\x1e'))
+    {
+      var step = new List<(string Old, string End)>();
+      foreach (string line in commit.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+      {
+        string[] fields = line.Split('\t');
+        if (fields is [['R', ..], string before, string after] && scope.Slide(before) is string old &&
+          scope.Slide(after) is string renamed)
+        {
+          step.Add((old, ends.Remove(renamed, out string? end) ? end : renamed));
+        }
+      }
+      foreach ((string old, string end) in step)
+      {
+        ends[old] = end;
+      }
+    }
+    return ends.Where(pair => pair.Key != pair.Value).ToDictionary(pair => pair.Value, pair => pair.Key);
   }
 
   /// <summary>One commit as a version, named by its full hash.</summary>

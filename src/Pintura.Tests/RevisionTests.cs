@@ -202,6 +202,78 @@ public class RevisionTests
     versions.ShouldBeEmpty();
   }
 
+  [Fact]
+  public void A_slide_renamed_across_versions_is_followed_to_the_name_it_had()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", Body("Results"));
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string first = Revisions.Commit(deck.Folder.Root, "HEAD");
+    Rename(deck, "two", "results", "Results, retitled");
+    Rename(deck, "results", "outcome");
+
+    // Act
+    Dictionary<string, string> since = Revisions.Renamed(deck.Folder.PathTo("deck"), first, "HEAD");
+    Dictionary<string, string> back = Revisions.Renamed(deck.Folder.PathTo("deck"), "HEAD", first);
+
+    // Assert
+    since.ShouldBe(new Dictionary<string, string> { ["outcome"] = "two" });
+    back.ShouldBe(new Dictionary<string, string> { ["two"] = "outcome" });
+  }
+
+  [Fact]
+  public void A_slide_renamed_and_back_is_not_renamed()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/slides/two.yaml", Body("Results"));
+    Git(deck.Folder.Root, "init", "-q");
+    Git(deck.Folder.Root, "add", ".");
+    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    string first = Revisions.Commit(deck.Folder.Root, "HEAD");
+    Rename(deck, "two", "results");
+    Rename(deck, "results", "two");
+
+    // Act
+    Dictionary<string, string> since = Revisions.Renamed(deck.Folder.PathTo("deck"), first, "HEAD");
+
+    // Assert
+    since.ShouldBeEmpty();
+  }
+
+  /// <summary>A slide long enough that git still takes it for the same file once it's retitled and renamed.</summary>
+  public static string Body(string title)
+  {
+    return $"""
+      layout: content
+      title: {title}
+      elements:
+        - id: note
+          text: A note that stays as it was
+          frame: [40, 400, 300, 40]
+        - id: source
+          text: A source that stays as it was
+          frame: [40, 460, 300, 20]
+      """;
+  }
+
+  /// <summary>Commits a slide's file moved to another name, as <see cref="Body"/> with a title when given one.
+  /// </summary>
+  public static void Rename(DeckFixture deck, string from, string to, string? title = null)
+  {
+    Git(deck.Folder.Root, "mv", $"deck/slides/{from}.yaml", $"deck/slides/{to}.yaml");
+    string manifest = deck.Folder.PathTo("deck/presentation.yaml");
+    File.WriteAllText(manifest, File.ReadAllText(manifest).Replace($"- {from}\n", $"- {to}\n"));
+    if (title is not null)
+    {
+      deck.Write($"deck/slides/{to}.yaml", Body(title));
+    }
+    Git(deck.Folder.Root, "commit", "-q", "-am", $"renamed {from} to {to}");
+  }
+
   public static void Git(string folder, params string[] arguments)
   {
     var start = new ProcessStartInfo("git") { WorkingDirectory = folder, RedirectStandardError = true };
