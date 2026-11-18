@@ -79,7 +79,7 @@ public class TableTests
 
     // Assert
     SceneCell header = Cell(item, 1, 2);
-    Cell(item, 1, 3).Properties["bold"].Origin!.ToString().ShouldBe("theme/styles.yaml:45 tables.plain.header.bold");
+    Cell(item, 1, 3).Properties["bold"].Origin!.ToString().ShouldBe("theme/styles.yaml:46 tables.plain.header.bold");
     header.Properties["color"].Value.ShouldBe(new Color { Theme = "accent1" });
     header.Properties["align"].Value.ShouldBe("center");
     header.Properties["fill"].Value.ShouldBe(new Color { Theme = "light2" });

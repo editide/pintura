@@ -77,6 +77,7 @@ public class DeckFixture : IDisposable
     formats:
       billions: { scale: 0.001, decimals: 1, prefix: "$", suffix: B, negative: parentheses, negative_style: negative }
       dollars: { negative: parentheses, negative_style: negative }
+      long_date: { date: "MMMM D, YYYY" }
 
     tables:
       plain:

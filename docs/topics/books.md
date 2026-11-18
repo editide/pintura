@@ -27,6 +27,7 @@ It shows as Libreta displays it, and `| format` after the column spells the exac
 title: Connectivity revenue reached ${acme::historical.segments.connectivity_revenue["2025"] | billions_of_dollars}
 ```
 
+A date format spells a line whose value is a date, as `${acme::financing.first_test["2025"] | long_date}` spells `December 31, 2026`.
 Qualified names and columns are as `libreta <book> --lines` lists them; `--lines` with names prints just those.
 A reference never takes arithmetic: a figure the book doesn't have becomes a formula in the book.
 Typing over a reference in the page, as over a field, writes the typed text in its place.

@@ -15,7 +15,9 @@ public class BookTests
       ["historical.segments.ai_revenue"] = new BookLine("historical.segments.ai_revenue", "AI", "millions",
         ["2024", "2025"], ["2620", null], ["2,620", ""]),
       ["historical.segments.connectivity_share"] = new BookLine("historical.segments.connectivity_share",
-        "Connectivity share", "percent", ["2024", "2025"], ["0.542", "0.6098"], ["54.2%", "61.0%"])
+        "Connectivity share", "percent", ["2024", "2025"], ["0.542", "0.6098"], ["54.2%", "61.0%"]),
+      ["financing.first_test"] = new BookLine("financing.first_test", "First test", "date", ["Disclosed"],
+        ["2026-12-31"], ["Dec 31, 2026"])
     };
 
     /// <summary>Rows the view shows after its own, such as a line it shows twice.</summary>
@@ -162,6 +164,22 @@ public class BookTests
       .ShouldBe("acme::historical.segments.connectivity_revenue[\"2025\"] | billions");
   }
 
+  [Fact]
+  public void A_reference_with_a_date_format_spells_the_date_in_it()
+  {
+    // Arrange
+    using DeckFixture deck = Deck("""
+      layout: content
+      title: Tested from ${acme::financing.first_test["Disclosed"] | long_date}
+      """);
+
+    // Act
+    SceneItem title = deck.Item("two", "title");
+
+    // Assert
+    Text(title).ShouldBe("Tested from December 31, 2026");
+  }
+
   [Theory]
   [InlineData("${nasa::historical.segments.ai_revenue[\"2025\"]}",
     "unknown book nasa; the presentation's books are acme")]
@@ -173,7 +191,12 @@ public class BookTests
   [InlineData("${acme::historical.segments.ai_revenue[\"2025\"]}",
     "historical.segments.ai_revenue has no value in 2025")]
   [InlineData("${acme::historical.segments.ai_revenue[\"2024\"] | millions}",
-    "unknown format millions; the theme's formats are billions and dollars")]
+    "unknown format millions; the theme's formats are billions, dollars and long_date")]
+  [InlineData("${acme::historical.segments.connectivity_revenue[\"2025\"] | long_date}",
+    "long_date spells dates, and historical.segments.connectivity_revenue in 2025 is 11387, not a date written " +
+    "as YYYY-MM-DD")]
+  [InlineData("${acme::financing.first_test[\"Disclosed\"] | billions}",
+    "billions spells numbers, and financing.first_test in Disclosed is 2026-12-31")]
   [InlineData("${acme::historical.segments.ai_revenue}",
     "${acme::historical.segments.ai_revenue} is not a reference; write ${book::line[\"column\"]}, with | and a " +
     "format's name before the } to spell it")]
@@ -576,7 +599,7 @@ public class BookTests
       return item.Table!.Cells.Single(cell => cell.Row == row && cell.Column == column).Paragraphs[0];
     }
     Label(3).Indent!.Value.ShouldBe(12.0);
-    Label(3).Indent!.Origin!.ToString().ShouldBe("theme/styles.yaml:48 tables.plain.indent");
+    Label(3).Indent!.Origin!.ToString().ShouldBe("theme/styles.yaml:49 tables.plain.indent");
     Label(3).Hanging!.Value.ShouldBe(0.0);
     Label(3).Bullet.ShouldBeNull();
     Label(3, 2).Indent.ShouldBeNull();

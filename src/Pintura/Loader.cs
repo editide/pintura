@@ -408,10 +408,6 @@ public partial class PresentationLoader
       {
         return $"unknown format {formatName}; the theme's formats are {And([.. styles.Formats.Keys])}";
       }
-      if (format.Date is not null)
-      {
-        return $"{formatName} spells dates, and a reference reads a number";
-      }
     }
     (IReadOnlyDictionary<string, BookLine>? lines, string? problem) = BookLines(book);
     if (problem is not null)
@@ -431,6 +427,16 @@ public partial class PresentationLoader
     if (line.Exact[column] is null)
     {
       return $"{reference.Line} has no value in {reference.Column}";
+    }
+    string exact = line.Exact[column]!;
+    if (format?.Date is not null && !IsoDate(exact, out _))
+    {
+      return $"{reference.Format} spells dates, and {reference.Line} in {reference.Column} is {exact}, not a date " +
+        "written as YYYY-MM-DD";
+    }
+    if (format is { Date: null } && !PlainNumber.TryParse(exact, out _))
+    {
+      return $"{reference.Format} spells numbers, and {reference.Line} in {reference.Column} is {exact}";
     }
     references[name] = new BookValue
     {

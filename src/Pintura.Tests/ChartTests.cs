@@ -133,7 +133,7 @@ public class ChartTests
     LoadException error = deck.Error("chart");
 
     // Assert
-    error.Problem.ShouldBe("unknown format millions; the theme's formats are billions, dollars");
+    error.Problem.ShouldBe("unknown format millions; the theme's formats are billions, dollars, long_date");
     error.Topic.ShouldBe("charts");
   }
 
