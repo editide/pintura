@@ -43,7 +43,7 @@ A style used on a box applies all its properties; on a paragraph, all but `valig
 
 ## Formats
 
-Formats spell numbers in tables and charts, and later in Libreta references; a number typed into text is spelled as typed.
+Formats spell numbers in tables, charts, and references to a book; a number typed into text is spelled as typed.
 Name a format for what a number is (`millions_of_dollars`), not how it looks (`one_decimal`).
 
 | Key | Value |
@@ -59,7 +59,7 @@ What a format leaves out is Libreta's default: `scale: 1`, `decimals: 0`, `separ
 
 A format with `date` spells dates instead, and takes no other key.
 Its pattern writes the year as `YYYY` or `YY`, the month as `MMMM` (`January`), `MMM` (`Jan`), `MM` (`01`), or `M` (`1`), and the day as `DD` or `D`; every other character is itself, so `MMM-D-'YY` spells `Jan-2-'26`.
-Dates are written `YYYY-MM-DD` in a CSV, and a date format spells them on a chart's category axis or in a table cell; a cell that isn't a date is left as written.
+Dates are written `YYYY-MM-DD` in a CSV, and a date format spells them on a chart's category axis, in a table cell, or in a reference to a book's date; a cell that isn't a date is left as written.
 
 ## Example
 

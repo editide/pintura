@@ -543,12 +543,16 @@ public partial record Reference(string Book, string Line, string Column, string?
       : null;
   }
 
-  /// <summary>The number the reference shows: its format's spelling of the exact value, or Libreta's own.</summary>
+  /// <summary>What the reference shows: its format's spelling of the exact number or date, or Libreta's own.</summary>
   public static string? Spell(BookLine line, int column, NumberFormat? format)
   {
     if (format is null)
     {
       return line.Display[column];
+    }
+    if (format.Date is not null)
+    {
+      return PresentationLoader.IsoDate(line.Exact[column] ?? "", out DateOnly date) ? format.SpellDate(date) : null;
     }
     return PlainNumber.TryParse(line.Exact[column], out double value)
       ? format.Spell(value)
