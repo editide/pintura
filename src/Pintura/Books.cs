@@ -478,17 +478,27 @@ public class LibretaReader : IBookReader
 
   private Process Start(ProcessStartInfo start)
   {
-    try
+    const int TextFileBusy = 26;
+    for (int attempt = 1; ; attempt++)
     {
-      return Process.Start(start)!;
-    }
-    catch (System.ComponentModel.Win32Exception)
-    {
-      string install = OperatingSystem.IsWindows()
-        ? "irm https://raw.githubusercontent.com/editide/libreta/main/install.ps1 | iex"
-        : "curl -fsSL https://raw.githubusercontent.com/editide/libreta/main/install.sh | sh";
-      throw new BookException($"reading a book needs Libreta, and there is no {executable} on the path; install it " +
-        $"with `{install}`, or point PINTURA_LIBRETA at it");
+      try
+      {
+        return Process.Start(start)!;
+      }
+      // A script just written stays busy while a process forked meanwhile still holds it open for writing.
+      catch (System.ComponentModel.Win32Exception exception) when (exception.NativeErrorCode == TextFileBusy &&
+        !OperatingSystem.IsWindows() && attempt < 20)
+      {
+        Thread.Sleep(50);
+      }
+      catch (System.ComponentModel.Win32Exception)
+      {
+        string install = OperatingSystem.IsWindows()
+          ? "irm https://raw.githubusercontent.com/editide/libreta/main/install.ps1 | iex"
+          : "curl -fsSL https://raw.githubusercontent.com/editide/libreta/main/install.sh | sh";
+        throw new BookException($"reading a book needs Libreta, and there is no {executable} on the path; install it " +
+          $"with `{install}`, or point PINTURA_LIBRETA at it");
+      }
     }
   }
 
