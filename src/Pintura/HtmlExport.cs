@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -108,8 +109,11 @@ public static class HtmlExport
     {
       html.AppendLine($"<style>\n{InlineFonts(File.ReadAllText(Path.Combine(assets, stylesheet)), assets)}\n</style>");
     }
+    html.AppendLine("<noscript><style>body.exported { overflow: auto; } .layout { display: none; } "
+      + ".deck-text { display: block; }</style></noscript>");
     html.AppendLine("</head>");
     html.AppendLine("<body class=\"exported\">");
+    html.Append(Words(deck));
     html.AppendLine("<div class=\"layout nav-hidden\">");
     html.AppendLine("<nav class=\"sidebar\" aria-label=\"Slides\"><div class=\"sidebar-head\">"
       + "<div class=\"deck-name\" id=\"deck-name\"></div>"
@@ -174,6 +178,154 @@ public static class HtmlExport
       .Select(family => $"{family} isn't in the theme's fonts/, so readers without it installed see the text in it " +
         "in another font"))
       .ToList();
+  }
+
+  /// <summary>The slides' words, tables, and chart data as a plain document at the top of the page, for whoever reads
+  /// it without running its scripts: a crawler, a reader view, or a browser with scripts off. The stylesheet hides it
+  /// wherever the scripts draw the slides. What the layout draws, such as a footer or page number, is left out.
+  /// </summary>
+  private static string Words(DeckPayload deck)
+  {
+    var html = new StringBuilder();
+    html.AppendLine("<article class=\"deck-text\" id=\"deck-text\">");
+    html.AppendLine($"<h1>{Encode(deck.Name)}</h1>");
+    foreach (SlidePayload slide in deck.Slides)
+    {
+      List<ItemPayload> items = (slide.Items ?? []).Where(item => item.Owner == "slide").ToList();
+      ItemPayload? title = items.FirstOrDefault(item => item.Role == "title");
+      string heading = title?.Text is { } text
+        ? string.Join(" ", text.Paragraphs.Select(Runs).Where(line => line.Length > 0))
+        : Encode(slide.Title ?? "");
+      html.AppendLine($"<section id=\"slide-{Encode(slide.Id)}\">");
+      if (heading.Length > 0)
+      {
+        html.AppendLine($"<h2>{heading}</h2>");
+      }
+      foreach (ItemPayload item in items.Where(item => item != title))
+      {
+        if (item.Table is { } table)
+        {
+          Table(html, table);
+        }
+        else if (item.Chart is { } chart)
+        {
+          Chart(html, chart);
+        }
+        else if (item.Text is { } words)
+        {
+          Paragraphs(html, words.Paragraphs);
+        }
+      }
+      html.AppendLine("</section>");
+    }
+    html.AppendLine("</article>");
+    return html.ToString();
+  }
+
+  private static void Paragraphs(StringBuilder html, List<ParagraphPayload> paragraphs)
+  {
+    bool listing = false;
+    foreach (ParagraphPayload paragraph in paragraphs)
+    {
+      string line = Runs(paragraph);
+      if (line.Length == 0)
+      {
+        continue;
+      }
+      bool bulleted = paragraph.Bullet is not null;
+      if (bulleted != listing)
+      {
+        html.AppendLine(bulleted ? "<ul>" : "</ul>");
+        listing = bulleted;
+      }
+      html.AppendLine(bulleted ? $"<li>{line}</li>" : $"<p>{line}</p>");
+    }
+    if (listing)
+    {
+      html.AppendLine("</ul>");
+    }
+  }
+
+  private static string Runs(ParagraphPayload paragraph)
+  {
+    if (string.IsNullOrWhiteSpace(string.Concat(paragraph.Runs.Select(run => run.Text))))
+    {
+      return "";
+    }
+    return string.Concat(paragraph.Runs.Select(run =>
+    {
+      string text = Encode(run.Text).Replace("\n", "<br>");
+      return run.Link is null ? text : $"<a href=\"{Encode(run.Link)}\">{text}</a>";
+    })).Trim();
+  }
+
+  private static void Table(StringBuilder html, TablePayload table)
+  {
+    html.AppendLine("<table>");
+    foreach (IGrouping<int, CellPayload> row in table.Cells.GroupBy(cell => cell.Row).OrderBy(row => row.Key))
+    {
+      html.Append("<tr>");
+      foreach (CellPayload cell in row.OrderBy(cell => cell.Column))
+      {
+        string spans = (cell.Rows > 1 ? $" rowspan=\"{cell.Rows}\"" : "")
+          + (cell.Columns > 1 ? $" colspan=\"{cell.Columns}\"" : "");
+        string lines = string.Join("<br>", cell.Text.Paragraphs.Select(Runs).Where(line => line.Length > 0));
+        html.Append($"<td{spans}>{lines}</td>");
+      }
+      html.AppendLine("</tr>");
+    }
+    html.AppendLine("</table>");
+  }
+
+  /// <summary>A row for each category and a column for each series, each value formatted as its label is, or else
+  /// as its axis is.</summary>
+  private static void Chart(StringBuilder html, ChartPayload chart)
+  {
+    html.AppendLine("<table>");
+    if (chart.Title is { Length: > 0 } title)
+    {
+      html.AppendLine($"<caption>{Encode(title)}</caption>");
+    }
+    html.AppendLine("<tr><td></td>" + string.Concat(chart.Series.Select(series =>
+      $"<th scope=\"col\">{Encode(series.Name)}</th>")) + "</tr>");
+    for (int index = 0; index < chart.Categories.Count; index++)
+    {
+      html.Append($"<tr><th scope=\"row\">{Encode(chart.Categories[index])}</th>");
+      foreach (SeriesPayload series in chart.Series)
+      {
+        double? value = index < series.Values.Count ? series.Values[index] : null;
+        FormatPayload? format = series.Labels?.Format
+          ?? (series.Secondary ? chart.SecondaryAxis : chart.ValueAxis)?.Format;
+        html.Append($"<td>{(value is { } number ? Encode(Number(number, format)) : "")}</td>");
+      }
+      html.AppendLine("</tr>");
+    }
+    html.AppendLine("</table>");
+  }
+
+  /// <summary>A value as charts.js's <c>formatNumber</c> labels it, so the text says what the chart shows.</summary>
+  private static string Number(double value, FormatPayload? format)
+  {
+    if (format is null)
+    {
+      return double.Parse(value.ToString("G10", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture)
+        .ToString(CultureInfo.InvariantCulture);
+    }
+    double scaled = value * format.Scale;
+    string digits = Math.Abs(scaled).ToString(
+      (format.Separator ? "#,0" : "0") + (format.Decimals > 0 ? "." + new string('0', format.Decimals) : ""),
+      CultureInfo.InvariantCulture);
+    string text = format.Prefix + digits + format.Suffix;
+    if (scaled >= 0)
+    {
+      return text;
+    }
+    return format.Negative == "parentheses" ? $"({text})" : $"-{text}";
+  }
+
+  private static string Encode(string text)
+  {
+    return WebUtility.HtmlEncode(text);
   }
 
   // "</" would end the script element early, and "<!--<script" would keep the real end from ending it; JSON has "<"
