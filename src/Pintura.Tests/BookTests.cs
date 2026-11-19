@@ -17,7 +17,8 @@ public class BookTests
       ["historical.segments.connectivity_share"] = new BookLine("historical.segments.connectivity_share",
         "Connectivity share", "percent", ["2024", "2025"], ["0.542", "0.6098"], ["54.2%", "61.0%"]),
       ["financing.first_test"] = new BookLine("financing.first_test", "First test", "date", ["Disclosed"],
-        ["2026-12-31"], ["Dec 31, 2026"])
+        ["2026-12-31"], ["Dec 31, 2026"]),
+      ["derived.operating_loss"] = new BookLine("derived.operating_loss", "Operating loss", "millions", [], [], [])
     };
 
     /// <summary>Rows the view shows after its own, such as a line it shows twice.</summary>
@@ -188,6 +189,9 @@ public class BookTests
     "book's folder")]
   [InlineData("${acme::historical.segments.ai_revenue[\"2023\"]}",
     "historical.segments.ai_revenue has no column 2023; its columns are 2024 and 2025")]
+  [InlineData("${acme::derived.operating_loss[\"Value\"]}",
+    "derived.operating_loss has no column Value, nor any other; a folder of formulas alone names its columns in " +
+    "its view.yaml, as columns: [Value] does")]
   [InlineData("${acme::historical.segments.ai_revenue[\"2025\"]}",
     "historical.segments.ai_revenue has no value in 2025")]
   [InlineData("${acme::historical.segments.ai_revenue[\"2024\"] | millions}",

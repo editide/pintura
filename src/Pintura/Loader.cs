@@ -422,7 +422,7 @@ public partial class PresentationLoader
     int column = line.Columns.IndexOf(reference.Column);
     if (column < 0)
     {
-      return $"{reference.Line} has no column {reference.Column}; its columns are {And([.. line.Columns])}";
+      return NoColumn(line, reference.Column);
     }
     if (line.Exact[column] is null)
     {
@@ -2468,7 +2468,7 @@ public partial class PresentationLoader
         int column = line.Columns.IndexOf(name);
         if (column < 0 && files is not GitTree)
         {
-          throw columnNode.Error($"{line.Name} has no column {name}; its columns are " + And([.. line.Columns]));
+          throw columnNode.Error(NoColumn(line, name));
         }
         row.Add(column >= 0 && PlainNumber.TryParse(line.Exact[column], out double value) ? value : null);
       }
@@ -3132,6 +3132,16 @@ public partial class PresentationLoader
       merges.Add(merge);
     }
     return merges;
+  }
+
+  /// <summary>Libreta gives a line no columns when its folder has neither periods nor a parent's to inherit, as
+  /// befalls a folder of formulas whose view.yaml is deleted.</summary>
+  private static string NoColumn(BookLine line, string column)
+  {
+    return line.Columns.Count == 0
+      ? $"{line.Name} has no column {column}, nor any other; a folder of formulas alone names its columns in its " +
+        "view.yaml, as columns: [Value] does"
+      : $"{line.Name} has no column {column}; its columns are {And([.. line.Columns])}";
   }
 
   private static string And(string[] names)
