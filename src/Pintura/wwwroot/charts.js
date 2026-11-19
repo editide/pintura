@@ -157,7 +157,8 @@ function wrap(text, width, measure) {
   return lines.length === 0 ? [''] : lines;
 }
 
-// A series or slice drawn in no color has no entry, and nor has a total, which draws only its labels.
+// A series or slice drawn in no color has no entry unless it has an outline, and nor has a total, which draws only
+// its labels.
 function legendEntries(chart) {
   if (chart.type === 'waterfall') {
     return WATERFALL_KINDS.map((name, kind) => ({ name, index: 0, color: colorAt(chart, kind), line: false }))
@@ -169,8 +170,9 @@ function legendEntries(chart) {
     line: !pie && seriesType(chart, chart.series[index]) === 'line',
     markers: pie ? null : chart.series[index].markers,
     dash: pie ? null : chart.series[index].dash,
+    outline: pie ? null : chart.series[index].outline,
     total: !pie && seriesType(chart, chart.series[index]) === 'total' }))
-    .filter((entry) => entry.color !== null && !entry.total);
+    .filter((entry) => (entry.color !== null || entry.outline) && !entry.total);
   // PowerPoint lists a side legend of an upward stack from its top, so the entries line up with what they name.
   const upward = chart.grouping !== 'clustered' && (chart.family === 'column' || chart.family === 'line');
   return upward && (chart.legend === 'left' || chart.legend === 'right') ? entries.reverse() : entries;
@@ -195,7 +197,8 @@ function layoutLegend(chart, box, context) {
         out.push({ ...pointMarker(entry.markers, entry.color, x + width / 2, y), ...of });
       }
     } else {
-      out.push({ kind: 'rect', x, y: y - width / 2, width, height: width, fill: entry.color, ...of });
+      out.push({ kind: 'rect', x, y: y - width / 2, width, height: width, fill: entry.color,
+        outline: entry.outline, ...of });
     }
     out.push({ kind: 'text', x: x + width + gap, y, text: entry.name, anchor: 'start', ...of });
   };
@@ -534,10 +537,11 @@ function layoutPlot(chart, box, context) {
           stroke: chart.gridColor, width: RULE_WIDTH });
       }
       previous = { end: start + thickness, at: to };
+      const outline = series.outlines ? series.outlines[point] : series.outline;
       out.push(traced(horizontal
-        ? { kind: 'rect', part: 'bar', x: low, y: start, width: length, height: thickness, fill }
-        : { kind: 'rect', part: 'bar', x: start, y: low, width: thickness, height: length, fill }, series, index,
-        point));
+        ? { kind: 'rect', part: 'bar', x: low, y: start, width: length, height: thickness, fill, outline }
+        : { kind: 'rect', part: 'bar', x: start, y: low, width: thickness, height: length, fill, outline }, series,
+        index, point));
       const labels = labelsAt(series, point);
       if (labels) {
         barLabel(labels, labelContext, series.values[point], start + thickness / 2, from, to, horizontal,
@@ -846,7 +850,10 @@ function drawChart(chart, width, height) {
           y: roundChart(primitive.y),
           width: roundChart(primitive.width),
           height: roundChart(primitive.height),
-          fill: primitive.fill || 'none'
+          fill: primitive.fill || 'none',
+          stroke: primitive.outline?.color || null,
+          'stroke-width': primitive.outline?.width ?? null,
+          'stroke-dasharray': primitive.outline ? dashArray(primitive.outline.dash, primitive.outline.width) : null
         }, svg);
         break;
       case 'line':

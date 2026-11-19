@@ -499,6 +499,67 @@ public class ChartTests
   }
 
   [Fact]
+  public void A_column_series_outline_reaches_the_page_in_the_text_color_unless_it_names_one()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: stacked_column
+      data: revenue.csv
+      series:
+        AI:
+          outline: { dash: dash }
+        Space:
+          outline: { color: accent3, width: 1.5 }
+      """);
+
+    // Act
+    ChartPayload chart = PayloadBuilder.Build(deck.Load(), 1, (path, _) => path).Slides[0].Items!
+      .Single(item => item.Id == "chart").Chart!;
+    SceneItem item = deck.Item("chart", "chart");
+
+    // Assert
+    chart.Series[0].Outline.ShouldBe(new StrokePayload("#A5A5A5", 1.5, "solid"));
+    chart.Series[1].Outline.ShouldBe(new StrokePayload(chart.Text.Color, 0.75, "dash"));
+    chart.Series[1].Outlines.ShouldBeNull();
+    item.Properties["series.AI.outline.dash"].Origin!.Line.ShouldBe(5);
+    item.Properties["series.AI.outline.width"].Origin.ShouldBeNull();
+  }
+
+  [Fact]
+  public void A_points_outline_layers_over_its_series_and_a_point_in_none_draws_hollow()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: clustered_column
+      data: revenue.csv
+      series:
+        Space:
+          points:
+            "2025": { color: none, outline: { color: accent1, dash: dot } }
+        AI:
+          outline: { color: dark1, dash: dash }
+          points:
+            "2024": { outline: none }
+            "2025": { outline: { width: 2 } }
+      """);
+
+    // Act
+    ChartPayload chart = PayloadBuilder.Build(deck.Load(), 1, (path, _) => path).Slides[0].Items!
+      .Single(item => item.Id == "chart").Chart!;
+    SceneItem item = deck.Item("chart", "chart");
+
+    // Assert
+    chart.Series[0].Colors.ShouldBe([null, "none"]);
+    chart.Series[0].Outline.ShouldBeNull();
+    chart.Series[0].Outlines.ShouldBe([null, new StrokePayload("#4472C4", 0.75, "dot")]);
+    chart.Series[1].Outlines.ShouldBe([null, new StrokePayload("#000000", 2, "dash")]);
+    item.Properties["series.AI.points.2024.outline"].Value.ShouldBe("none");
+    item.Properties["series.AI.points.2025.outline.width"].Origin!.Line.ShouldBe(11);
+  }
+
+  [Fact]
   public void The_secondary_axis_stays_off_until_a_line_is_on_it()
   {
     // Arrange
@@ -537,8 +598,18 @@ public class ChartTests
       "data_labels: { position: center } } }");
     LoadException pie = Load("type: doughnut\ndata: revenue.csv\nseries: { AI: { data_labels: { show: value } } }");
     LoadException dashedColumn = Load("type: clustered_column\ndata: revenue.csv\nseries: { AI: { dash: dot } }");
+    LoadException outlinedLine = Load("type: clustered_column\ndata: revenue.csv\nseries: { AI: { type: line, " +
+      "outline: { dash: dot } } }");
+    LoadException outlinedTotal = Load("type: stacked_column\ndata: revenue.csv\nseries: { AI: { type: total, " +
+      "outline: { dash: dot } } }");
+    LoadException hollowLinePoint = Load("type: line\ndata: revenue.csv\nseries: { AI: { points: { \"2025\": { " +
+      "color: none } } } }");
 
     // Assert
+    outlinedLine.Problem.ShouldBe("an outline is for a column or bar, and AI is drawn as a line; a line takes a dash");
+    outlinedTotal.Problem.ShouldBe("an outline is for a column or bar, and AI is a total; a total draws only its " +
+      "labels");
+    hollowLinePoint.Problem.ShouldBe("color: none is for a column or bar, and AI is drawn as a line");
     unknown.Problem.ShouldBe("no series Energy in revenue.csv; its series are Space, AI");
     lineOnBars.Problem.ShouldBe("a line runs along the categories, which run down a bar chart; make it a column chart");
     clusteredTotal.Problem.ShouldBe("a total sits on a stack of columns or bars; make the chart a stacked_column or " +
@@ -598,7 +669,7 @@ public class ChartTests
     // Assert
     unknown.Problem.ShouldBe("no category 2030 in revenue.csv; its categories are 2024, 2025");
     column.Problem.ShouldBe("a point's markers sit on a line, and AI is drawn as a column");
-    empty.Problem.ShouldBe("a point takes a color, markers, data_labels, or several");
+    empty.Problem.ShouldBe("a point takes a color, an outline, markers, data_labels, or several");
     total.Problem.ShouldBe("a total's points take only data_labels, and AI is drawn as a total");
   }
 

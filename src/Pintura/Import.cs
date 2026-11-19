@@ -679,6 +679,10 @@ public partial class Importer
       {
         options["dash"] = dash;
       }
+      foreach ((string key, JsonNode? value) in entry["outline"]?.AsObject() ?? new JsonObject())
+      {
+        options[key] = value?.DeepClone();
+      }
       foreach ((string key, JsonNode? color) in entry["points"]?.AsObject() ?? new JsonObject())
       {
         options[key] = color?.DeepClone();
@@ -2258,8 +2262,8 @@ public partial class Importer
     return map;
   }
 
-  /// <summary>A dotted key's parts, with a point's category whole, dots and all: <c>points.{category}.color</c>, or
-  /// <c>.data_labels.</c> or <c>.markers.</c> and a key after it.</summary>
+  /// <summary>A dotted key's parts, with a point's category whole, dots and all: <c>points.{category}.color</c> or
+  /// <c>.outline</c>, or <c>.data_labels.</c>, <c>.markers.</c>, or <c>.outline.</c> and a key after it.</summary>
   private static string[] KeyPath(string key)
   {
     const string Points = "points.";
@@ -2273,8 +2277,9 @@ public partial class Importer
     return ["points", rest[..end], .. rest[(end + 1)..].Split('.')];
   }
 
-  /// <summary>A point's key under <c>data_labels</c> or <c>markers</c>, which ends its dotted key.</summary>
-  [GeneratedRegex(@"\.(?:data_labels|markers)\.[^.]+$")]
+  /// <summary>A point's key under <c>data_labels</c>, <c>markers</c>, or <c>outline</c>, which ends its dotted key.
+  /// </summary>
+  [GeneratedRegex(@"\.(?:data_labels|markers|outline)\.[^.]+$")]
   private static partial Regex PointGroupKey();
 
   /// <summary>A JSON value as YAML writes it: colors and fonts as their names, and maps key by key.</summary>

@@ -2152,6 +2152,11 @@ public partial class PresentationLoader
       options.Dash = dash.AsChoice("solid", "dash", "dot");
       options.Origins["dash"] = dash.Origin;
     }
+    if (map.Take("outline") is Node outline)
+    {
+      options.Outline = ReadStroke(outline);
+      options.Origins["outline"] = outline.Origin;
+    }
     if (map.Take("data_labels") is Node labels)
     {
       ReadLabels(labels, options.DataLabels, styles.Formats,
@@ -2171,8 +2176,13 @@ public partial class PresentationLoader
         options.Origins[prefix] = value.Origin;
         if (point.Take("color") is Node color)
         {
-          target.Color = ReadColor(color, false);
+          target.Color = ReadColor(color);
           options.Origins[$"{prefix}color"] = color.Origin;
+        }
+        if (point.Take("outline") is Node pointOutline)
+        {
+          target.Outline = ReadStroke(pointOutline);
+          options.Origins[$"{prefix}outline"] = pointOutline.Origin;
         }
         if (point.Take("markers") is Node pointMarkers)
         {
@@ -2187,7 +2197,7 @@ public partial class PresentationLoader
         point.Done();
         if (!options.Origins.Keys.Any(key => key.StartsWith(prefix, StringComparison.Ordinal) && key != prefix))
         {
-          throw value.Error("a point takes a color, markers, data_labels, or several");
+          throw value.Error("a point takes a color, an outline, markers, data_labels, or several");
         }
         options.Points[category] = target;
       }
@@ -2272,6 +2282,15 @@ public partial class PresentationLoader
               : $"a {chart.Type} places labels {Join(LabelPositions[group])}, not {pointPosition}");
           }
         }
+        if (drawn == "line" && options.Points[category].Color is { IsNone: true })
+        {
+          throw Error($"{key}color", $"color: none is for a column or bar, and {name} is drawn as a {drawn}");
+        }
+        if (drawn == "line" && options.Points[category].Outline is not null)
+        {
+          throw Error($"{key}outline", $"an outline is for a column or bar, and {name} is drawn as a line; a " +
+            "line takes a dash");
+        }
         if (drawn != "line" && options.Origins.Keys.FirstOrDefault(origin =>
           origin.StartsWith($"{key}markers.", StringComparison.Ordinal)) is string pointMarker)
         {
@@ -2295,6 +2314,12 @@ public partial class PresentationLoader
         throw Error(markerKey, drawn == "total"
           ? $"markers sit on a line's points, and {name} is a total; a total draws only its labels"
           : $"markers sit on a line's points, and {name} is drawn as {drawn}s; give it type: line");
+      }
+      if (options.Outline is not null && drawn is "line" or "total")
+      {
+        throw Error("outline", drawn == "total"
+          ? $"an outline is for a column or bar, and {name} is a total; a total draws only its labels"
+          : $"an outline is for a column or bar, and {name} is drawn as a line; a line takes a dash");
       }
       if (options.Dash is not null && drawn != "line")
       {
