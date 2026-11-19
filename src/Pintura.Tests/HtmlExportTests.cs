@@ -320,6 +320,66 @@ public class HtmlExportTests
     Carried(html, "image/jpeg").ShouldBe(jpeg);
   }
 
+  [Fact]
+  public void The_page_reads_as_text_before_any_script_runs()
+  {
+    // Arrange
+    Presentation presentation = PresentationLoader.Load(
+      Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example"));
+
+    // Act
+    string html = HtmlExport.Build(presentation, Assets);
+
+    // Assert
+    string words = Words(html);
+    words.ShouldContain("<h1>Acme Q2 2026 Board Update</h1>");
+    words.ShouldContain("<h2>Connectivity funds the build-out in AI</h2>");
+    words.ShouldContain("$4.4B operating income in 2025");
+    words.ShouldContain("<a href=\"https://example.com/acme/s-1a\">Acme S-1/A</a>");
+    words.ShouldContain("<td>H1 2026</td>");
+    words.ShouldContain("<th scope=\"row\">2023</th><td>$3.6B</td>");
+    html.IndexOf("deck-text", StringComparison.Ordinal)
+      .ShouldBeLessThan(html.IndexOf("<script", StringComparison.Ordinal));
+  }
+
+  [Fact]
+  public void The_pages_text_leaves_out_what_the_layout_repeats_on_every_slide()
+  {
+    // Arrange
+    Presentation presentation = PresentationLoader.Load(
+      Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example"));
+
+    // Act
+    string html = HtmlExport.Build(presentation, Assets);
+
+    // Assert
+    Words(html).ShouldNotContain("Confidential. Prepared for board discussion.");
+  }
+
+  [Fact]
+  public void The_pages_text_escapes_what_the_slides_say()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    fixture.Write("deck/slides/one.yaml", """
+      layout: cover
+      title: "<b>R&D</b>"
+      """);
+
+    // Act
+    string html = HtmlExport.Build(fixture.Load(), Assets);
+
+    // Assert
+    Words(html).ShouldContain("<h2>&lt;b&gt;R&amp;D&lt;/b&gt;</h2>");
+  }
+
+  private static string Words(string html)
+  {
+    Match match = Regex.Match(html, "<article class=\"deck-text\".*?</article>", RegexOptions.Singleline);
+    match.Success.ShouldBeTrue();
+    return match.Value;
+  }
+
   private static void Place(DeckFixture fixture, string name, byte[] picture)
   {
     fixture.Write($"deck/media/{name}", "");

@@ -317,3 +317,27 @@ body.exported .present.controls {
     max-width: calc(100% - 208px);
   }
 }
+/* The slides as plain text, which a page without scripts shows in place of the viewer. */
+.deck-text {
+  display: none;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  line-height: 1.5;
+}
+
+.deck-text section {
+  margin-top: 32px;
+}
+
+.deck-text table {
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.deck-text th,
+.deck-text td {
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  text-align: left;
+}
