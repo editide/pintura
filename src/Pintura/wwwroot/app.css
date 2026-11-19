@@ -74,8 +74,12 @@
   box-sizing: border-box;
 }
 
+/* Phone browsers enlarge small text in wide blocks by their laid-out width, which ignores the transform that scales a
+   slide down, so footnotes and long bullets would grow and wrap unlike the slide. */
 html {
   height: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
