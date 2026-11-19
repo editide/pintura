@@ -776,3 +776,22 @@ test('a dashed series draws its line and its legend key dashed', () => {
   assert.equal(primitives.find((primitive) => primitive.part === 'line').dash, 'dash');
   assert.equal(primitives.find((primitive) => primitive.part === 'legend' && primitive.kind === 'line').dash, 'dash');
 });
+
+test('an outlined series outlines its bars and its legend key, a point its own bar, and a hollow bar fills none', () => {
+  // Arrange
+  const dashed = { color: '#333333', width: 0.75, dash: 'dash' };
+  const drawn = chart({ legend: 'bottom', colors: [null, '#222222'], series: [
+    { name: 'Option', values: [3796, 4086], outline: dashed },
+    { name: 'AI', values: [2620, 1237], colors: [null, 'none'], outlines: [null, dashed] }] });
+
+  // Act
+  const primitives = layoutChart(drawn, 400, 300, measure);
+
+  // Assert
+  const bars = primitives.filter((primitive) => primitive.part === 'bar');
+  assert.deepEqual(bars.map((bar) => [bar.fill, bar.outline?.dash ?? null]),
+    [[null, 'dash'], [null, 'dash'], ['#222222', null], ['none', 'dash']]);
+  const swatches = primitives.filter((primitive) => primitive.part === 'legend' && primitive.kind === 'rect');
+  assert.deepEqual(swatches.map((swatch) => [swatch.fill, swatch.outline?.color ?? null]),
+    [[null, '#333333'], ['#222222', null]]);
+});

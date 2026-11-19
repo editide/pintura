@@ -34,7 +34,7 @@ What nothing sets is PowerPoint's default, which `--element` shows as such: `gap
 Stacked charts always overlap fully.
 Gridlines, the legend, the title, labels, and markers stay off until something sets them.
 A marker is outlined in its line's color and width, so `fill: light1` draws it hollow.
-A series drawn in `none`, or a pie's slice, has no legend entry, as a series carrying only labels, such as a total, needs none.
+A series drawn in `none` without an outline, or a pie's slice, has no legend entry, as a series carrying only labels, such as a total, needs none.
 A number with no format shows as written, and percents (a percent stacked axis, `show: percent`) as whole percents.
 An axis's `min`, `max`, or `step` nobody fixes comes from its data: the axis reaches zero and every stack's end, less totals, 5% past each end, its step is 1, 2, or 5 times a power of ten giving five to ten steps, and its ends round out to whole steps, so a stack of 830, 24.5, and 66 runs from 0 to 1000 by 100.
 A percent stack runs to 100% exactly.
@@ -48,22 +48,23 @@ Maps merge key by key, so a chart writing `data_labels: { format: billions_of_do
 
 ## Series
 
-A series takes six keys of its own under `series`, by its name in the CSV:
+A series takes seven keys of its own under `series`, by its name in the CSV:
 
 | Key | Value |
 | --- | --- |
 | `type` | `line`, a line over a column chart's columns, or `total`, a stack's total on a stacked column or bar chart. |
 | `axis` | `secondary`, for a line drawn against `secondary_axis`; one series at least stays on the value axis. |
 | `dash` | `solid`, the default, `dash`, or `dot`, for a line, such as a forecast or a target. |
+| `outline` | `{ color, width, dash }` around each column or bar, or `none`; `color` is by default the text's color, `width` 0.75, and `dash` `solid`, `dash`, or `dot`. |
 | `data_labels` | The chart's `data_labels` keys, layered over the chart's key by key. |
 | `markers` | The chart's `markers` keys, for a line, layered over the chart's key by key. |
-| `points` | By category, `{ color }` for a single column or bar in a color of its own, such as a year to pick out; on a line, `{ color, markers }` styles that point's marker, `color` outlining it and filling it unless `markers` names a `fill`, and `markers` taking the `markers` keys over the series' key by key; on any series, `data_labels` takes the `data_labels` keys over the series' key by key, for one label to stand out, show alone, or show none. A total's points take only `data_labels`, without a position. |
+| `points` | By category, `{ color, outline }` for a single column or bar in a color or outline of its own, such as a year to pick out, `color: none` leaving it hollow and `outline` taking the `outline` keys over the series' key by key, or `none`; on a line, `{ color, markers }` styles that point's marker, `color` outlining it and filling it unless `markers` names a `fill`, and `markers` taking the `markers` keys over the series' key by key; on any series, `data_labels` takes the `data_labels` keys over the series' key by key, for one label to stand out, show alone, or show none. A total's points take only `data_labels`, without a position. |
 
 A line over columns takes the chart's labels but not their position, which is `above` unless it sets one.
 A total draws no bar and has no legend entry: it shows its value past the end of its stack, which the axis scales to, in the chart's label format and boldness but the text's color, since the chart's label color is usually for inside the bars.
 The total is a row in the CSV like any other, and `--check` warns when it isn't what its stack adds up to, to within the last digit its labels show.
 A series keeps its slot in `series_colors`, a total's going unused.
-A point's color leaves its legend entry in the series color.
+A point's color or outline leaves its legend entry as the series draws it, and a series' outline outlines its legend entry too.
 A line's point with `markers: { shape: none }` drops its marker, and one with a shape draws it on a line that has none.
 A point's labels layer over its series' as written, so a point with `show: value` on a series with `show: none` takes the position, format, and color the series would.
 
@@ -85,6 +86,16 @@ series:
     points:
       "2011-12": { color: accent3 }
       "2013-14": { color: accent3 }
+```
+
+```yaml
+# charts/ownership.yaml, with the unexercised options a hollow, dashed segment
+type: stacked_column
+data: ownership.csv
+series:
+  Options:
+    points:
+      "Fully diluted": { color: none, outline: { dash: dash } }
 ```
 
 ```yaml

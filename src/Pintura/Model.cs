@@ -640,13 +640,14 @@ public class ChartSeries
 }
 
 /// <summary>A series' own keys: <c>type</c> draws it as a <c>line</c> over columns or as a stack's <c>total</c>,
-/// <c>axis</c> puts a line on the secondary axis, <c>dash</c> dashes a line, and <c>data_labels</c> and
-/// <c>markers</c> layer over the chart's.</summary>
+/// <c>axis</c> puts a line on the secondary axis, <c>dash</c> dashes a line, <c>outline</c> outlines columns or
+/// bars, and <c>data_labels</c> and <c>markers</c> layer over the chart's.</summary>
 public class ChartSeriesOptions
 {
   public string? Type { get; set; }
   public string? Axis { get; set; }
   public string? Dash { get; set; }
+  public Stroke? Outline { get; set; }
   public ChartLabels DataLabels { get; init; } = new ChartLabels();
   public ChartMarkers Markers { get; init; } = new ChartMarkers();
   /// <summary>Single points by category: a column's or bar's own fill, a line's own marker, or a label of its own.
@@ -747,6 +748,7 @@ public class ChartProperties
 public class ChartPoint
 {
   public Color? Color { get; set; }
+  public Stroke? Outline { get; set; }
   public ChartMarkers Markers { get; init; } = new ChartMarkers();
   public ChartLabels DataLabels { get; init; } = new ChartLabels();
 }

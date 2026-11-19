@@ -191,10 +191,13 @@ public record ChartPayload
 /// <summary>Colors are a point's own color, by category, where the series colors any; on a line they outline its
 /// markers. <see cref="PointMarkers"/> are a line's points' own markers, over the series', by category, and
 /// <see cref="PointLabels"/> the points' own labels, null where a point takes the series'. <see cref="Dash"/> is a
-/// dashed line's <c>dash</c> or <c>dot</c>, null for a solid one.</summary>
+/// dashed line's <c>dash</c> or <c>dot</c>, null for a solid one. <see cref="Outline"/> outlines a column or bar
+/// series, and <see cref="Outlines"/>, where any point has its own, is each point's, null where it has none. A point
+/// color of <c>none</c> draws its column hollow.</summary>
 public record SeriesPayload(string Name, List<double?> Values, string Type, bool Secondary, LabelsPayload? Labels,
   MarkersPayload? Markers, List<TracePayload>? Traces = null, List<string?>? Colors = null,
-  List<MarkersPayload?>? PointMarkers = null, List<LabelsPayload?>? PointLabels = null, string? Dash = null);
+  List<MarkersPayload?>? PointMarkers = null, List<LabelsPayload?>? PointLabels = null, string? Dash = null,
+  StrokePayload? Outline = null, List<StrokePayload?>? Outlines = null);
 
 /// <summary>A null fill is the line's color.</summary>
 public record MarkersPayload(string Shape, double Size, string? Fill);
@@ -654,8 +657,17 @@ public static class PayloadBuilder
         }
         string prefix = $"series.{series.Name}.";
         List<string?> colors = chart.Categories
-          .Select(category => Value($"{prefix}points.{category}.color") is Color color ? Hex(color, theme) : null)
+          .Select(category => Value($"{prefix}points.{category}.color") is Color color
+            ? color.IsNone ? "none" : Hex(color, theme)
+            : null)
           .ToList();
+        StrokePayload? outline = Stroke(properties, theme, $"{prefix}outline");
+        List<StrokePayload?> outlines = chart.Categories
+          .Select(category => $"{prefix}points.{category}.outline")
+          .Select(point => properties.ContainsKey(point) ? null : Stroke(properties, theme, point) ?? outline)
+          .ToList();
+        bool pointOutlines = chart.Categories.Any(category => properties.Keys.Any(key =>
+          key.StartsWith($"{prefix}points.{category}.outline", StringComparison.Ordinal)));
         List<MarkersPayload?> pointMarkers = chart.Categories.Select(category => PointMarkers(prefix, category))
           .ToList();
         List<LabelsPayload?> pointLabels = chart.Categories
@@ -669,7 +681,8 @@ public static class PayloadBuilder
           colors.Any(color => color is not null) ? colors : null,
           pointMarkers.Any(markers => markers is not null) ? pointMarkers : null,
           pointLabels.Any(labels => labels is not null) ? pointLabels : null,
-          Value($"{prefix}dash") is string dash and not "solid" ? dash : null);
+          Value($"{prefix}dash") is string dash and not "solid" ? dash : null, outline,
+          pointOutlines ? outlines : null);
       }).ToList(),
       Colors = ((List<Color>)Value("series_colors")!).Select(color => Hex(color, theme)).ToList(),
       ValueAxis = Axis("value_axis"),

@@ -536,6 +536,34 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_column_series_and_points_borders_come_back_as_outlines()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = JsonNode.Parse(File.ReadAllText(Fixture("example.reads.json")))!.AsObject();
+    JsonNode ai = reads["slides"]![3]!["read"]!["chart_elements"]![0]!["series_list"]![2]!;
+    ai["default_data_point"] = JsonNode.Parse("""
+      { "fill": { "scheme": "accent3" },
+        "border": { "color": { "scheme": "dk1" }, "weight": 1, "dash_type": "system_dash" } }
+      """);
+    ai["data_point_list"] = JsonNode.Parse("""
+      [{ "index": 1, "fill": { "scheme": "accent3" }, "border": { "color": "transparent" } },
+        { "index": 2, "fill": "transparent",
+          "border": { "color": { "scheme": "dk1" }, "weight": 1, "dash_type": "system_dash" } }]
+      """);
+
+    // Act
+    PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
+    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
+
+    // Assert
+    chart.ShouldContain("outline: { color: dark1, width: 1, dash: dash }");
+    chart.ShouldContain("2024: { outline: none }");
+    chart.ShouldContain("2025: { color: none }");
+  }
+
+  [Fact]
   public void A_lines_own_markers_come_back_as_its_points()
   {
     // Arrange

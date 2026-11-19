@@ -1294,6 +1294,31 @@ public partial class PowerPointMapping
 
   /// <summary>One of PowerPoint's dash patterns as the format's <c>dash</c> or <c>dot</c>, or null for a solid line.
   /// </summary>
+  /// <summary>A border as <c>color</c>, <c>width</c>, and <c>dash</c> under <paramref name="prefix"/>, or null for
+  /// none. A width PowerPoint leaves out is its 0.75 points, Pintura's default too, and a solid border is left solid
+  /// unless <paramref name="solid"/> says so, as a point must over a dashed series.</summary>
+  private JsonObject? Outline(JsonNode? border, string prefix, string where, bool solid = false)
+  {
+    if (Color(border?["color"], where) is not JsonObject color || color["none"] is not null)
+    {
+      return null;
+    }
+    var outline = new JsonObject
+    {
+      [$"{prefix}color"] = color,
+      [$"{prefix}width"] = (double?)border!["weight"] ?? 0.75
+    };
+    if (Dash((string?)border["dash_type"]) is string dash)
+    {
+      outline[$"{prefix}dash"] = dash;
+    }
+    else if (solid)
+    {
+      outline[$"{prefix}dash"] = "solid";
+    }
+    return outline;
+  }
+
   private static string? Dash(string? type)
   {
     return type is null or "solid" ? null : type.Contains("dot", StringComparison.Ordinal) ? "dot" : "dash";
@@ -2162,6 +2187,43 @@ public partial class PowerPointMapping
         if (colored.Count > 0)
         {
           AddPoints(json, colored);
+          json["labels"] ??= own;
+        }
+      }
+      if (SeriesType(entry) is "column" or "bar")
+      {
+        JsonObject? outline = Outline(entry["default_data_point"]?["border"], "outline.", where);
+        if (outline is not null)
+        {
+          json["outline"] = outline;
+          json["labels"] ??= own;
+        }
+        var outlined = new JsonObject();
+        foreach (JsonNode? point in entry["data_point_list"] as JsonArray ?? new JsonArray())
+        {
+          string? key = categoryKeys.FirstOrDefault(candidate =>
+            int.Parse(candidate[..candidate.IndexOf(':')], CultureInfo.InvariantCulture) == (int?)point?["index"]);
+          if (key is null || point?["border"] is not JsonNode border)
+          {
+            continue;
+          }
+          string pointKey = $"points.{key[(key.IndexOf(':') + 1)..]}.outline";
+          JsonObject? pointOutline = Outline(border, "outline.", where, outline?["outline.dash"] is not null);
+          if (pointOutline is null && outline is not null)
+          {
+            outlined[pointKey] = "none";
+          }
+          else if (pointOutline is not null && !JsonNode.DeepEquals(Outline(border, "outline.", where), outline))
+          {
+            foreach ((string outlineKey, JsonNode? value) in pointOutline)
+            {
+              outlined[$"{pointKey}.{outlineKey["outline.".Length..]}"] = value?.DeepClone();
+            }
+          }
+        }
+        if (outlined.Count > 0)
+        {
+          AddPoints(json, outlined);
           json["labels"] ??= own;
         }
       }

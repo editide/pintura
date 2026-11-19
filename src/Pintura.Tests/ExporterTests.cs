@@ -405,6 +405,40 @@ public class ExporterTests
   }
 
   [Fact]
+  public void An_outline_goes_as_a_border_on_the_series_and_on_each_point_with_its_own()
+  {
+    // Arrange
+    JsonNode item = Json("""
+      { "properties": { "frame": [40, 100, 430, 380], "type": "clustered_column", "categories": ["2024", "2025"],
+        "series": [{ "name": "Option", "values": [3796, 4086],
+          "outline": { "outline.color": { "theme": "dark1" }, "outline.width": 0.75, "outline.dash": "dash" },
+          "points": { "points.2024.outline": "none", "points.2025.color": { "none": true },
+            "points.2025.outline.color": { "theme": "dark1" }, "points.2025.outline.width": 2,
+            "points.2025.outline.dash": "dash" } },
+          { "name": "AI", "values": [2620, 1237], "points": { "points.2025.outline.color": { "theme": "dark1" },
+            "points.2025.outline.width": 1 } }],
+        "series_colors": [{ "theme": "accent1" }, { "theme": "accent2" }] } }
+      """);
+
+    // Act
+    JsonArray series = NewExporter().Chart(item)["series_list"]!.AsArray();
+
+    // Assert
+    ShouldMatch(series[0]!["default_data_point"], """
+      { "fill": { "scheme": "accent1" }, "border": { "color": { "scheme": "dk1" }, "weight": 0.75,
+        "dash_type": "dash" } }
+      """);
+    ShouldMatch(series[0]!["data_points"], """
+      [{ "index": 0, "border": { "color": "transparent" } },
+        { "index": 1, "fill": "transparent", "border": { "color": { "scheme": "dk1" }, "weight": 2,
+          "dash_type": "dash" } }]
+      """);
+    ShouldMatch(series[1]!["data_points"], """
+      [{ "index": 1, "border": { "color": { "scheme": "dk1" }, "weight": 1 } }]
+      """);
+  }
+
+  [Fact]
   public void A_points_own_color_goes_as_a_data_point_at_its_category_as_sent()
   {
     // Arrange

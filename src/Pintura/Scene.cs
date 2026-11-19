@@ -675,6 +675,10 @@ public class SceneBuilder
     {
       properties[$"{prefix}dash"] = new Resolved(dash, options.Origins["dash"]);
     }
+    if (options.Outline is Stroke outline)
+    {
+      Outline(properties, $"{prefix}outline", outline, null);
+    }
     ChartLabels own = options.DataLabels;
     var values = new Dictionary<string, object?>
     {
@@ -724,6 +728,11 @@ public class SceneBuilder
           properties[prefix + pointKey + key] = new Resolved(value, options.Origins[pointKey + key]);
         }
       }
+      if (point.Outline is Stroke pointOutline)
+      {
+        Outline(properties, $"{prefix}{pointKey}outline", pointOutline,
+          options.Outline is null ? null : $"{prefix}outline");
+      }
       ChartLabels labels = point.DataLabels;
       var pointLabels = new Dictionary<string, object?>
       {
@@ -769,6 +778,32 @@ public class SceneBuilder
       }
     }
     MarkerDefaults(properties, prefix);
+  }
+
+  /// <summary>An outline's keys under <paramref name="key"/>, a point's over its series' at <paramref name="over"/>
+  /// key by key. An outline is the chart's text color and PowerPoint's 0.75 points unless it says otherwise, since
+  /// the series' own color would vanish against its fill, and a hollow column has none.</summary>
+  private static void Outline(Dictionary<string, Resolved> properties, string key, Stroke outline, string? over)
+  {
+    if (outline.None == true)
+    {
+      properties[key] = new Resolved("none", outline.Origins["none"]);
+      return;
+    }
+    foreach ((string name, object? value) in new Dictionary<string, object?>
+      { ["color"] = outline.Color, ["width"] = outline.Width, ["dash"] = outline.Dash })
+    {
+      if (value is not null)
+      {
+        properties[$"{key}.{name}"] = new Resolved(value, outline.Origins[name]);
+      }
+      else if (over is not null && properties.TryGetValue($"{over}.{name}", out Resolved? inherited))
+      {
+        properties[$"{key}.{name}"] = inherited;
+      }
+    }
+    properties.TryAdd($"{key}.color", properties["text.color"]);
+    properties.TryAdd($"{key}.width", new Resolved(0.75, null));
   }
 
   /// <summary>Shown labels take the position their series draws them at unless something places them; hidden ones

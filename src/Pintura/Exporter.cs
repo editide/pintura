@@ -1463,6 +1463,58 @@ public partial class Exporter
     public string? Type => Text(Get(Entry, "type"));
   }
 
+  /// <summary>A column's or bar's outline as the series' border, and each point's own as its data point's, merged
+  /// into any fill the point already has; a point outlined none has a transparent border.</summary>
+  private static void Outlines(JsonObject result, JsonNode entry, List<JsonNode?> categories)
+  {
+    JsonObject Border(JsonNode outline, string prefix)
+    {
+      var border = new JsonObject
+      {
+        ["color"] = Color(Get(outline, $"{prefix}color")),
+        ["weight"] = Get(outline, $"{prefix}width")?.DeepClone()
+      };
+      if (Text(Get(outline, $"{prefix}dash")) is string dash and not "solid")
+      {
+        border["dash_type"] = dash;
+      }
+      return border;
+    }
+
+    if (Get(entry, "outline") is JsonNode outline)
+    {
+      (result["default_data_point"] ??= new JsonObject()).AsObject()["border"] = Border(outline, "outline.");
+    }
+    if (Get(entry, "points") is not JsonObject points)
+    {
+      return;
+    }
+    List<JsonNode?> list = (result["data_points"] as JsonArray)?.ToList() ?? new List<JsonNode?>();
+    (result["data_points"] as JsonArray)?.Clear();
+    for (int point = 0; point < categories.Count; point++)
+    {
+      string prefix = $"points.{Text(categories[point])}.outline";
+      JsonObject? border = Text(Get(points, prefix)) == "none"
+        ? new JsonObject { ["color"] = "transparent" }
+        : Get(points, $"{prefix}.width") is not null ? Border(points, $"{prefix}.") : null;
+      if (border is null)
+      {
+        continue;
+      }
+      JsonObject? own = list.OfType<JsonObject>().FirstOrDefault(candidate => (int?)candidate["index"] == point);
+      if (own is null)
+      {
+        own = new JsonObject { ["index"] = point };
+        list.Add(own);
+      }
+      own["border"] = border;
+    }
+    if (list.Count > 0)
+    {
+      result["data_points"] = Array(list.OrderBy(candidate => (int?)candidate!["index"]));
+    }
+  }
+
   // What Pintura leaves unset is PowerPoint's default, except the legend, the title, and gridlines, which stay off.
   public JsonObject Chart(JsonNode item)
   {
@@ -1647,6 +1699,10 @@ public partial class Exporter
           .Select((category, point) => (Point: point, Color: Get(points, $"points.{Text(category)}.color")))
           .Where(pair => pair.Color is not null)
           .Select(pair => (JsonNode?)new JsonObject { ["index"] = pair.Point, ["fill"] = Color(pair.Color) }));
+      }
+      if (!drawnAsLine && entry.Type != "total")
+      {
+        Outlines(result, entry.Entry, categories);
       }
       if (drawnAsLine)
       {
