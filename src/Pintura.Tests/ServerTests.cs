@@ -1221,6 +1221,103 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task The_preview_answers_before_its_first_load_ends_and_names_the_book_it_waits_on()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    using var books = new HeldBooks();
+    deck.Books = books;
+    deck.Write("book/book.yaml", "name: Acme");
+    deck.Write("deck/presentation.yaml", """
+      name: Test deck
+      theme: ../theme
+      books:
+        - id: acme
+          path: ../book
+      slides:
+        - two
+      """);
+    await using Served served = await Served.Start(deck, background: true);
+    using HttpResponseMessage events = await served.Client.GetAsync($"{served.Url}/api/events",
+      HttpCompletionOption.ResponseHeadersRead);
+    using var reader = new StreamReader(await events.Content.ReadAsStreamAsync());
+
+    // Act
+    string waiting = await NextActivity(reader);
+    Task<string> presentation = served.Client.GetStringAsync($"{served.Url}/api/presentation");
+    await Task.Delay(300);
+    bool answeredWhileWaiting = presentation.IsCompleted;
+    books.Release();
+    string answered = await presentation.WaitAsync(TimeSpan.FromSeconds(10));
+    string done = await NextActivity(reader);
+
+    // Assert
+    waiting.ShouldBe("Reading the book");
+    answeredWhileWaiting.ShouldBeFalse();
+    answered.ShouldContain("\"two\"");
+    done.ShouldBeEmpty();
+  }
+
+  private static async Task<string> NextActivity(StreamReader reader)
+  {
+    while (await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)) is string line)
+    {
+      if (line == "event: activity")
+      {
+        string data = (await reader.ReadLineAsync())!;
+        return data["data:".Length..].Trim();
+      }
+    }
+    throw new EndOfStreamException();
+  }
+
+  /// <summary>Books that answer only once released, as Libreta keeps a large book's first load waiting.</summary>
+  private sealed class HeldBooks : IBookReader, IDisposable
+  {
+    private readonly ManualResetEventSlim released = new ManualResetEventSlim();
+    private int asking;
+
+    public bool Asking => Volatile.Read(ref asking) > 0;
+
+    public void Release()
+    {
+      released.Set();
+    }
+
+    public IReadOnlyDictionary<string, BookLine> Lines(string root)
+    {
+      Interlocked.Increment(ref asking);
+      try
+      {
+        released.Wait(TimeSpan.FromSeconds(10));
+        return new Dictionary<string, BookLine>();
+      }
+      finally
+      {
+        Interlocked.Decrement(ref asking);
+      }
+    }
+
+    public BookView View(string root, string id)
+    {
+      return new BookView(id, [], []);
+    }
+
+    public string Page(string root)
+    {
+      return "<html></html>";
+    }
+
+    public void Dispose()
+    {
+      released.Set();
+      released.Dispose();
+    }
+
+
+  }
+
+  [Fact]
   public async Task A_page_holding_the_event_stream_open_doesnt_hold_up_stopping_the_server()
   {
     // Arrange

@@ -351,6 +351,12 @@ button {
   box-shadow: 0 0 0 3px var(--ok-soft);
 }
 
+.status-indicator.busy {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: pulse .8s ease-in-out infinite alternate;
+}
+
 .status-indicator.down {
   background: var(--bad);
   box-shadow: 0 0 0 3px var(--bad-soft);
@@ -730,9 +736,20 @@ main {
   }
 }
 
+@keyframes pulse {
+  to {
+    opacity: .35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .tool .spinner {
+  .tool .spinner,
+  .loading .spinner {
     animation-duration: 2.4s;
+  }
+
+  .status-indicator.busy {
+    animation: none;
   }
 }
 
@@ -1063,6 +1080,26 @@ main {
 
 .slide-view.zoomed {
   overflow: auto;
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.loading .spinner {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
 }
 
 .slide-canvas {

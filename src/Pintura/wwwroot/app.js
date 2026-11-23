@@ -20,6 +20,8 @@ const saved = JSON.parse(localStorage.getItem(SETTINGS) || '{}');
 
 const state = {
   deck: null,
+  // What a slow load on the server waits on, such as reading a book, or null.
+  activity: null,
   // The cell the book last opened at, which popping the book out opens in a tab.
   traced: null,
   // What the theme view draws, fetched beside the deck.
@@ -1746,9 +1748,15 @@ function renderStatus() {
   if (state.live === null) {
     return;
   }
-  document.getElementById('status-dot').className = `status-indicator ${state.live ? 'live' : 'down'}`;
+  const busy = state.live && state.activity;
+  document.getElementById('status-dot').className =
+    `status-indicator ${busy ? 'busy' : state.live ? 'live' : 'down'}`;
+  // Before the first slides arrive, the slide view says what they wait on too.
+  document.getElementById('loading').hidden = !busy || Boolean(state.deck);
+  document.getElementById('loading-text').textContent = state.activity ?? '';
   const changed = comparing() ? state.compare.diff.slides.length : 0;
   const text = !state.live ? 'Reconnecting'
+    : busy ? state.activity
     : !comparing() ? 'Live'
     : changed === 0 ? 'No changes'
     : `${changed} ${changed === 1 ? 'slide' : 'slides'} changed`;
@@ -1815,5 +1823,9 @@ events.onmessage = (event) => {
   load().catch((error) => showError(String(error)));
 };
 events.addEventListener('assets', () => location.reload());
+events.addEventListener('activity', (event) => {
+  state.activity = event.data || null;
+  renderStatus();
+});
 // A commit or checkout changes what the slides compare against without changing them.
 events.addEventListener('head', () => load().catch((error) => showError(String(error))));

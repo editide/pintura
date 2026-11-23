@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -251,7 +252,7 @@ try
   }
 
   string assets = PreviewServer.InterfaceFolder();
-  using var store = new PresentationStore(root, assets, Console.Out);
+  using var store = new PresentationStore(root, assets, Console.Out, background: true);
   int port = PreviewServer.ChoosePort(options.Port, options.PortSpecified);
   var instance = new ServerInstance(Environment.ProcessId, root, port, Build: ServerInstance.CurrentBuild);
   WebApplication app = PreviewServer.Create(assets, instance.Url);
@@ -269,7 +270,7 @@ try
 
   Console.WriteLine($"  {root}");
   Console.WriteLine($"  interface {assets}");
-  Console.WriteLine($"  {store.Deck.Slides.Count} slides, watching for changes, serving http://localhost:{port}");
+  Console.WriteLine($"  watching for changes, serving http://localhost:{port}");
   await app.StartAsync();
   registry.Register(instance);
   try
@@ -312,11 +313,17 @@ static TextWriter Utf8Writer(Stream stream)
 public class PresentationStore : IDisposable
 {
   private const int ReloadDelayMilliseconds = 120;
+  // A load quicker than this goes unannounced, so a save doesn't flash a status the eye can't read.
+  private static readonly TimeSpan ActivityDelay = TimeSpan.FromMilliseconds(300);
   private static readonly string[] SourceExtensions =
     [".yaml", ".csv", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"];
 
   private readonly string root;
   private readonly TextWriter log;
+  private readonly IBookReader? books;
+  private readonly TaskCompletionSource ready =
+    new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+  private long loadStarted;
   private readonly List<FileSystemWatcher> watchers = new List<FileSystemWatcher>();
   private readonly Dictionary<string, FileSystemWatcher> sourceWatchers =
     new Dictionary<string, FileSystemWatcher>(StringComparer.Ordinal);
@@ -331,14 +338,41 @@ public class PresentationStore : IDisposable
   private long headVersion;
   private bool disposed;
 
-  public PresentationStore(string root, string assets, TextWriter log)
+  /// <param name="background">Loads on another thread, so the preview can open while a large book is read, and
+  /// <see cref="Ready"/> says when the first load ends.</param>
+  public PresentationStore(string root, string assets, TextWriter log, IBookReader? books = null,
+    bool background = false)
   {
     this.root = root;
     this.log = log;
+    this.books = books;
     reloadTimer = new Timer(_ => Rebuild(), null, Timeout.Infinite, Timeout.Infinite);
-    Rebuild();
+    if (!background)
+    {
+      Rebuild();
+    }
     watchers.Add(CreateWatcher(assets, OnAssetChanged));
     WatchGit();
+    if (background)
+    {
+      Task.Run(Rebuild);
+    }
+  }
+
+  public Task Ready => ready.Task;
+
+  /// <summary>What a load that has run a while waits on, for the page to show; null when none is running.</summary>
+  public string? Activity
+  {
+    get
+    {
+      long started = Interlocked.Read(ref loadStarted);
+      if (started == 0 || Stopwatch.GetElapsedTime(started) < ActivityDelay)
+      {
+        return null;
+      }
+      return (books ?? LibretaReader.Shared).Asking ? "Reading the book" : "Loading";
+    }
   }
 
   public DeckPayload Deck => Volatile.Read(ref snapshot).Deck;
@@ -554,64 +588,78 @@ public class PresentationStore : IDisposable
   {
     lock (rebuildGate)
     {
-      lock (gate)
-      {
-        if (disposed)
-        {
-          return;
-        }
-      }
-      long next = Version + 1;
-      Presentation presentation;
-      DeckPayload deck;
-      ThemeViewPayload theme;
-      string json;
+      Interlocked.Exchange(ref loadStarted, Stopwatch.GetTimestamp());
       try
       {
-        presentation = PresentationLoader.Load(root);
-        deck = PayloadBuilder.Build(presentation, next, MediaUrl);
-        theme = ThemeView.Build(presentation, MediaUrl);
-        // The theme view draws styles and formats no slide uses, so they count as drawn too.
-        json = JsonSerializer.Serialize(deck with { Version = 0 }, PayloadJson.Options) +
-          JsonSerializer.Serialize(theme, PayloadJson.Options);
+        Load();
       }
-      // Anything at all, since a reload runs on a timer, where an exception would stop the server.
-      catch (Exception exception)
+      finally
       {
-        string message = exception is LoadException
-          ? exception.Message
-          : $"couldn't load the presentation ({exception.Message.TrimEnd('.')})";
-        Snapshot previous = Volatile.Read(ref snapshot);
-        RefreshSourceWatchers([root, .. ThemeFolders()]);
-        if (previous.Deck.Error == message)
-        {
-          return;
-        }
-        Volatile.Write(ref snapshot, previous with
-        {
-          Deck = previous.Deck with { Version = next, Error = message }
-        });
-        Interlocked.Exchange(ref version, next);
-        log.WriteLine($"  error     {DateTime.Now:HH:mm:ss}  {message}");
-        return;
+        Interlocked.Exchange(ref loadStarted, 0);
+        ready.TrySetResult();
       }
-      RefreshSourceWatchers([root, presentation.Theme.Root, .. presentation.Books.Values.Select(book => book.Root)]);
-      HashSet<string> media = Media(presentation);
-      if (json == drawn && Deck.Error is null)
-      {
-        // Lines can move without the drawing changing, and the inspector reports them.
-        Volatile.Write(ref snapshot, Volatile.Read(ref snapshot) with { Presentation = presentation, Theme = theme });
-        return;
-      }
-      drawn = json;
-      Volatile.Write(ref snapshot, new Snapshot(deck, media, presentation, theme));
-      Interlocked.Exchange(ref version, next);
-      foreach (SlidePayload slide in deck.Slides.Where(slide => slide.Error is not null))
-      {
-        log.WriteLine($"  error     {DateTime.Now:HH:mm:ss}  {slide.Error}");
-      }
-      log.WriteLine($"  reloaded  {DateTime.Now:HH:mm:ss}  {deck.Slides.Count} slides");
     }
+  }
+
+  private void Load()
+  {
+    lock (gate)
+    {
+      if (disposed)
+      {
+        return;
+      }
+    }
+    long next = Version + 1;
+    Presentation presentation;
+    DeckPayload deck;
+    ThemeViewPayload theme;
+    string json;
+    try
+    {
+      presentation = PresentationLoader.Load(root, books: books);
+      deck = PayloadBuilder.Build(presentation, next, MediaUrl);
+      theme = ThemeView.Build(presentation, MediaUrl);
+      // The theme view draws styles and formats no slide uses, so they count as drawn too.
+      json = JsonSerializer.Serialize(deck with { Version = 0 }, PayloadJson.Options) +
+        JsonSerializer.Serialize(theme, PayloadJson.Options);
+    }
+    // Anything at all, since a reload runs on a timer, where an exception would stop the server.
+    catch (Exception exception)
+    {
+      string message = exception is LoadException
+        ? exception.Message
+        : $"couldn't load the presentation ({exception.Message.TrimEnd('.')})";
+      Snapshot previous = Volatile.Read(ref snapshot);
+      RefreshSourceWatchers([root, .. ThemeFolders()]);
+      if (previous.Deck.Error == message)
+      {
+        return;
+      }
+      Volatile.Write(ref snapshot, previous with
+      {
+        Deck = previous.Deck with { Version = next, Error = message }
+      });
+      Interlocked.Exchange(ref version, next);
+      log.WriteLine($"  error     {DateTime.Now:HH:mm:ss}  {message}");
+      return;
+    }
+    RefreshSourceWatchers([root, presentation.Theme.Root, .. presentation.Books.Values.Select(book => book.Root)]);
+    HashSet<string> media = Media(presentation);
+    if (json == drawn && Deck.Error is null)
+    {
+      // Lines can move without the drawing changing, and the inspector reports them.
+      Volatile.Write(ref snapshot, Volatile.Read(ref snapshot) with { Presentation = presentation, Theme = theme });
+      return;
+    }
+    drawn = json;
+    Volatile.Write(ref snapshot, new Snapshot(deck, media, presentation, theme));
+    Interlocked.Exchange(ref version, next);
+    foreach (SlidePayload slide in deck.Slides.Where(slide => slide.Error is not null))
+    {
+      log.WriteLine($"  error     {DateTime.Now:HH:mm:ss}  {slide.Error}");
+    }
+    log.WriteLine($"  reloaded  {DateTime.Now:HH:mm:ss}  {deck.Slides.Count} slides");
   }
 
   // A presentation that fails to load still names its theme and books often enough to keep watching them.
