@@ -848,6 +848,7 @@ public static partial class Patcher
       case ScalarStyle.Literal:
         return First(edit, Written, Lines(text, scalar, value, updated), Block(text, scalar, parent, updated));
       case ScalarStyle.Folded:
+        return First(edit, Written, Folded(text, scalar, value, updated), Block(text, scalar, parent, updated));
       case not ScalarStyle.Literal when !OneLine(scalar):
         throw new PatchException($"{edit.Path} is written across lines; write it as a block (|) to edit it here");
       // Markup of more than one line reads best as a block, as an agent writes it.
@@ -1603,6 +1604,55 @@ public static partial class Patcher
     return escaped.ToString();
   }
 
+  /// <summary>Maps the changed stretch back to its source lines, including any folds it crosses.</summary>
+  private static string Folded(string text, YamlScalarNode scalar, string value, string updated)
+  {
+    int prefix = 0;
+    while (prefix < Math.Min(value.Length, updated.Length) && value[prefix] == updated[prefix])
+    {
+      prefix++;
+    }
+    int suffix = 0;
+    while (suffix < Math.Min(value.Length, updated.Length) - prefix && value[^(suffix + 1)] == updated[^(suffix + 1)])
+    {
+      suffix++;
+    }
+
+    string typed = updated[prefix..^suffix];
+    if (typed.Contains('\n'))
+    {
+      return text;
+    }
+    int end = value.Length - suffix;
+    string source = Node.Span(text, scalar);
+    int offset = 0;
+    int start = -1;
+    foreach ((int left, int right) in LineSpans(source).Skip(1))
+    {
+      string content = source[left..right].TrimStart(' ');
+      if (content.Length == 0)
+      {
+        continue;
+      }
+      int index = value.IndexOf(content, offset, StringComparison.Ordinal);
+      if (index < 0)
+      {
+        break;
+      }
+      offset = index + content.Length;
+      if (start < 0 && index <= prefix && prefix <= offset)
+      {
+        start = right - (offset - prefix);
+      }
+      if (start >= 0 && index <= end && end <= offset)
+      {
+        string replacement = Splice(source, start, right - (offset - end), typed);
+        return Splice(text, scalar, replacement);
+      }
+    }
+    return text;
+  }
+
   /// <summary>A literal block with each changed line of its value replaced in place, at the block's indentation.
   /// </summary>
   private static string Lines(string text, YamlScalarNode scalar, string value, string updated)
@@ -1659,8 +1709,13 @@ public static partial class Patcher
     // YAML takes a block's indentation from its first line with words, so one starting with a space needs it stated.
     string stated = lines.FirstOrDefault(line => line.Trim().Length > 0)?.StartsWith(' ') == true ? "2" : "";
     // A block's span takes in its last line break, where a one-line value's ends at its last character.
-    string end = scalar.Style == ScalarStyle.Literal && Node.Span(text, scalar).EndsWith('\n') ? "\n" : "";
-    return Splice(text, scalar, $"|{stated}{(kept ? "" : "-")}\n{Indented(lines, indent)}{end}");
+    bool block = scalar.Style is ScalarStyle.Literal or ScalarStyle.Folded;
+    string source = Node.Span(text, scalar);
+    string header = block ? source.Split('\n', 2)[0].TrimEnd('\r') : "";
+    int comment = header.IndexOfAny([' ', '\t']);
+    string tail = comment < 0 ? "" : header[comment..];
+    string end = block && source.EndsWith('\n') ? "\n" : "";
+    return Splice(text, scalar, $"|{stated}{(kept ? "" : "-")}{tail}\n{Indented(lines, indent)}{end}");
   }
 
   private static List<(int Start, int End)> LineSpans(string text)

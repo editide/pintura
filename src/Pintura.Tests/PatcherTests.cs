@@ -218,6 +218,52 @@ public class PatcherTests
   }
 
   [Fact]
+  public void Editing_a_word_in_a_folded_title_keeps_the_wrap_and_fields()
+  {
+    // Arrange
+    string slide = "title: >- # launch date\n  GTA VI launches on ${date},\n  after two delays\n\nlayout: content\n";
+    var edit = new ValueEdit("title", Patcher.SourceAt(slide, "title")!,
+      Paragraphs: ["GTA VI launched on \uFFFC, after two delays"]);
+
+    // Act
+    string patched = Apply(slide, edit);
+
+    // Assert
+    patched.ShouldBe(slide.Replace("launches", "launched"));
+    Undo(slide, edit).ShouldBe(slide);
+  }
+
+  [Fact]
+  public void A_title_edit_can_replace_words_across_a_fold()
+  {
+    // Arrange
+    string slide = "title: >- # release\n  Release was\n  expected soon\nlayout: content\n";
+    var edit = new ValueEdit("title", Patcher.SourceAt(slide, "title")!, Paragraphs: ["Release confirmed"]);
+
+    // Act
+    string patched = Apply(slide, edit);
+
+    // Assert
+    patched.ShouldBe("title: >- # release\n  Release confirmed\nlayout: content\n");
+    Undo(slide, edit).ShouldBe(slide);
+  }
+
+  [Fact]
+  public void Adding_a_line_break_to_a_folded_title_keeps_its_header_comment()
+  {
+    // Arrange
+    string slide = "title: >- # release\n  Launch date\n  confirmed\nlayout: content\n";
+    var edit = new ValueEdit("title", Patcher.SourceAt(slide, "title")!, Paragraphs: ["Launch date\nconfirmed"]);
+
+    // Act
+    string patched = Apply(slide, edit);
+
+    // Assert
+    patched.ShouldBe("title: |- # release\n  Launch date\n  confirmed\nlayout: content\n");
+    Undo(slide, edit).ShouldBe(slide);
+  }
+
+  [Fact]
   public void A_block_whose_first_line_comes_to_start_with_a_space_states_its_indentation()
   {
     // Arrange
