@@ -57,8 +57,7 @@ public static partial class PreviewServer
       OnPrepareResponse = file => file.Context.Response.Headers.CacheControl = "no-cache"
     });
 
-    app.MapGet("/api/presentation", () => Results.Text(
-      JsonSerializer.Serialize(store.Deck, PayloadJson.Options), "application/json"));
+    app.MapGet("/api/presentation", () => Results.Text(store.DeckJson, "application/json"));
     app.MapGet("/api/theme", () => store.Theme is ThemeViewPayload theme
       ? Results.Json(theme, PayloadJson.Options)
       : Results.NotFound());
@@ -214,7 +213,7 @@ public static partial class PreviewServer
     });
     app.MapGet("/api/findings", async (string slide) =>
     {
-      store.Refresh();
+      store.RefreshIfDirty();
       if (store.Presentation is not Presentation presentation)
       {
         return Results.Json(Array.Empty<Finding>(), PayloadJson.Options);
@@ -222,7 +221,7 @@ public static partial class PreviewServer
       return await Headless(async () =>
       {
         Measurement measurement = await headless.Measure([slide]);
-        List<Finding> findings = Checks.All(presentation, measurement, FontSetting.Current(FontFolders.Files()), false);
+        List<Finding> findings = Checks.All(presentation, measurement, FontSetting.Default, false);
         return Results.Json(findings.Where(finding => finding.Slide == slide), PayloadJson.Options);
       });
     });
@@ -407,37 +406,55 @@ public static partial class PreviewServer
     return Patch(store, presentation, [(SlideFile(presentation, slide.Id), null, edits.ToList())]);
   }
 
+  /// <summary>Runs a write under the server's file lock with one rollback transaction, records the written files for
+  /// Save when requested, refreshes the store, and answers with the version and undo.</summary>
+  private static IResult Write<T>(PresentationStore store, Presentation presentation,
+    Func<FileTransaction, (T Undo, IEnumerable<string>? Recorded)> apply)
+  {
+    lock (Files.Gate)
+    {
+      var transaction = new FileTransaction();
+      T undo;
+      IEnumerable<string>? recorded;
+      try
+      {
+        (undo, recorded) = apply(transaction);
+      }
+      catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
+      {
+        transaction.Restore();
+        return Unwritten(store, exception);
+      }
+      if (recorded is not null)
+      {
+        foreach (string path in recorded)
+        {
+          if (transaction.Before.TryGetValue(path, out string? before))
+          {
+            PageEdits.Wrote(presentation.Root, path, before);
+          }
+        }
+      }
+      store.Refresh();
+      return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
+    }
+  }
+
   /// <summary>Applies each file's edits and reloads, answering with the edits that write them all back, each named
   /// with its file as the request named it. A file failing puts back the ones written before it.</summary>
   private static IResult Patch(PresentationStore store, Presentation presentation,
     IReadOnlyList<(string Path, string? Name, List<ValueEdit> Edits)> files)
   {
-    var undo = new List<ValueEdit>();
-    var written = new List<(string Path, string Text)>();
-    try
+    return Write(store, presentation, transaction =>
     {
+      var undo = new List<ValueEdit>();
       foreach ((string path, string? name, List<ValueEdit> edits) in files)
       {
-        string before = File.ReadAllText(path);
-        List<ValueEdit> back = Patcher.ApplyToFile(path, edits, MarkupContext.For(presentation));
-        written.Add((path, before));
+        List<ValueEdit> back = Patcher.ApplyToFile(path, edits, MarkupContext.For(presentation), transaction);
         undo.InsertRange(0, back.Select(edit => edit with { File = name }));
       }
-    }
-    catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
-    {
-      foreach ((string path, string text) in written)
-      {
-        Put(path, text);
-      }
-      return Unwritten(store, exception);
-    }
-    foreach ((string path, string text) in written)
-    {
-      PageEdits.Wrote(presentation.Root, path, text);
-    }
-    store.Refresh();
-    return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
+      return (undo, transaction.Before.Keys);
+    });
   }
 
   /// <summary>Why a write was refused or failed, after a reload, so the page redraws what the files now hold.</summary>
@@ -471,31 +488,25 @@ public static partial class PreviewServer
       return Refused($"pick {move.Pick} waits on you to keep one of its variants, or none, rather than deleting it",
         StatusCodes.Status400BadRequest);
     }
-    SlideMove? undo;
     string list = Path.Combine(presentation.Root, "presentation.yaml");
-    string commentsPath = Path.Combine(presentation.Root, CommentFile.Name);
-    string resolvedPath = Path.Combine(presentation.Root, CommentFile.ResolvedName);
     string file = SlideFile(presentation, move.Slide);
     // A delete or restore touches the slide, the list, and the comments; one step failing puts back the others, so
     // the page never loses a slide without the undo that brings it back.
-    string? listBefore = File.Exists(list) ? File.ReadAllText(list) : null;
-    string? commentsBefore = File.Exists(commentsPath) ? File.ReadAllText(commentsPath) : null;
-    string? resolvedBefore = File.Exists(resolvedPath) ? File.ReadAllText(resolvedPath) : null;
-    string? slideBefore = null;
-    bool written = false;
-    try
+    return Write<SlideMove?>(store, presentation, transaction =>
     {
+      SlideMove? undo;
       if (move.Delete)
       {
-        slideBefore = File.ReadAllText(file);
+        string slideBefore = transaction.Read(file)
+          ?? throw new FileNotFoundException($"Could not find file '{file}'.", file);
         List<Comment> comments = CommentFile.RemoveSlide(presentation, move.Slide,
-          CommentFile.Author(presentation.Root), DateTime.Now, Saves.Snapshot(presentation.Root));
-        undo = Patcher.MoveInFile(list, move)! with
+          CommentFile.Author(presentation.Root), DateTime.Now, Saves.Snapshot(presentation.Root), transaction);
+        undo = Patcher.MoveInFile(list, move, transaction)! with
         {
           Restore = slideBefore,
           Comments = comments.Count > 0 ? comments : null
         };
-        File.Delete(file);
+        transaction.Write(file, null);
       }
       else if (move.Restore is string text)
       {
@@ -503,64 +514,25 @@ public static partial class PreviewServer
         {
           throw new PatchException($"slides/{move.Slide}.yaml exists again, so restoring it was dropped", true);
         }
-        Files.Replace(file, text);
-        written = true;
-        undo = Patcher.MoveInFile(list, move);
+        transaction.Write(file, text);
+        undo = Patcher.MoveInFile(list, move, transaction);
         if (move.Comments is { Count: > 0 } comments)
         {
           store.Refresh();
           foreach (Comment comment in comments)
           {
-            CommentFile.Apply(store.Presentation!, new CommentChange(Reopen: comment.Id), "", DateTime.Now);
+            CommentFile.Apply(store.Presentation!, new CommentChange(Reopen: comment.Id), "", DateTime.Now,
+              transaction: transaction);
           }
         }
       }
       else
       {
-        undo = Patcher.MoveInFile(list, move);
+        undo = Patcher.MoveInFile(list, move, transaction);
       }
-    }
-    catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
-    {
-      Put(list, listBefore);
-      Put(commentsPath, commentsBefore);
-      Put(resolvedPath, resolvedBefore);
-      if (written)
-      {
-        Put(file, null);
-      }
-      else if (slideBefore is not null && !File.Exists(file))
-      {
-        Put(file, slideBefore);
-      }
-      return Unwritten(store, exception);
-    }
-    PageEdits.Wrote(presentation.Root, list, listBefore);
-    if (move.Delete || move.Restore is not null)
-    {
-      PageEdits.Wrote(presentation.Root, file, slideBefore);
-    }
-    store.Refresh();
-    return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
-  }
-
-  /// <summary>Puts a file back as it was, absent when <paramref name="text"/> is null, unless it already is.</summary>
-  private static void Put(string path, string? text)
-  {
-    try
-    {
-      if (text is null)
-      {
-        File.Delete(path);
-      }
-      else if (!File.Exists(path) || File.ReadAllText(path) != text)
-      {
-        Files.Replace(path, text);
-      }
-    }
-    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-    {
-    }
+      string[] recorded = move.Delete || move.Restore is not null ? [list, file] : [list];
+      return (undo, recorded);
+    });
   }
 
   /// <summary>Adds, removes, rewords, replies to, restores, resolves, or reopens comments and reloads, answering with
@@ -577,18 +549,9 @@ public static partial class PreviewServer
         "several at once",
         StatusCodes.Status400BadRequest);
     }
-    CommentChange undo;
-    try
-    {
-      undo = CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
-        Saves.Snapshot(presentation.Root));
-    }
-    catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
-    {
-      return Unwritten(store, exception);
-    }
-    store.Refresh();
-    return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
+    return Write<CommentChange>(store, presentation, transaction =>
+      (CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
+        Saves.Snapshot(presentation.Root), transaction), null));
   }
 
   /// <summary>Keeps a variant of a pick, or none, or reopens one, and reloads, answering with the change that undoes
@@ -604,23 +567,12 @@ public static partial class PreviewServer
     {
       return Refused("a change resolves a pick or reopens one", StatusCodes.Status400BadRequest);
     }
-    PickChange undo;
-    Dictionary<string, string?> wrote;
-    try
+    return Write(store, presentation, transaction =>
     {
-      (undo, wrote) = PickFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
-        Saves.Snapshot(presentation.Root));
-    }
-    catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
-    {
-      return Unwritten(store, exception);
-    }
-    foreach ((string path, string? before) in wrote)
-    {
-      PageEdits.Wrote(presentation.Root, path, before);
-    }
-    store.Refresh();
-    return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
+      (PickChange undo, Dictionary<string, string?> wrote) = PickFile.Apply(presentation, change,
+        CommentFile.Author(presentation.Root), DateTime.Now, Saves.Snapshot(presentation.Root), transaction);
+      return (undo, wrote.Keys);
+    });
   }
 
   /// <summary>Opens Libreta at the cell a linked number reads, in a book the presentation includes.</summary>

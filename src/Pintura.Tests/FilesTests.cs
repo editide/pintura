@@ -219,5 +219,49 @@ public class FilesTests
     Directory.GetFiles(folder.PathTo("slides")).ShouldBe([folder.PathTo("slides/one.yaml")]);
   }
 
+  [Fact]
+  public void A_transaction_refuses_to_overwrite_a_file_changed_since_it_was_read()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    string path = folder.PathTo("slides/one.yaml");
+    folder.Write("slides/one.yaml", "title: Before");
+    var transaction = new FileTransaction();
+    transaction.Read(path).ShouldBe("title: Before\n");
+    File.WriteAllText(path, "title: Agent\n");
+
+    // Act
+    PatchException error = Should.Throw<PatchException>(() => transaction.Write(path, "title: Mouse\n"));
+
+    // Assert
+    error.Conflict.ShouldBeTrue();
+    File.ReadAllText(path).ShouldBe("title: Agent\n");
+  }
+
+  [Fact]
+  public void Rolling_back_a_transaction_puts_back_its_files_without_erasing_an_external_save()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    string first = folder.PathTo("slides/one.yaml");
+    string second = folder.PathTo("slides/two.yaml");
+    string added = folder.PathTo("slides/three.yaml");
+    folder.Write("slides/one.yaml", "title: One");
+    folder.Write("slides/two.yaml", "title: Two");
+    var transaction = new FileTransaction();
+    transaction.Write(first, "title: One edited\n");
+    transaction.Write(second, "title: Two edited\n");
+    transaction.Write(added, "title: Three\n");
+    File.WriteAllText(second, "title: Agent save\n");
+
+    // Act
+    transaction.Restore();
+
+    // Assert
+    File.ReadAllText(first).ShouldBe("title: One\n");
+    File.ReadAllText(second).ShouldBe("title: Agent save\n");
+    File.Exists(added).ShouldBeFalse();
+  }
+
 
 }

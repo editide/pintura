@@ -98,11 +98,12 @@ public static class ThemeView
     [("lighter 80", 80, null), ("lighter 60", 60, null), ("lighter 40", 40, null), ("darker 25", null, 25),
       ("darker 50", null, 50)];
 
-  public static ThemeViewPayload Build(Presentation presentation, PictureUrl pictureUrl)
+  public static ThemeViewPayload Build(Presentation presentation, PictureUrl pictureUrl,
+    Dictionary<string, SlideScene>? scenes = null)
   {
     Theme theme = presentation.Theme;
     StyleSheet styles = theme.Styles;
-    Usage usage = Usage.Count(presentation);
+    Usage usage = Usage.Count(presentation, scenes);
     List<StylePayload> stylePayloads = styles.Styles
       .Select(pair => Style(pair.Key, pair.Value, theme, usage.Of($"style:{pair.Key}")) with
       {
@@ -192,9 +193,10 @@ public static class ThemeView
   private static LayoutPayload Layout(Presentation presentation, Layout layout, PictureUrl pictureUrl)
   {
     Slide specimen = Specimen(presentation.Theme, layout);
+    SlideScene scene = SceneBuilder.Build(presentation, specimen);
     return new LayoutPayload(layout.Id, layout.Name, $"{presentation.Theme.Display}/layouts/{layout.Id}.yaml",
-      PayloadBuilder.Slide(presentation, specimen, pictureUrl),
-      PayloadBuilder.Slide(presentation, specimen, pictureUrl, layout),
+      PayloadBuilder.Slide(presentation, specimen, pictureUrl, built: scene),
+      PayloadBuilder.Slide(presentation, specimen, pictureUrl, layout, built: scene),
       presentation.Slides.Where(slide => slide.Layout == layout.Id).Select(slide => slide.Id).ToList());
   }
 
@@ -324,7 +326,7 @@ public static class ThemeView
       stylesFile = $"{theme.Display}/styles.yaml";
     }
 
-    public static Usage Count(Presentation presentation)
+    public static Usage Count(Presentation presentation, Dictionary<string, SlideScene>? scenes = null)
     {
       var usage = new Usage(presentation);
       foreach (Slide slide in presentation.Slides.Where(slide => slide.Error is null))
@@ -332,7 +334,18 @@ public static class ThemeView
         SlideScene scene;
         try
         {
-          scene = SceneBuilder.Build(presentation, slide);
+          if (scenes is null || !scenes.TryGetValue(slide.Id, out SlideScene? cached))
+          {
+            scene = SceneBuilder.Build(presentation, slide);
+            if (scenes is not null)
+            {
+              scenes[slide.Id] = scene;
+            }
+          }
+          else
+          {
+            scene = cached;
+          }
         }
         catch (LoadException)
         {

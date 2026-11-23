@@ -74,8 +74,12 @@ public record SourceFile(string FullPath, string Display)
 
   public Node Load(string topic)
   {
+    return LoadText(ReadText(topic), topic);
+  }
+
+  public Node LoadText(string text, string topic)
+  {
     var stream = new YamlStream();
-    string text = ReadText(topic);
     try
     {
       using var reader = new StringReader(text);

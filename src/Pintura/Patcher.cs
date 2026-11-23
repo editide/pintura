@@ -62,44 +62,29 @@ public static partial class Patcher
   /// </summary>
   public const char FieldMark = '￼';
 
-  private static readonly byte[] ByteOrderMark = [0xEF, 0xBB, 0xBF];
-  private static readonly object FileGate = new object();
-
-  public static List<ValueEdit> ApplyToFile(string path, IReadOnlyList<ValueEdit> edits, MarkupContext context)
+  public static List<ValueEdit> ApplyToFile(string path, IReadOnlyList<ValueEdit> edits, MarkupContext context,
+    FileTransaction? transaction = null)
   {
-    return Rewrite(path, text =>
+    return Rewrite(path, transaction, text =>
     {
       Patched patched = Apply(text, edits, context);
       return (patched.Text, patched.Undo);
     });
   }
 
-  public static SlideMove? MoveInFile(string path, SlideMove move)
+  public static SlideMove? MoveInFile(string path, SlideMove move, FileTransaction? transaction = null)
   {
-    return Rewrite(path, text => Move(text, move));
+    return Rewrite(path, transaction, text => Move(text, move));
   }
 
-  private static T Rewrite<T>(string path, Func<string, (string Text, T Undo)> patch)
+  private static T Rewrite<T>(string path, FileTransaction? transaction, Func<string, (string Text, T Undo)> patch)
   {
-    lock (FileGate)
+    lock (Files.Gate)
     {
-      byte[] bytes = File.ReadAllBytes(path);
-      bool marked = bytes.AsSpan().StartsWith(ByteOrderMark);
-      string text = Encoding.UTF8.GetString(marked ? bytes[3..] : bytes);
+      FileTransaction files = transaction ?? new FileTransaction();
+      string text = files.Read(path) ?? throw new FileNotFoundException($"Could not find file '{path}'.", path);
       (string patched, T undo) = patch(text);
-      patched = KeepLineEndings(text, patched);
-      if (patched == text)
-      {
-        return undo;
-      }
-      // An agent's save can land between the read and the write; refusing then loses nothing, where writing would
-      // overwrite it.
-      if (!File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
-      {
-        throw new PatchException($"{Path.GetFileName(path)} changed while the edit was written", true);
-      }
-      byte[] body = Encoding.UTF8.GetBytes(patched);
-      Files.Replace(path, marked ? [.. ByteOrderMark, .. body] : body);
+      files.Write(path, patched, "the edit");
       return undo;
     }
   }

@@ -99,8 +99,6 @@ public static class CommentFile
   /// at the reviewer's asking, passed on, dropped while waiting on an agent, or gone with its slide.</summary>
   public static readonly string[] Outcomes = ["accepted", "partly", "reverted", "skipped", "withdrawn", "removed"];
 
-  private static readonly object Gate = new object();
-
   private record Entry(Comment Comment, int Start, int End);
 
   /// <summary>Both files as read, each with its entries.</summary>
@@ -227,35 +225,37 @@ public static class CommentFile
   /// conflict. <paramref name="seen"/> is the version the reviewer is looking at, recorded on what they write and
   /// resolve; null outside a repository.</summary>
   public static CommentChange Apply(Presentation presentation, CommentChange change, string author, DateTime now,
-    Snapshot? seen = null)
+    Snapshot? seen = null, FileTransaction? transaction = null)
   {
     if (change.Many is List<CommentChange> many)
     {
-      var undos = new List<CommentChange>();
-      try
+      lock (Files.Gate)
       {
-        foreach (CommentChange each in many)
+        FileTransaction files = transaction ?? new FileTransaction();
+        var undos = new List<CommentChange>();
+        try
         {
-          undos.Insert(0, Apply(presentation, each, author, now, seen));
+          foreach (CommentChange each in many)
+          {
+            undos.Insert(0, Apply(presentation, each, author, now, seen, files));
+          }
         }
-      }
-      catch (PatchException)
-      {
-        foreach (CommentChange undo in undos)
+        catch (Exception exception) when (transaction is null &&
+          exception is PatchException or IOException or UnauthorizedAccessException)
         {
-          Apply(presentation, undo, author, now, seen);
+          files.Restore();
+          throw;
         }
-        throw;
+        return new CommentChange(Many: undos);
       }
-      return new CommentChange(Many: undos);
     }
     if (change.Reopen is string reopen)
     {
-      return Reopen(presentation, reopen, change.Before);
+      return Reopen(presentation, reopen, change.Before, transaction);
     }
     if (change.Resolve is string resolve)
     {
-      Resolve(presentation, resolve, author, now, seen, out CommentChange undo);
+      Resolve(presentation, resolve, author, now, seen, out CommentChange undo, transaction: transaction);
       return undo;
     }
     return Rewrite(presentation, files =>
@@ -292,13 +292,13 @@ public static class CommentFile
         _ => Reworded(existing, Words(change.Text))
       };
       return (Replace(text, entries, at, changed), files.Archive, new CommentChange(Restore: existing));
-    });
+    }, transaction);
   }
 
   /// <summary>Moves a comment to the end of <c>comments-resolved.yaml</c> with how its thread ended, or with
   /// <paramref name="outcome"/> when something other than the thread decided it.</summary>
   private static Comment Resolve(Presentation presentation, string id, string author, DateTime now, Snapshot? seen,
-    out CommentChange undo, string? outcome = null)
+    out CommentChange undo, string? outcome = null, FileTransaction? transaction = null)
   {
     CommentChange? reopen = null;
     Comment resolved = Rewrite(presentation, files =>
@@ -314,14 +314,15 @@ public static class CommentFile
       };
       return (Without(files.Live, files.Entries, at),
         Insert(files.Archive, files.Archived, files.Archived.Count, archived), archived);
-    });
+    }, transaction);
     undo = reopen!;
     return resolved;
   }
 
   /// <summary>Takes the latest resolution of a comment back out of <c>comments-resolved.yaml</c>, putting the
   /// comment back before <paramref name="before"/>, or in deck order.</summary>
-  private static CommentChange Reopen(Presentation presentation, string id, string? before)
+  private static CommentChange Reopen(Presentation presentation, string id, string? before,
+    FileTransaction? transaction = null)
   {
     return Rewrite(presentation, files =>
     {
@@ -341,7 +342,7 @@ public static class CommentFile
         : InDeckOrder(presentation, files.Entries, comment.Slide);
       return (Insert(files.Live, files.Entries, index, comment), Without(files.Archive, files.Archived, at),
         new CommentChange(Resolve: id));
-    });
+    }, transaction);
   }
 
   /// <summary>How a thread ended: undone if the reviewer ever asked for that, dropped if it still waits on an agent,
@@ -365,12 +366,12 @@ public static class CommentFile
 
   /// <summary>Resolves the comments on a slide being deleted, answering with them for an undo to reopen.</summary>
   public static List<Comment> RemoveSlide(Presentation presentation, string slide, string author, DateTime now,
-    Snapshot? seen)
+    Snapshot? seen, FileTransaction? transaction = null)
   {
     var removed = new List<Comment>();
     foreach (Comment comment in Load(presentation.Root, presentation.Root).Where(each => each.Slide == slide))
     {
-      removed.Add(Resolve(presentation, comment.Id, author, now, seen, out _, "removed"));
+      removed.Add(Resolve(presentation, comment.Id, author, now, seen, out _, "removed", transaction));
     }
     return removed;
   }
@@ -378,7 +379,7 @@ public static class CommentFile
   /// <summary>Moves the open comments on <paramref name="from"/>, or only those in <paramref name="only"/>, to
   /// <paramref name="to"/>, keeping their place in the file, and answers with their ids.</summary>
   public static List<string> MoveSlide(Presentation presentation, string from, string to,
-    IReadOnlyCollection<string>? only = null)
+    IReadOnlyCollection<string>? only = null, FileTransaction? transaction = null)
   {
     return Rewrite(presentation, files =>
     {
@@ -395,7 +396,7 @@ public static class CommentFile
         }
       }
       return (text, files.Archive, moved);
-    });
+    }, transaction);
   }
 
   /// <summary>Whoever git says is writing in the presentation's folder, or failing that the account.</summary>
@@ -432,74 +433,55 @@ public static class CommentFile
 
   /// <summary>Reads both files, applies the change, and writes what it changed, null deleting a file. A change to
   /// both writes both or neither.</summary>
-  private static T Rewrite<T>(Presentation presentation, Func<Texts, (string? Live, string? Archive, T Answer)> change)
+  private static T Rewrite<T>(Presentation presentation, Func<Texts, (string? Live, string? Archive, T Answer)> change,
+    FileTransaction? transaction = null)
   {
     string livePath = Path.Combine(presentation.Root, Name);
     string archivePath = Path.Combine(presentation.Root, ResolvedName);
-    lock (Gate)
+    lock (Files.Gate)
     {
-      (string live, List<Entry> entries) = ReadFile(livePath, presentation.Root, false);
-      (string archive, List<Entry> archived) = ReadFile(archivePath, presentation.Root, true);
+      FileTransaction files = transaction ?? new FileTransaction();
+      (string live, List<Entry> entries) = ReadFile(files, livePath, presentation.Root, false);
+      (string archive, List<Entry> archived) = ReadFile(files, archivePath, presentation.Root, true);
       (string? writtenLive, string? writtenArchive, T answer) = change(new Texts(live, entries, archive, archived));
       bool liveChanged = writtenLive != live;
       bool archiveChanged = writtenArchive != archive;
-      // An agent resolving a comment can save between the read and the write; refusing loses nothing.
-      if (liveChanged && Current(livePath) != live || archiveChanged && Current(archivePath) != archive)
+      try
       {
-        throw new PatchException($"{(liveChanged && Current(livePath) != live ? Name : ResolvedName)} changed " +
-          "while the comment was written", true);
-      }
-      if (liveChanged)
-      {
-        Write(livePath, live, writtenLive);
-      }
-      if (archiveChanged)
-      {
-        try
+        if (liveChanged)
         {
-          Write(archivePath, archive, writtenArchive);
+          files.Write(livePath, writtenLive, "the comment");
         }
-        catch (Exception) when (liveChanged)
+        if (archiveChanged)
         {
-          Write(livePath, writtenLive ?? "", live.Length > 0 ? live : null);
-          throw;
+          files.Write(archivePath, writtenArchive, "the comment");
         }
+      }
+      catch (Exception exception) when (transaction is null &&
+        exception is PatchException or IOException or UnauthorizedAccessException)
+      {
+        files.Restore();
+        throw;
       }
       return answer;
     }
   }
 
-  private static (string Text, List<Entry> Entries) ReadFile(string path, string root, bool archive)
+  private static (string Text, List<Entry> Entries) ReadFile(FileTransaction files, string path, string root,
+    bool archive)
   {
-    if (!File.Exists(path))
+    if (files.Read(path) is not string text)
     {
       return ("", []);
     }
     try
     {
-      Node document = SourceFile.For(path, root).Load("comments");
-      return (document.File.Text, Read(document, archive));
+      Node document = SourceFile.For(path, root).LoadText(text, "comments");
+      return (text, Read(document, archive));
     }
     catch (LoadException exception)
     {
       throw new PatchException(exception.Message);
-    }
-  }
-
-  private static string Current(string path)
-  {
-    return File.Exists(path) ? File.ReadAllText(path) : "";
-  }
-
-  private static void Write(string path, string before, string? written)
-  {
-    if (written is null)
-    {
-      File.Delete(path);
-    }
-    else
-    {
-      Files.Replace(path, Patcher.KeepLineEndings(before, written));
     }
   }
 

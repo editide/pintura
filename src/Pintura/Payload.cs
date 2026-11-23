@@ -287,7 +287,8 @@ public delegate string PictureUrl(string path, string? fill);
 /// agrees to serve.</summary>
 public static class PayloadBuilder
 {
-  public static DeckPayload Build(Presentation presentation, long version, PictureUrl pictureUrl)
+  public static DeckPayload Build(Presentation presentation, long version, PictureUrl pictureUrl,
+    Dictionary<string, SlideScene>? scenes = null)
   {
     return new DeckPayload
     {
@@ -295,8 +296,8 @@ public static class PayloadBuilder
       Size = presentation.Size,
       Version = version,
       Sections = presentation.Sections.Select(section => new SectionPayload(section.Name, section.Slides)).ToList(),
-      Slides = presentation.Slides.Select(slide => Slide(presentation, slide, pictureUrl)).ToList(),
-      Variants = presentation.Variants.Select(slide => Slide(presentation, slide, pictureUrl)).ToList(),
+      Slides = presentation.Slides.Select(slide => Slide(presentation, slide, pictureUrl, scenes: scenes)).ToList(),
+      Variants = presentation.Variants.Select(slide => Slide(presentation, slide, pictureUrl, scenes: scenes)).ToList(),
       Picks = presentation.Picks
         .Where(pick => presentation.Slides.Any(slide => slide.Pick == pick.Id))
         .Select(pick => new PickPayload(pick.Id, pick.By, pick.Date, pick.Variants))
@@ -321,12 +322,28 @@ public static class PayloadBuilder
 
   /// <summary>The slide as drawn; with <paramref name="stage"/>, a layout's specimen on which the mouse writes the
   /// theme's and layout's files instead, its areas drawn as items to move.</summary>
-  public static SlidePayload Slide(Presentation presentation, Slide slide, PictureUrl pictureUrl, Layout? stage = null)
+  public static SlidePayload Slide(Presentation presentation, Slide slide, PictureUrl pictureUrl, Layout? stage = null,
+    Dictionary<string, SlideScene>? scenes = null, SlideScene? built = null)
   {
     SlideScene scene;
     try
     {
-      scene = SceneBuilder.Build(presentation, slide);
+      if (built is not null)
+      {
+        scene = built;
+      }
+      else if (scenes is not null && scenes.TryGetValue(slide.Id, out SlideScene? cached))
+      {
+        scene = cached;
+      }
+      else
+      {
+        scene = SceneBuilder.Build(presentation, slide);
+        if (scenes is not null)
+        {
+          scenes[slide.Id] = scene;
+        }
+      }
     }
     catch (LoadException exception)
     {

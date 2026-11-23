@@ -326,12 +326,14 @@ public class PresentationStore : IDisposable
   private readonly object gate = new object();
   private readonly object rebuildGate = new object();
   private readonly Timer reloadTimer;
-  private Snapshot snapshot = new Snapshot(new DeckPayload(), new HashSet<string>(), null, null);
+  private Snapshot snapshot = new Snapshot(new DeckPayload(),
+    JsonSerializer.Serialize(new DeckPayload(), PayloadJson.Options), new HashSet<string>(), null, null);
   private string? drawn;
   // Seeded from the clock, so a page that outlived a restart sees a new version and reloads.
   private long version = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
   private long assetVersion;
   private long headVersion;
+  private int dirty = 1;
   private bool disposed;
 
   /// <param name="background">Loads on another thread, so the preview can open while a large book is read, and
@@ -359,6 +361,9 @@ public class PresentationStore : IDisposable
 
   public DeckPayload Deck => Volatile.Read(ref snapshot).Deck;
 
+  /// <summary>The current <see cref="Deck"/> already serialized for <c>/api/presentation</c>.</summary>
+  public string DeckJson => Volatile.Read(ref snapshot).DeckJson;
+
   public long Version => Interlocked.Read(ref version);
 
   /// <summary>The model behind <see cref="Deck"/>, for the inspector; null until a load succeeds.</summary>
@@ -379,6 +384,15 @@ public class PresentationStore : IDisposable
   public void Refresh()
   {
     Rebuild();
+  }
+
+  /// <summary>Reloads only when a watcher saw a change since the last build.</summary>
+  public void RefreshIfDirty()
+  {
+    if (Volatile.Read(ref dirty) != 0)
+    {
+      Rebuild();
+    }
   }
 
   public string Root => root;
@@ -556,6 +570,7 @@ public class PresentationStore : IDisposable
 
   private void ScheduleReload()
   {
+    Interlocked.Exchange(ref dirty, 1);
     lock (gate)
     {
       if (disposed)
@@ -590,16 +605,20 @@ public class PresentationStore : IDisposable
         return;
       }
     }
+    Interlocked.Exchange(ref dirty, 0);
     long next = Version + 1;
     Presentation presentation;
     DeckPayload deck;
     ThemeViewPayload theme;
+    string deckJson;
     string json;
     try
     {
       presentation = PresentationLoader.Load(root, books: books);
-      deck = PayloadBuilder.Build(presentation, next, MediaUrl);
-      theme = ThemeView.Build(presentation, MediaUrl);
+      var scenes = new Dictionary<string, SlideScene>(StringComparer.Ordinal);
+      deck = PayloadBuilder.Build(presentation, next, MediaUrl, scenes);
+      theme = ThemeView.Build(presentation, MediaUrl, scenes);
+      deckJson = JsonSerializer.Serialize(deck, PayloadJson.Options);
       // The theme view draws styles and formats no slide uses, so they count as drawn too.
       json = JsonSerializer.Serialize(deck with { Version = 0 }, PayloadJson.Options) +
         JsonSerializer.Serialize(theme, PayloadJson.Options);
@@ -616,9 +635,11 @@ public class PresentationStore : IDisposable
       {
         return;
       }
+      DeckPayload errored = previous.Deck with { Version = next, Error = message };
       Volatile.Write(ref snapshot, previous with
       {
-        Deck = previous.Deck with { Version = next, Error = message }
+        Deck = errored,
+        DeckJson = JsonSerializer.Serialize(errored, PayloadJson.Options)
       });
       Interlocked.Exchange(ref version, next);
       log.WriteLine($"  error     {DateTime.Now:HH:mm:ss}  {message}");
@@ -633,7 +654,7 @@ public class PresentationStore : IDisposable
       return;
     }
     drawn = json;
-    Volatile.Write(ref snapshot, new Snapshot(deck, media, presentation, theme));
+    Volatile.Write(ref snapshot, new Snapshot(deck, deckJson, media, presentation, theme));
     Interlocked.Exchange(ref version, next);
     foreach (SlidePayload slide in deck.Slides.Where(slide => slide.Error is not null))
     {
@@ -670,7 +691,7 @@ public class PresentationStore : IDisposable
     return fill is null ? url : $"{url}&fill={Uri.EscapeDataString(fill)}";
   }
 
-  private record Snapshot(DeckPayload Deck, HashSet<string> Media, Presentation? Presentation,
+  private record Snapshot(DeckPayload Deck, string DeckJson, HashSet<string> Media, Presentation? Presentation,
     ThemeViewPayload? Theme);
 
 

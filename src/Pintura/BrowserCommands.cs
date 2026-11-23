@@ -67,8 +67,7 @@ public static class BrowserCommands
       return 0;
     }
     string slides = slide == "all" ? "" : $"?slides={Uri.EscapeDataString(slide)}";
-    List<Finding> findings = Checks.All(presentation, await Measure(client, slides),
-      FontSetting.Current(FontFolders.Files()), false);
+    List<Finding> findings = Checks.All(presentation, await Measure(client, slides), FontSetting.Default, false);
     Write(findings.Where(finding => slide == "all" || finding.Slide is null || finding.Slide == slide), output);
     return 0;
   }
@@ -76,8 +75,7 @@ public static class BrowserCommands
   private static async Task<int> Check(HttpClient client, Presentation presentation, CommandLineOptions options,
     TextWriter output)
   {
-    List<Finding> findings = Checks.All(presentation, await Measure(client, ""),
-      FontSetting.Current(FontFolders.Files()), options.Export);
+    List<Finding> findings = Checks.All(presentation, await Measure(client, ""), FontSetting.Default, options.Export);
     return Report(Named(findings, presentation, options.Slides), options.Json, output);
   }
 
@@ -138,8 +136,7 @@ public static class BrowserCommands
       }
       string url = await HeadlessServer.Find(root, registry);
       using var client = new HttpClient { BaseAddress = new Uri($"{url}/"), Timeout = Timeout };
-      return Checks.All(presentation, await Measure(client, query), FontSetting.Current(FontFolders.Files()),
-        options.Export);
+      return Checks.All(presentation, await Measure(client, query), FontSetting.Default, options.Export);
     }
     List<Finding> before = await Findings(first);
     List<Finding> after = await Findings(ends.Length == 1 ? null : ends[1]);
