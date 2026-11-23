@@ -351,12 +351,6 @@ button {
   box-shadow: 0 0 0 3px var(--ok-soft);
 }
 
-.status-indicator.busy {
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-  animation: pulse .8s ease-in-out infinite alternate;
-}
-
 .status-indicator.down {
   background: var(--bad);
   box-shadow: 0 0 0 3px var(--bad-soft);
@@ -736,20 +730,10 @@ main {
   }
 }
 
-@keyframes pulse {
-  to {
-    opacity: .35;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .tool .spinner,
   .loading .spinner {
     animation-duration: 2.4s;
-  }
-
-  .status-indicator.busy {
-    animation: none;
   }
 }
 

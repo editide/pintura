@@ -44,9 +44,6 @@ public interface IBookReader
   /// <summary>The whole book as one page that needs no server, as <c>libreta --export</c> writes it.</summary>
   string Page(string root);
 
-  /// <summary>Whether a question is waiting on Libreta now, which the preview names while its load waits.</summary>
-  bool Asking => false;
-
   /// <summary>A reader for one load, which may take each book as it first finds it rather than checking it again.
   /// </summary>
   IBookReader Session()
@@ -78,7 +75,6 @@ public class LibretaReader : IBookReader
   private readonly TimeSpan runTimeout;
   private readonly string kept;
   private readonly Lazy<string> build;
-  private int asking;
 
   /// <param name="kept">The folder a revision's answers are kept in.</param>
   public LibretaReader(string? executable = null, TimeSpan? runTimeout = null, string? kept = null)
@@ -88,8 +84,6 @@ public class LibretaReader : IBookReader
     this.kept = kept ?? Temporary.Folder("answers");
     build = new Lazy<string>(Build);
   }
-
-  public bool Asking => Volatile.Read(ref asking) > 0;
 
   public IBookReader At(GitTree tree)
   {
@@ -487,19 +481,6 @@ public class LibretaReader : IBookReader
     {
       start.ArgumentList.Add(argument);
     }
-    Interlocked.Increment(ref asking);
-    try
-    {
-      return Answer(start);
-    }
-    finally
-    {
-      Interlocked.Decrement(ref asking);
-    }
-  }
-
-  private string Answer(ProcessStartInfo start)
-  {
     using (Process process = Start(start))
     {
       Task<string> error = process.StandardError.ReadToEndAsync();

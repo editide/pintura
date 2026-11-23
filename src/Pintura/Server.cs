@@ -125,8 +125,7 @@ public static partial class PreviewServer
       return files is DiskFiles ? Results.File(path, contentType) : Results.File(files.ReadAllBytes(path), contentType);
     });
 
-    // The page holds this open and re-fetches whenever the presentation changes on disk or git's HEAD moves, and shows
-    // what a slow load waits on.
+    // The page holds this open and re-fetches whenever the presentation changes on disk or git's HEAD moves.
     app.MapGet("/api/events", async (HttpContext context, CancellationToken aborted) =>
     {
       // A stream left open would otherwise hold the server's shutdown for its whole timeout.
@@ -138,17 +137,10 @@ public static partial class PreviewServer
       long seen = store.Version;
       long seenAssets = store.AssetVersion;
       long seenHead = store.HeadVersion;
-      string? seenActivity = null;
       await context.Response.WriteAsync($"data: {seen}\n\n", cancellation);
       await context.Response.Body.FlushAsync(cancellation);
       while (!cancellation.IsCancellationRequested)
       {
-        if (store.Activity is var activity && activity != seenActivity)
-        {
-          seenActivity = activity;
-          await context.Response.WriteAsync($"event: activity\ndata: {seenActivity}\n\n", cancellation);
-          await context.Response.Body.FlushAsync(cancellation);
-        }
         if (store.AssetVersion != seenAssets)
         {
           seenAssets = store.AssetVersion;

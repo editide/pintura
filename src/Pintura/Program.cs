@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -313,8 +312,6 @@ static TextWriter Utf8Writer(Stream stream)
 public class PresentationStore : IDisposable
 {
   private const int ReloadDelayMilliseconds = 120;
-  // A load quicker than this goes unannounced, so a save doesn't flash a status the eye can't read.
-  private static readonly TimeSpan ActivityDelay = TimeSpan.FromMilliseconds(300);
   private static readonly string[] SourceExtensions =
     [".yaml", ".csv", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"];
 
@@ -323,7 +320,6 @@ public class PresentationStore : IDisposable
   private readonly IBookReader? books;
   private readonly TaskCompletionSource ready =
     new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-  private long loadStarted;
   private readonly List<FileSystemWatcher> watchers = new List<FileSystemWatcher>();
   private readonly Dictionary<string, FileSystemWatcher> sourceWatchers =
     new Dictionary<string, FileSystemWatcher>(StringComparer.Ordinal);
@@ -360,20 +356,6 @@ public class PresentationStore : IDisposable
   }
 
   public Task Ready => ready.Task;
-
-  /// <summary>What a load that has run a while waits on, for the page to show; null when none is running.</summary>
-  public string? Activity
-  {
-    get
-    {
-      long started = Interlocked.Read(ref loadStarted);
-      if (started == 0 || Stopwatch.GetElapsedTime(started) < ActivityDelay)
-      {
-        return null;
-      }
-      return (books ?? LibretaReader.Shared).Asking ? "Reading the book" : "Loading";
-    }
-  }
 
   public DeckPayload Deck => Volatile.Read(ref snapshot).Deck;
 
@@ -588,14 +570,12 @@ public class PresentationStore : IDisposable
   {
     lock (rebuildGate)
     {
-      Interlocked.Exchange(ref loadStarted, Stopwatch.GetTimestamp());
       try
       {
         Load();
       }
       finally
       {
-        Interlocked.Exchange(ref loadStarted, 0);
         ready.TrySetResult();
       }
     }

@@ -36,7 +36,7 @@ pintura presentations/example
 ```
 
 The command opens the presentation in a browser tab, normally at `http://localhost:5180`, and redraws it whenever a file of the presentation or its theme is saved.
-The tab opens before the first load ends, and a load that runs long, such as Libreta reading a large book, names what it waits on in the status at the foot of the sidebar, and in the slide view until the first slides arrive.
+The tab opens before the first load ends, and draws the slides when it does.
 A file that fails to load shows its error in the page: a broken slide shows it in place of the slide, and a broken theme or `presentation.yaml` shows it above the last slides that loaded.
 The arrow keys, Page Up, Page Down, Home, and End move between slides, and the address ends in the current slide's stem, such as `#revenue`.
 
