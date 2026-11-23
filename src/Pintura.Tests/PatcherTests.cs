@@ -369,6 +369,23 @@ public class PatcherTests
     Changed(Slide, patched).ShouldBe([@"      - Up **33%** on 2024 \[\*\] \${slide}"]);
   }
 
+  [Theory]
+  [InlineData("slide", "      **${slide}** of bookings")]
+  [InlineData("date", "      ${date} of bookings")]
+  public void Deleting_a_line_and_joining_the_next_keeps_the_field_the_page_kept(string kept, string line)
+  {
+    // Arrange
+    const string slide = "elements:\n  - id: box\n    text: |\n      Titles are ${date}\n      **${slide}** of bookings\n";
+    string source = Patcher.SourceAt(slide, "elements.box.text")!;
+
+    // Act
+    string patched = Apply(slide, new ValueEdit("elements.box.text", source, Paragraphs: ["￼ of bookings"],
+      Fields: [kept]));
+
+    // Assert
+    patched.ShouldBe($"elements:\n  - id: box\n    text: |\n{line}\n");
+  }
+
   [Fact]
   public void Moving_words_from_one_side_of_a_field_to_the_other_keeps_the_field()
   {

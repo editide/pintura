@@ -1035,6 +1035,11 @@ function paragraphText(node) {
   return text.replace(/​/g, '');
 }
 
+// The fields left in the text, in the order their marks stand in its paragraphs, so the file keeps those the page kept.
+function fieldNames(flow) {
+  return [...flow.querySelectorAll('.paragraph [data-field]')].map((span) => span.dataset.field);
+}
+
 // A paragraph's last <br> draws no line; the browser leaves one to hold open a paragraph whose words are deleted.
 function paragraphTexts(flow) {
   return [...flow.querySelectorAll('.paragraph')].map((paragraph) => {
@@ -1521,7 +1526,7 @@ function finishText(commit) {
   if (commit && changed) {
     const formats = armedFormats(editor.flow);
     edits.unshift({ path: editor.item.edit.text.path, source: editor.item.edit.text.source, paragraphs: after,
-      ...(formats.length > 0 && { formats }) });
+      fields: fieldNames(editor.flow), ...(formats.length > 0 && { formats }) });
   }
   if (edits.length > 0) {
     return sendRewording(editor.slide, edits);
@@ -1721,7 +1726,7 @@ async function formatText(mark) {
   editing.text = null;
   hideFormatBar();
   const edit = { path: item.edit.text.path, source: item.edit.text.source, paragraphs: paragraphTexts(editor.flow),
-    formats: [...armedFormats(editor.flow), { mark, on, ranges }] };
+    fields: fieldNames(editor.flow), formats: [...armedFormats(editor.flow), { mark, on, ranges }] };
   editor.flow.contentEditable = 'false';
   await sendRewording(editor.slide, [edit]);
   const fresh = currentSlide().id === editor.slide &&

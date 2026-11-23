@@ -23,14 +23,14 @@ public class PatchException : Exception
 /// <summary>One value a mouse edit writes: its key path in the slide's file, or in <paramref name="File"/> where it
 /// names the theme's or a layout's as origins name them, its source as the page drew it or null where the key was
 /// absent, and either numbers to a hundredth of a point, for a frame or a point, each paragraph's text with
-/// <see cref="Patcher.FieldMark"/> where a field sits, a scalar <paramref name="Value"/> such as a color or a width, or
-/// the source to restore, as an undo writes back. A delete removes the element at the path; a restore without a
+/// <see cref="Patcher.FieldMark"/> where a field sits and <paramref name="Fields"/> naming each in turn, a scalar
+/// <paramref name="Value"/> such as a color or a width, or the source to restore, as an undo writes back. A delete removes the element at the path; a restore without a
 /// source puts one back after the element named by <paramref name="After"/>, or first. Formats apply in turn to the
 /// paragraphs once reworded.
 /// </summary>
 public record ValueEdit(string Path, string? Source, double[]? Numbers = null, List<string>? Paragraphs = null,
   string? Restore = null, bool Delete = false, string? After = null, List<TextFormat>? Formats = null, string? Value = null,
-  string? File = null);
+  string? File = null, List<string>? Fields = null);
 
 /// <summary>Bold, italic, or underline turned on or off over stretches of paragraphs, in characters of the text the
 /// page reads back, with <see cref="Patcher.FieldMark"/> for a field.</summary>
@@ -802,7 +802,7 @@ public static partial class Patcher
     {
       paragraphs.RemoveAt(paragraphs.Count - 1);
     }
-    string updated = Reword(value, paragraphs, plain, context);
+    string updated = Reword(value, paragraphs, edit.Fields, plain, context);
     if (edit.Formats is { Count: > 0 } formats)
     {
       if (plain)
@@ -847,7 +847,8 @@ public static partial class Patcher
 
   /// <summary>The value with each changed paragraph's changed stretch replaced in its line, so formatting and
   /// fields outside the stretch stay as written.</summary>
-  private static string Reword(string value, List<string> paragraphs, bool plain, MarkupContext context)
+  private static string Reword(string value, List<string> paragraphs, List<string>? fields, bool plain,
+    MarkupContext context)
   {
     bool trailing = !plain && value.EndsWith('\n');
     string body = trailing ? value[..^1] : value;
@@ -860,22 +861,27 @@ public static partial class Patcher
     }
     if (parsed.Count != paragraphs.Count)
     {
-      return Regroup(body, parsed, paragraphs, context) + (trailing ? "\n" : "");
+      return Regroup(body, parsed, paragraphs, fields, context) + (trailing ? "\n" : "");
     }
+    int named = 0;
     for (int index = 0; index < parsed.Count; index++)
     {
       Paragraph paragraph = parsed[index];
       List<(char Character, int Start, int End, string? Field)> old = Characters(paragraph);
       string before = new string(old.Select(character => character.Character).ToArray());
       string after = paragraphs[index];
-      if (before == after)
+      List<string>? drawn = fields?.Skip(named).Take(after.Count(character => character == FieldMark)).ToList();
+      named += drawn?.Count ?? 0;
+      if (before == after && (drawn is null || drawn.SequenceEqual(old.Where(character => character.Field is not null)
+        .Select(character => character.Field!))))
       {
         continue;
       }
       List<Wrapper> wrappers = plain ? [] : Wrappers(lines[paragraph.Line], paragraph.Start);
       var line = new Tagged(lines[paragraph.Line], wrappers);
       // From the end back, so each stretch's offsets still hold when it is replaced.
-      foreach ((int start, int end, string typed) in Hunks(before, after).AsEnumerable().Reverse())
+      foreach ((int start, int end, string typed) in Hunks(before, after, old.Select(character => character.Field),
+        drawn).AsEnumerable().Reverse())
       {
         List<(char Character, int Start, int End, string? Field)> removed = old[start..end];
         if (typed.Contains(FieldMark))
@@ -910,7 +916,8 @@ public static partial class Patcher
   /// <summary>The value with paragraphs split or joined: the paragraphs read as one text with a newline between
   /// each, and each changed stretch replaced in the value, so that a newline typed into a paragraph starts another at
   /// its level and in its style.</summary>
-  private static string Regroup(string body, List<Paragraph> parsed, List<string> paragraphs, MarkupContext context)
+  private static string Regroup(string body, List<Paragraph> parsed, List<string> paragraphs, List<string>? fields,
+    MarkupContext context)
   {
     string[] lines = body.Split('\n');
     var starts = new int[lines.Length];
@@ -943,8 +950,8 @@ public static partial class Patcher
       })).ToList();
     string before = new string(old.Select(character => character.Character).ToArray());
     var text = new Tagged(body, wrappers);
-    foreach ((int start, int end, string typed) in Hunks(before, string.Join('\n', paragraphs)).AsEnumerable()
-      .Reverse())
+    foreach ((int start, int end, string typed) in Hunks(before, string.Join('\n', paragraphs),
+      old.Select(character => character.Field), fields).AsEnumerable().Reverse())
     {
       List<(char Character, int Start, int End, string? Field)> removed = old[start..end];
       if (typed.Contains(FieldMark))
@@ -1473,15 +1480,37 @@ public static partial class Patcher
   /// it was, and a break stays a break rather than reading as typed inside a link.</summary>
   internal static List<(int Start, int End, string Typed)> Hunks(string before, string after)
   {
+    return Hunks(before, after, null, null);
+  }
+
+  /// <summary>As <see cref="Hunks(string, string)"/>, with the fields of <paramref name="before"/> named at each
+  /// <see cref="FieldMark"/> and those of <paramref name="after"/> named in turn, so a field matches only itself: with
+  /// two left on a line of which the page kept one, the one deleted goes. Without names, any field matches any other.
+  /// </summary>
+  private static List<(int Start, int End, string Typed)> Hunks(string before, string after,
+    IEnumerable<string?>? beforeFields, List<string>? afterFields)
+  {
     int rows = before.Length;
     int columns = after.Length;
+    string?[] left = afterFields is null ? new string?[rows] : beforeFields!.ToArray();
+    var right = new string?[columns];
+    int named = 0;
+    for (int column = 0; column < columns && afterFields is not null; column++)
+    {
+      right[column] = after[column] == FieldMark && named < afterFields.Count ? afterFields[named++] : null;
+    }
+    bool Same(int row, int column)
+    {
+      return before[row] == after[column] && left[row] == right[column];
+    }
+
     long field = rows + 1;
     var common = new long[rows + 1, columns + 1];
     for (int row = rows - 1; row >= 0; row--)
     {
       for (int column = columns - 1; column >= 0; column--)
       {
-        common[row, column] = before[row] == after[column]
+        common[row, column] = Same(row, column)
           ? common[row + 1, column + 1] + (before[row] is FieldMark or '\n' ? field : 1)
           : Math.Max(common[row + 1, column], common[row, column + 1]);
       }
@@ -1502,7 +1531,7 @@ public static partial class Patcher
     }
     while (i < rows || j < columns)
     {
-      if (i < rows && j < columns && before[i] == after[j])
+      if (i < rows && j < columns && Same(i, j))
       {
         Flush();
         i++;
