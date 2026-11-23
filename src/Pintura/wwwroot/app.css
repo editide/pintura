@@ -731,7 +731,8 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tool .spinner {
+  .tool .spinner,
+  .loading .spinner {
     animation-duration: 2.4s;
   }
 }
@@ -1063,6 +1064,26 @@ main {
 
 .slide-view.zoomed {
   overflow: auto;
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.loading .spinner {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
 }
 
 .slide-canvas {
@@ -3775,9 +3796,19 @@ kbd {
   text-decoration-thickness: 2px;
 }
 
+.book-page {
+  position: relative;
+  display: flex;
+  flex: 1;
+}
+
 .book iframe {
   flex: 1;
   border: none;
+}
+
+.book .loading {
+  background: var(--surface);
 }
 
 #book-back {

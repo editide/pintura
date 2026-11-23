@@ -912,6 +912,37 @@ public class BookTests
   }
 
   [Fact]
+  public void A_books_answers_are_kept_across_readers_until_a_file_in_the_book_changes()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    folder.Write("book/book.yaml", "name: Acme");
+    string libreta = FakeLibreta(folder, $$"""
+      #!/bin/sh
+      echo call >> '{{folder.PathTo("calls").Replace('\\', '/')}}'
+      echo "[{\"name\":\"a.b\",\"label\":\"$(cat "$1/book.yaml")\",\"columns\":[],\"exact\":[],\"display\":[]}]"
+      """);
+    IReadOnlyDictionary<string, BookLine> Read() =>
+      new LibretaReader(libreta, kept: folder.PathTo("kept")).Lines(folder.PathTo("book"));
+    int Calls() => File.ReadAllLines(folder.PathTo("calls")).Length;
+
+    // Act
+    Read();
+    IReadOnlyDictionary<string, BookLine> unchanged = Read();
+    int beforeChange = Calls();
+    folder.Write("book/book.yaml", "name: Acme, restated");
+    IReadOnlyDictionary<string, BookLine> changed = Read();
+    Read();
+
+    // Assert
+    beforeChange.ShouldBe(1);
+    unchanged["a.b"].Label.ShouldBe("name: Acme");
+    changed["a.b"].Label.ShouldBe("name: Acme, restated");
+    Calls().ShouldBe(2);
+    Directory.GetFiles(folder.PathTo("kept")).Length.ShouldBe(1);
+  }
+
+  [Fact]
   public void A_revisions_answers_are_asked_of_libreta_at_its_commit_once_and_kept_across_readers()
   {
     // Arrange

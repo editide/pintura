@@ -40,6 +40,15 @@ public static partial class PreviewServer
       }
       await next(context);
     });
+    // Until the first load ends there's no presentation to answer about; the event stream says what it waits on.
+    app.Use(async (context, next) =>
+    {
+      if (context.Request.Path.StartsWithSegments("/api") && context.Request.Path != "/api/events")
+      {
+        await store.Ready.WaitAsync(context.RequestAborted);
+      }
+      await next(context);
+    });
     app.UseDefaultFiles();
     // Without a Cache-Control, a browser reuses a script it judges fresh, and a long-lived headless page draws with
     // an edited file's old version.

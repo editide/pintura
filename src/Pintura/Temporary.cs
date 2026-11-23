@@ -2,7 +2,7 @@ using System.Runtime.Versioning;
 
 namespace Pintura;
 
-/// <summary>Where Pintura keeps what it can make again: reads of decks, drawn pictures, exports, and Libreta's answers about revisions.</summary>
+/// <summary>Where Pintura keeps what it can make again: reads of decks, drawn pictures, exports, and Libreta's answers.</summary>
 public static class Temporary
 {
   /// <summary>A folder only this user reaches, since what it holds comes from their decks. Linux shares /tmp between

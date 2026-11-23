@@ -201,7 +201,13 @@
       <button type="button" id="book-back"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10H4.5M9 5l-5 5 5 5"></path></svg><span id="book-back-label"></span></button>
       <button type="button" id="book-pop-out" title="Open the book in a Libreta tab of its own"><span>Open in a tab</span><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M11 4h5v5M16 4l-7 7M14 12v4H4V6h4"></path></svg></button>
     </div>
-    <iframe id="book-frame" title="Book"></iframe>
+    <div class="book-page">
+      <iframe id="book-frame" title="Book"></iframe>
+      <div class="loading" id="book-loading" role="status" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Opening the book</span>
+      </div>
+    </div>
   </div>
   <div class="versions-menu" id="versions-menu" popover role="menu" aria-label="Show the changes since a version">
   </div>

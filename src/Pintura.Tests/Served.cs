@@ -20,12 +20,12 @@ public sealed class Served : IAsyncDisposable
   private WebApplication App { get; }
 
   /// <summary>Serves the fixture's deck, with <paramref name="assets"/> as the page's files, the deck's folder unless
-  /// a test needs the real page.</summary>
-  public static async Task<Served> Start(DeckFixture deck, string? assets = null)
+  /// a test needs the real page, and its books.</summary>
+  public static async Task<Served> Start(DeckFixture deck, string? assets = null, bool background = false)
   {
     string url = $"http://127.0.0.1:{PreviewServer.FreePort()}";
     var store = new PresentationStore(deck.Folder.PathTo("deck"), assets ?? deck.Folder.PathTo("deck"),
-      TextWriter.Null);
+      TextWriter.Null, deck.Books, background);
     var headless = new HeadlessBrowser(url);
     WebApplication app = PreviewServer.Create(assets ?? deck.Folder.Root, url);
     PreviewServer.Map(app, store, headless, null);

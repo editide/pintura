@@ -36,6 +36,7 @@ pintura presentations/example
 ```
 
 The command opens the presentation in a browser tab, normally at `http://localhost:5180`, and redraws it whenever a file of the presentation or its theme is saved.
+The tab opens before the first load ends, and draws the slides when it does.
 A file that fails to load shows its error in the page: a broken slide shows it in place of the slide, and a broken theme or `presentation.yaml` shows it above the last slides that loaded.
 The arrow keys, Page Up, Page Down, Home, and End move between slides, and the address ends in the current slide's stem, such as `#revenue`.
 
@@ -177,7 +178,7 @@ Until a pick is resolved, presenting and every export show its first variant, an
 A presentation quoting a Libreta book reads it with the `libreta` CLI, which must be on the path, or where `PINTURA_LIBRETA` points.
 The server watches the book's folder too, and any folder linked into it, so restating a fact redraws every title, chart, and table that shows it, with no edit to the presentation.
 Holding Ctrl (Cmd on a Mac) underlines the linked numbers, and Ctrl-clicking one opens the book in Libreta at that cell, in the server already running the book or a new one; the inspector has a button for each linked number too.
-The book slides in over the preview, live as Libreta serves it, and the slide's name above it, Escape, or the browser's back slides it out, back first undoing what was clicked in the book; the next number selects its cell without reloading the book.
+The book slides in over the preview, live as Libreta serves it, saying "Opening the book" under a spinner while Libreta starts, and the slide's name above it, Escape, or the browser's back slides it out, back first undoing what was clicked in the book; the next number selects its cell without reloading the book.
 Open in a tab, beside the slide's name, opens the cell in a Libreta tab of the page's own for the book, which each later one brings forward, as a Libreta tab opened elsewhere can't do for itself.
 Libreta answers are kept until a file in the book changes, so an edit to a slide starts no Libreta.
 

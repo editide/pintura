@@ -1221,6 +1221,77 @@ public class ServerTests
   }
 
   [Fact]
+  public async Task The_preview_opens_before_its_first_load_ends_and_answers_once_it_does()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    using var books = new HeldBooks();
+    deck.Books = books;
+    deck.Write("book/book.yaml", "name: Acme");
+    deck.Write("deck/presentation.yaml", """
+      name: Test deck
+      theme: ../theme
+      books:
+        - id: acme
+          path: ../book
+      slides:
+        - two
+      """);
+    await using Served served = await Served.Start(deck, background: true);
+
+    // Act
+    books.Asked.Wait(TimeSpan.FromSeconds(10)).ShouldBeTrue();
+    Task<string> presentation = served.Client.GetStringAsync($"{served.Url}/api/presentation");
+    await Task.Delay(300);
+    bool answeredWhileWaiting = presentation.IsCompleted;
+    books.Release();
+    string answered = await presentation.WaitAsync(TimeSpan.FromSeconds(10));
+
+    // Assert
+    answeredWhileWaiting.ShouldBeFalse();
+    answered.ShouldContain("\"two\"");
+  }
+
+  /// <summary>Books that answer only once released, as Libreta keeps a large book's first load waiting.</summary>
+  private sealed class HeldBooks : IBookReader, IDisposable
+  {
+    private readonly ManualResetEventSlim released = new ManualResetEventSlim();
+
+    public ManualResetEventSlim Asked { get; } = new ManualResetEventSlim();
+
+    public void Release()
+    {
+      released.Set();
+    }
+
+    public IReadOnlyDictionary<string, BookLine> Lines(string root)
+    {
+      Asked.Set();
+      released.Wait(TimeSpan.FromSeconds(10));
+      return new Dictionary<string, BookLine>();
+    }
+
+    public BookView View(string root, string id)
+    {
+      return new BookView(id, [], []);
+    }
+
+    public string Page(string root)
+    {
+      return "<html></html>";
+    }
+
+    public void Dispose()
+    {
+      released.Set();
+      released.Dispose();
+      Asked.Dispose();
+    }
+
+
+  }
+
+  [Fact]
   public async Task A_page_holding_the_event_stream_open_doesnt_hold_up_stopping_the_server()
   {
     // Arrange
