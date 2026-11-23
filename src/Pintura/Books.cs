@@ -58,9 +58,10 @@ public interface IBookReader
   }
 }
 
-/// <summary>Runs the Libreta CLI, <c>PINTURA_LIBRETA</c> or <c>libreta</c> on the path, and keeps each answer until a
-/// file in the book changes, so a reload for a slide's edit costs no Libreta start. A revision's answers never
-/// change, so they're kept on disk too, by what git names the book's files.</summary>
+/// <summary>Runs the Libreta CLI, <c>PINTURA_LIBRETA</c> or <c>libreta</c> on the path, and keeps each answer, in
+/// memory and on disk, until a file in the book changes, so neither a reload for a slide's edit nor a new process
+/// costs a Libreta start. A revision's answers never change, so they're kept by what git names the book's files.
+/// </summary>
 public class LibretaReader : IBookReader
 {
   public static readonly LibretaReader Shared = new LibretaReader();
@@ -158,7 +159,7 @@ public class LibretaReader : IBookReader
 
   private string Page(string root, string stamp)
   {
-    return Cached(root, stamp, "page", () => Export(root));
+    return Cached(root, stamp, "page", () => Export(root), page => page);
   }
 
   private string Export(string root, params string[] options)
@@ -178,13 +179,13 @@ public class LibretaReader : IBookReader
 
   private IReadOnlyDictionary<string, BookLine> Lines(string root, string stamp)
   {
-    return Cached(root, stamp, "lines", () => ParseLines(Run(root, "--lines", "--json")));
+    return Cached(root, stamp, "lines", () => Run(root, "--lines", "--json"), ParseLines);
   }
 
   private BookView View(string root, string id, string stamp)
   {
     RequireView(id);
-    return Cached(root, stamp, $"view {id}", () => ParseView(Run(root, "--view", id, "--json")));
+    return Cached(root, stamp, $"view {id}", () => Run(root, "--view", id, "--json"), ParseView);
   }
 
   private static IReadOnlyDictionary<string, BookLine> ParseLines(string output)
@@ -308,9 +309,13 @@ public class LibretaReader : IBookReader
     return name.Length > 0 && !name.StartsWith('-') && !name.Any(char.IsControl);
   }
 
-  private T Cached<T>(string root, string stamp, string key, Func<T> read) where T : class
+  /// <summary>An answer about the book as it stands, kept in memory and on disk until <paramref name="stamp"/> or the
+  /// Libreta build moves, so a new process over an unchanged book starts no Libreta. Disk keeps only the latest answer
+  /// to each question, since a book being edited would otherwise leave one behind per save.</summary>
+  private T Cached<T>(string root, string stamp, string question, Func<string> ask, Func<string, T> parse)
+    where T : class
   {
-    string entry = $"{root}\n{key}";
+    string entry = $"{root}\n{question}";
     lock (gate)
     {
       if (answers.TryGetValue(entry, out (string Stamp, object Answer) cached) && cached.Stamp == stamp)
@@ -318,12 +323,37 @@ public class LibretaReader : IBookReader
         return (T)cached.Answer;
       }
     }
-    T answer = read();
+    string file = Path.Combine(kept, Hash($"{entry}\n"));
+    string header = Hash($"{build.Value}\n{stamp}");
+    string? text = null;
+    try
+    {
+      string saved = File.ReadAllText(file);
+      if (saved.StartsWith($"{header}\n", StringComparison.Ordinal))
+      {
+        text = saved[(header.Length + 1)..];
+      }
+    }
+    catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+    {
+    }
+    if (text is null)
+    {
+      text = ask();
+      Directory.CreateDirectory(kept);
+      Files.Replace(file, $"{header}\n{text}");
+    }
+    T answer = parse(text);
     lock (gate)
     {
       answers[entry] = (stamp, answer);
     }
     return answer;
+  }
+
+  private static string Hash(string text)
+  {
+    return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..32];
   }
 
   /// <summary>A revision's answer to a question about a book, which git's names for what Libreta reads of the book
@@ -343,7 +373,7 @@ public class LibretaReader : IBookReader
         return (T)cached.Answer;
       }
     }
-    string file = Path.Combine(kept, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(entry)))[..32]);
+    string file = Path.Combine(kept, Hash(entry));
     string text;
     try
     {
@@ -372,7 +402,7 @@ public class LibretaReader : IBookReader
       : (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
         .Select(folder => Path.Combine(folder, executable))
         .FirstOrDefault(File.Exists);
-    if (path is null)
+    if (path is null || !File.Exists(path))
     {
       return executable;
     }
