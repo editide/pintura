@@ -3812,9 +3812,19 @@ kbd {
   text-decoration-thickness: 2px;
 }
 
+.book-page {
+  position: relative;
+  display: flex;
+  flex: 1;
+}
+
 .book iframe {
   flex: 1;
   border: none;
+}
+
+.book .loading {
+  background: var(--surface);
 }
 
 #book-back {

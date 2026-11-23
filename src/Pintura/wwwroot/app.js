@@ -760,12 +760,14 @@ async function trace(target) {
   }
   state.traced = target;
   showBook(currentSlide());
+  waitForBook(!bookFrame.dataset.origin);
   const response = await fetch('api/trace', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(target)
   });
   if (!response.ok) {
+    waitForBook(false);
     closeBook();
     notice((await response.json()).error);
     return;
@@ -773,6 +775,7 @@ async function trace(target) {
   const page = await response.json();
   const origin = new URL(page.url).origin;
   if (page.pages === 0 || bookFrame.dataset.origin !== origin) {
+    waitForBook(true);
     showInBook(page.url);
     bookFrame.dataset.origin = origin;
   }

@@ -5,6 +5,8 @@
 
 const book = document.getElementById('book');
 const bookFrame = document.getElementById('book-frame');
+// Covers the frame while Libreta starts on the book, which takes seconds on a large one.
+const bookLoading = document.getElementById('book-loading');
 // The history length once the open book's entry was pushed, so closing knows whether clicks in the book added more.
 let bookHistory = 0;
 
@@ -49,9 +51,20 @@ function showInBook(url) {
   bookFrame.contentWindow.location.replace(url);
 }
 
+function waitForBook(waiting) {
+  if (bookLoading) {
+    bookLoading.hidden = !waiting;
+  }
+}
+
 if (book) {
   document.getElementById('book-back').addEventListener('click', closeBook);
-  bookFrame.addEventListener('load', themeBook);
+  bookFrame.addEventListener('load', () => {
+    themeBook();
+    if (bookFrame.dataset.page !== 'about:blank') {
+      waitForBook(false);
+    }
+  });
   window.addEventListener('popstate', () => {
     if (bookShown() && !history.state?.book) {
       hideBook();
