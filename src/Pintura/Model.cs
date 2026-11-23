@@ -465,7 +465,7 @@ public class TableFormatting
 {
   public static readonly string[] Text = [.. TextProperties.Style, "insets"];
 
-  public string? Style { get; init; }
+  public string? Style { get; set; }
   public string? Format { get; init; }
   public Color? Fill { get; init; }
   public Stroke? BorderTop { get; init; }

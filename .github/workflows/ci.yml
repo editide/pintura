@@ -37,8 +37,13 @@ jobs:
       - name: Build a Release
         if: runner.os == 'Linux'
         run: dotnet build src/Pintura --configuration Release
-      - name: Load every presentation
+      # Linux runners lack Arial, which the Meridian and Default fixture themes use.
+      - if: runner.os == 'Linux'
+        run: |
+          echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | sudo debconf-set-selections
+          sudo apt-get update -q && sudo apt-get install -y -q ttf-mscorefonts-installer
+      - name: Check every presentation
         run: |
           for presentation in presentations/*/; do
-            dotnet run --project src/Pintura -- "$presentation" --list
+            dotnet run --project src/Pintura -- "$presentation" --check
           done

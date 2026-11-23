@@ -19,8 +19,7 @@ case "$(uname -m)" in
 esac
 
 # The directory is replaced wholesale, so refuse one that does not already hold Pintura.
-if [ -e "${application_directory}" ] && [ ! -e "${application_directory}/pintura" ] \
-  && [ ! -e "${application_directory}/Pintura" ]; then
+if [ -e "${application_directory}" ] && [ ! -f "${application_directory}/Pintura.dll" ]; then
   echo "${application_directory} exists and does not hold Pintura; set PINTURA_INSTALL_DIR elsewhere." >&2
   exit 1
 fi

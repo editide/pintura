@@ -261,11 +261,11 @@ public static class ThemeView
 
   private static StrokePayload? Stroke(Stroke? stroke, Theme theme)
   {
-    if (stroke is null || stroke.None == true || stroke.Color is null)
+    if (stroke is null || stroke.None == true || stroke.Color is null || stroke.Width is not double width)
     {
       return null;
     }
-    return new StrokePayload(ColorMath.Resolve(stroke.Color, theme), stroke.Width ?? 1, stroke.Dash ?? "solid");
+    return new StrokePayload(ColorMath.Resolve(stroke.Color, theme), width, stroke.Dash ?? "solid");
   }
 
   private static ChartStylesPayload Charts(Theme theme, Usage usage)

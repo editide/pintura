@@ -516,6 +516,30 @@ public class BookTests
   }
 
   [Fact]
+  public void More_columns_than_a_view_has_names_the_view()
+  {
+    // Arrange
+    using DeckFixture deck = Deck("""
+      layout: content
+      elements:
+        - id: results
+          table: results
+          frame: content
+      """);
+    deck.Write("deck/tables/results.yaml", """
+      data:
+        view: acme::historical/segments
+      columns: [{}, {}, {}, { width: 100 }]
+      """);
+
+    // Act
+    LoadException error = deck.Error();
+
+    // Assert
+    error.Problem.ShouldBe("columns lists 4 columns, and acme::historical/segments has 3");
+  }
+
+  [Fact]
   public void A_revision_draws_a_view_column_or_line_its_book_no_longer_has_as_ref()
   {
     // Arrange

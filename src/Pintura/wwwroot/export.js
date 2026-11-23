@@ -387,7 +387,8 @@ if (book) {
 }
 
 state.current = indexOf(decodeURIComponent(location.hash.slice(1)));
-renderSidebar();
-render();
-// Text is fitted as it is drawn, so fonts that arrive afterwards need the slides fitted again.
-useFonts(deck.fonts).then(() => document.fonts.ready).then(render);
+// Text is fitted as it is drawn, so wait for the inlined fonts before drawing the sidebar and slide.
+useFonts(deck.fonts).then(() => document.fonts.ready).then(() => {
+  renderSidebar();
+  render();
+});

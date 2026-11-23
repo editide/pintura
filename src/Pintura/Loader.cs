@@ -2850,7 +2850,7 @@ public partial class PresentationLoader
       List<Node> entries = columnsNode.AsList();
       if (entries.Count > columnCount)
       {
-        throw columnsNode.Error($"columns lists {entries.Count} columns, and {data} has {columnCount}");
+        throw columnsNode.Error($"columns lists {entries.Count} columns, and {view?.View ?? data} has {columnCount}");
       }
       foreach (Node entry in entries)
       {
@@ -2888,6 +2888,7 @@ public partial class PresentationLoader
     var cells = new List<TableCell>();
     if (map.Take("cells") is Node cellsNode)
     {
+      var seen = new HashSet<(int Row, int Column)>();
       foreach (Node entry in cellsNode.AsList())
       {
         MapNode cell = entry.AsMap();
@@ -2895,6 +2896,10 @@ public partial class PresentationLoader
         cell.Done();
         RowInRange(entry, formatting.Row, rowCount);
         ColumnInRange(entry, formatting.Column, columnCount);
+        if (!seen.Add((formatting.Row, formatting.Column)))
+        {
+          throw entry.Error($"row {formatting.Row}, column {formatting.Column} is listed more than once in cells");
+        }
         cells.Add(formatting);
       }
     }
@@ -2940,20 +2945,8 @@ public partial class PresentationLoader
         {
           if (written.Style is null)
           {
-            tableRows[row + 1] = new TableRow
-            {
-              Style = role,
-              Format = written.Format,
-              Fill = written.Fill,
-              BorderTop = written.BorderTop,
-              BorderBottom = written.BorderBottom,
-              BorderLeft = written.BorderLeft,
-              BorderRight = written.BorderRight,
-              Properties = written.Properties,
-              Height = written.Height,
-              Origin = written.Origin,
-              Origins = new Dictionary<string, Origin>(written.Origins) { ["style"] = dataNode.Origin }
-            };
+            written.Style = role;
+            written.Origins["style"] = dataNode.Origin;
           }
         }
         else
