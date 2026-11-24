@@ -18,42 +18,14 @@ public record PowerPointDeck(JsonObject Deck, string Media, List<string> Finding
 /// importer. Values PowerPoint and Pintura both default, such as bold off or no space before, are left out.</summary>
 public partial class PowerPointMapping
 {
-  private static readonly Dictionary<string, string> Scheme = new Dictionary<string, string>
-  {
-    ["dk1"] = "dark1", ["lt1"] = "light1", ["dk2"] = "dark2", ["lt2"] = "light2", ["tx1"] = "dark1",
-    ["bg1"] = "light1", ["tx2"] = "dark2", ["bg2"] = "light2", ["accent1"] = "accent1", ["accent2"] = "accent2",
-    ["accent3"] = "accent3", ["accent4"] = "accent4", ["accent5"] = "accent5", ["accent6"] = "accent6",
-    ["hlink"] = "hyperlink", ["folHlink"] = "followed_hyperlink"
-  };
-  private static readonly string[] ThemeColors =
-    ["dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink"];
-  private static readonly Dictionary<string, (string Shape, string? Direction)> Shapes =
-    new Dictionary<string, (string, string?)>
-    {
-      ["rectangle"] = ("rectangle", null), ["round_rectangle"] = ("rounded_rectangle", null),
-      ["ellipse"] = ("ellipse", null), ["triangle"] = ("triangle", null),
-      ["right_triangle"] = ("right_triangle", null), ["diamond"] = ("diamond", null),
-      ["parallelogram"] = ("parallelogram", null), ["trapezoid"] = ("trapezoid", null),
-      ["pentagon"] = ("pentagon", null), ["hexagon"] = ("hexagon", null), ["chevron"] = ("chevron", null),
-      ["home_plate"] = ("home_plate", null), ["right_arrow"] = ("arrow", "right"), ["left_arrow"] = ("arrow", "left"),
-      ["up_arrow"] = ("arrow", "up"), ["down_arrow"] = ("arrow", "down"), ["left_brace"] = ("brace", "left"),
-      ["right_brace"] = ("brace", "right"), ["left_bracket"] = ("bracket", "left"),
-      ["right_bracket"] = ("bracket", "right"), ["wedge_rectangle_callout"] = ("callout", null)
-    };
+  private static readonly Dictionary<string, string> Scheme = PowerPointVocabulary.ToolToModelScheme;
+  private static readonly string[] ThemeColors = PowerPointVocabulary.ThemeColors;
+  private static readonly Dictionary<string, (string Shape, string? Direction)> Shapes = PowerPointVocabulary.ToolToShape;
   private static readonly HashSet<string> Lines = ["line", "straight_connector1"];
-  private static readonly HashSet<string> MarkerShapes = ["circle", "square", "diamond", "triangle"];
-  private static readonly HashSet<string> ChartTypes =
-  [
-    "clustered_column", "stacked_column", "percent_stacked_column", "clustered_bar", "stacked_bar",
-    "percent_stacked_bar", "line", "stacked_line", "percent_stacked_line", "pie", "doughnut", "waterfall"
-  ];
-  private static readonly Dictionary<string, string> LabelPositions = new Dictionary<string, string>
-  {
-    ["outside_end"] = "outside", ["center"] = "center", ["inside_end"] = "inside", ["inside_base"] = "inside_base",
-    ["top"] = "above", ["above"] = "above", ["below"] = "below", ["bottom"] = "below",
-    ["left"] = "left", ["right"] = "right"
-  };
-  private static readonly string[] Accents = ["accent1", "accent2", "accent3", "accent4", "accent5", "accent6"];
+  private static readonly HashSet<string> MarkerShapes = PowerPointVocabulary.ChartMarkerShapes;
+  private static readonly HashSet<string> ChartTypes = PowerPointVocabulary.ChartTypes;
+  private static readonly Dictionary<string, string> LabelPositions = PowerPointVocabulary.DockToModel;
+  private static readonly string[] Accents = PowerPointVocabulary.Accents;
 
   private readonly JsonObject reads;
   private readonly string name;
@@ -311,8 +283,7 @@ public partial class PowerPointMapping
     {
       result["color"] = color;
     }
-    foreach ((string key, string read) in new[] { ("bold", "is_bold"), ("italic", "is_italic"),
-      ("underline", "is_underlined") })
+    foreach ((string key, string read) in PowerPointVocabulary.CharacterFlags)
     {
       if ((bool?)style[read] == true)
       {
@@ -359,9 +330,9 @@ public partial class PowerPointMapping
     {
       result["insets"] = new JsonArray(margins.Select(key => (JsonNode)Round((double)layout[key]!)).ToArray());
     }
-    if (autofit is "shrink" or "resize")
+    if (PowerPointVocabulary.AutofitToModel(autofit) is string fit)
     {
-      result["fit"] = autofit == "shrink" ? "shrink" : "grow";
+      result["fit"] = fit;
     }
     if (wrap == false)
     {
@@ -1707,15 +1678,18 @@ public partial class PowerPointMapping
 
     JsonObject data = element["chart_data"]?.AsObject() ?? new JsonObject();
     List<string> categoryKeys = data.Select(pair => pair.Key)
-      .OrderBy(key => int.Parse(key[..key.IndexOf(':')], CultureInfo.InvariantCulture)).ToList();
+      .OrderBy(key => PowerPointVocabulary.ParseChartDataKey(key).Index).ToList();
     if (family == "bar")
     {
       categoryKeys.Reverse();
     }
+    string? CategoryName(int? index) => categoryKeys
+      .Select(PowerPointVocabulary.ParseChartDataKey)
+      .FirstOrDefault(parsed => parsed.Index == index).Name;
     double? Value(string category, JsonObject entry)
     {
       JsonNode? cell = data[category]!.AsObject()
-        .FirstOrDefault(pair => pair.Key[(pair.Key.IndexOf(':') + 1)..] == (string?)entry["name"]).Value;
+        .FirstOrDefault(pair => PowerPointVocabulary.ParseChartDataKey(pair.Key).Name == (string?)entry["name"]).Value;
       return cell is JsonValue value && value.TryGetValue(out double number) ? number : null;
     }
 
@@ -1758,8 +1732,9 @@ public partial class PowerPointMapping
       List<int> subtotals = (drawn.FirstOrDefault()?["subtotal_indices"]?.AsArray() ?? [])
         .Select(index => (int)index!).ToList();
       properties["totals"] = new JsonArray(categoryKeys
-        .Where(key => subtotals.Contains(int.Parse(key[..key.IndexOf(':')], CultureInfo.InvariantCulture)))
-        .Select(key => (JsonNode?)key[(key.IndexOf(':') + 1)..]).ToArray());
+        .Select(PowerPointVocabulary.ParseChartDataKey)
+        .Where(parsed => subtotals.Contains(parsed.Index))
+        .Select(parsed => (JsonNode?)parsed.Name).ToArray());
       properties["connector_lines"] = (bool?)element["connector_lines"] ?? true;
     }
 
@@ -1878,7 +1853,7 @@ public partial class PowerPointMapping
       List<(int Point, int Kind, JsonObject? Fill)> bars = categoryKeys.Select((key, point) =>
       {
         double? value = drawn.Count > 0 ? Value(key, drawn[0]) : null;
-        int kind = totalNames.Contains(key[(key.IndexOf(':') + 1)..]) ? 2 : value < 0 ? 1 : 0;
+        int kind = totalNames.Contains(PowerPointVocabulary.ParseChartDataKey(key).Name) ? 2 : value < 0 ? 1 : 0;
         JsonNode? read = points.FirstOrDefault(candidate => (int?)candidate!["index"] == point);
         return (point, kind, Color(read?["fill"], where));
       }).ToList();
@@ -1975,13 +1950,11 @@ public partial class PowerPointMapping
       var points = new JsonObject();
       foreach (JsonNode? marker in list)
       {
-        string? key = categoryKeys.FirstOrDefault(candidate =>
-          int.Parse(candidate[..candidate.IndexOf(':')], CultureInfo.InvariantCulture) == (int?)marker?["index"]);
-        if (key is null)
+        if (CategoryName((int?)marker?["index"]) is not string category)
         {
           continue;
         }
-        string prefix = $"points.{key[(key.IndexOf(':') + 1)..]}.";
+        string prefix = $"points.{category}.";
         JsonObject? color = Color(marker!["marker_shape_style"]?["border_color"], where);
         if (color is not null && !JsonNode.DeepEquals(color, line))
         {
@@ -2022,13 +1995,11 @@ public partial class PowerPointMapping
       var points = new JsonObject();
       foreach (JsonNode? label in list)
       {
-        string? key = categoryKeys.FirstOrDefault(candidate =>
-          int.Parse(candidate[..candidate.IndexOf(':')], CultureInfo.InvariantCulture) == (int?)label?["index"]);
-        if (key is null)
+        if (CategoryName((int?)label?["index"]) is not string category)
         {
           continue;
         }
-        string prefix = $"points.{key[(key.IndexOf(':') + 1)..]}.data_labels.";
+        string prefix = $"points.{category}.data_labels.";
         bool? value = (bool?)label!["show_value"];
         if ((bool?)label["is_deleted"] == true || (shows && value == false))
         {
@@ -2068,7 +2039,7 @@ public partial class PowerPointMapping
         {
           if (!JsonNode.DeepEquals(setting, series[name]))
           {
-            points[$"points.{key[(key.IndexOf(':') + 1)..]}.{name}"] = setting?.DeepClone();
+            points[$"points.{category}.{name}"] = setting?.DeepClone();
           }
         }
       }
@@ -2166,7 +2137,7 @@ public partial class PowerPointMapping
         if (pointColors.Count > 0)
         {
           AddPoints(json, new JsonObject(pointColors.Select(pair => KeyValuePair.Create(
-            $"points.{categoryKeys[pair.Key][(categoryKeys[pair.Key].IndexOf(':') + 1)..]}.color",
+            $"points.{PowerPointVocabulary.ParseChartDataKey(categoryKeys[pair.Key]).Name}.color",
             (JsonNode?)pair.Value.DeepClone()))));
           json["labels"] ??= own;
         }
@@ -2177,11 +2148,10 @@ public partial class PowerPointMapping
         var colored = new JsonObject();
         foreach (JsonNode? point in list)
         {
-          string? key = categoryKeys.FirstOrDefault(candidate =>
-            int.Parse(candidate[..candidate.IndexOf(':')], CultureInfo.InvariantCulture) == (int?)point?["index"]);
-          if (key is not null && Color(point?["fill"], where) is JsonObject fill && !JsonNode.DeepEquals(fill, color))
+          if (CategoryName((int?)point?["index"]) is string category && Color(point?["fill"], where) is JsonObject fill &&
+            !JsonNode.DeepEquals(fill, color))
           {
-            colored[$"points.{key[(key.IndexOf(':') + 1)..]}.color"] = fill;
+            colored[$"points.{category}.color"] = fill;
           }
         }
         if (colored.Count > 0)
@@ -2201,13 +2171,11 @@ public partial class PowerPointMapping
         var outlined = new JsonObject();
         foreach (JsonNode? point in entry["data_point_list"] as JsonArray ?? new JsonArray())
         {
-          string? key = categoryKeys.FirstOrDefault(candidate =>
-            int.Parse(candidate[..candidate.IndexOf(':')], CultureInfo.InvariantCulture) == (int?)point?["index"]);
-          if (key is null || point?["border"] is not JsonNode border)
+          if (CategoryName((int?)point?["index"]) is not string category || point?["border"] is not JsonNode border)
           {
             continue;
           }
-          string pointKey = $"points.{key[(key.IndexOf(':') + 1)..]}.outline";
+          string pointKey = $"points.{category}.outline";
           JsonObject? pointOutline = Outline(border, "outline.", where, outline?["outline.dash"] is not null);
           if (pointOutline is null && outline is not null)
           {
@@ -2234,8 +2202,8 @@ public partial class PowerPointMapping
       }
       seriesJson.Add(json);
     }
-    properties["categories"] = new JsonArray(categoryKeys.Select(key => (JsonNode)key[(key.IndexOf(':') + 1)..])
-      .ToArray());
+    properties["categories"] = new JsonArray(categoryKeys
+      .Select(key => (JsonNode)PowerPointVocabulary.ParseChartDataKey(key).Name).ToArray());
     properties["series"] = seriesJson;
     FixAxes(properties, type);
     return Item(id, "chart", properties, null);
@@ -2428,11 +2396,7 @@ public partial class PowerPointMapping
     return name;
   }
 
-  private static readonly Dictionary<string, string> DateTokens = new Dictionary<string, string>
-  {
-    ["yyyy"] = "YYYY", ["yy"] = "YY", ["mmmm"] = "MMMM", ["mmm"] = "MMM", ["mm"] = "MM", ["m"] = "M", ["dd"] = "DD",
-    ["d"] = "D"
-  };
+  private static readonly Dictionary<string, string> DateTokens = PowerPointVocabulary.ExcelDateToPattern;
 
   /// <summary>An Excel date code as a date pattern, or null when it has a time, a weekday, or a literal Y, M, or D.
   /// </summary>

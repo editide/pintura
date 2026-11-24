@@ -29,46 +29,20 @@ public record ExportBilling(int Slides, int Layouts, int Masters);
 /// a gap.</summary>
 public partial class Exporter
 {
-  // The tools' scheme names for Pintura's theme colors; edit_theme spells the last one folHlink.
-  private static readonly Dictionary<string, string> Scheme = new Dictionary<string, string>(StringComparer.Ordinal)
-  {
-    ["dark1"] = "dk1", ["light1"] = "lt1", ["dark2"] = "dk2", ["light2"] = "lt2", ["accent1"] = "accent1",
-    ["accent2"] = "accent2", ["accent3"] = "accent3", ["accent4"] = "accent4", ["accent5"] = "accent5",
-    ["accent6"] = "accent6", ["hyperlink"] = "hlink", ["followed_hyperlink"] = "fol_hlink"
-  };
-
-  private static readonly HashSet<string> Markers = ["arrow", "triangle", "stealth", "diamond", "oval"];
-
-  private static readonly Dictionary<string, string> Autofit = new Dictionary<string, string>(StringComparer.Ordinal)
-  {
-    ["none"] = "none", ["grow"] = "resize", ["shrink"] = "shrink"
-  };
-
-  private static readonly Dictionary<string, int> Turn = new Dictionary<string, int>(StringComparer.Ordinal)
-  {
-    ["right"] = 0, ["down"] = 90, ["left"] = 180, ["up"] = 270
-  };
-
-  private static readonly Dictionary<string, string> Dock = new Dictionary<string, string>(StringComparer.Ordinal)
-  {
-    ["center"] = "center", ["inside"] = "inside_end", ["inside_base"] = "inside_base", ["outside"] = "outside_end",
-    ["above"] = "above", ["below"] = "below", ["left"] = "left", ["right"] = "right"
-  };
-
-  private static readonly Dictionary<string, string> DateCodes = new Dictionary<string, string>(StringComparer.Ordinal)
-  {
-    ["YYYY"] = "yyyy", ["YY"] = "yy", ["MMMM"] = "mmmm", ["MMM"] = "mmm", ["MM"] = "mm", ["M"] = "m", ["DD"] = "dd",
-    ["D"] = "d"
-  };
+  private static readonly Dictionary<string, string> Scheme = PowerPointVocabulary.ModelToToolScheme;
+  private static readonly HashSet<string> Markers = PowerPointVocabulary.ArrowMarkers;
+  private static readonly Dictionary<string, string> Autofit = PowerPointVocabulary.ModelToAutofit;
+  private static readonly Dictionary<string, int> Turn = PowerPointVocabulary.Turn;
+  private static readonly Dictionary<string, string> Dock = PowerPointVocabulary.ModelToDock;
+  private static readonly Dictionary<string, string> DateCodes = PowerPointVocabulary.PatternToExcelDate;
 
   private static readonly (string Key, string Name, Func<JsonNode, JsonNode?> Convert, bool Flag)[] Character =
   [
     ("font", "font_family", Font, false),
     ("size", "font_size", node => node.DeepClone(), true),
     ("color", "font_color", node => Color(node), false),
-    ("bold", "is_bold", node => node.DeepClone(), true),
-    ("italic", "is_italic", node => node.DeepClone(), true),
-    ("underline", "is_underlined", node => node.DeepClone(), true)
+    .. PowerPointVocabulary.CharacterFlags.Select(pair =>
+      (pair.Model, pair.Tool, (Func<JsonNode, JsonNode?>)(node => node.DeepClone()), true))
   ];
 
   /// <summary>What PowerPoint names the slides before the first section, and so what a presentation's are named.
@@ -1780,10 +1754,10 @@ public partial class Exporter
       {
         if (point < series[index].Values.Count && series[index].Values[point] is JsonNode number)
         {
-          values[$"{index}:{Label(Get(series[index].Entry, "name"))}"] = number.DeepClone();
+          values[PowerPointVocabulary.ChartDataKey(index, Label(Get(series[index].Entry, "name")))] = number.DeepClone();
         }
       }
-      data[$"{point}:{Label(categories[point])}"] = values;
+      data[PowerPointVocabulary.ChartDataKey(point, Label(categories[point]))] = values;
     }
 
     JsonObject element = Box(Get(properties, "frame"));
@@ -2431,7 +2405,7 @@ public partial class Exporter
     var colors = new JsonObject();
     foreach ((string name, JsonNode? hex) in Get(theme, "colors") as JsonObject ?? new JsonObject())
     {
-      colors[name == "followed_hyperlink" ? "folHlink" : Scheme.GetValueOrDefault(name, name)] = hex?.DeepClone();
+      colors[PowerPointVocabulary.ToThemeColorSlot(name)] = hex?.DeepClone();
     }
     Call("edit_theme", new JsonObject
     {
