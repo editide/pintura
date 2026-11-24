@@ -67,10 +67,11 @@ public static partial class PreviewServer
         : HeadlessRunner.LayoutDetail(presentation, layout, index)) is { } detail
         ? Results.Json(detail, PayloadJson.Options)
         : Results.NotFound());
+    var saveCache = new SaveCache(store);
     app.MapPost("/api/edit", (EditRequest request) => Edit(store, request));
-    app.MapPost("/api/move", (SlideMove move) => Move(store, move));
-    app.MapPost("/api/comments", (CommentChange change) => Comment(store, change));
-    app.MapPost("/api/picks", (PickChange change) => Pick(store, change));
+    app.MapPost("/api/move", (SlideMove move) => Move(store, move, saveCache));
+    app.MapPost("/api/comments", (CommentChange change) => Comment(store, change, saveCache));
+    app.MapPost("/api/picks", (PickChange change) => Pick(store, change, saveCache));
     app.MapPost("/api/trace", (TracePayload trace) => Trace(store, trace));
     var comparison = new Comparison(store);
     app.MapGet("/api/compare", (string? @base, string? head) => comparison.Answer(@base, head));
@@ -79,27 +80,24 @@ public static partial class PreviewServer
       comparison.Step(slide, before, after, aborted));
     app.MapPost("/api/revert", (RevertRequest request) => comparison.Revert(request));
     app.MapGet("/api/versions", () => Results.Json(Revisions.Versions(store.Root), PayloadJson.Options));
-    app.MapGet("/api/save", () => Saving(() => Saves.Status(store.Root)));
+    app.MapGet("/api/save", () => Saving(saveCache.Status));
     // Without files, the draft is of all the page's edits; with them, of the parts they're in.
     app.MapGet("/api/save/draft", (string[]? files) => Saving(() =>
     {
       store.Refresh();
       string[]? only = files is { Length: > 0 } ? files : null;
       return store.Deck.Error is null && store.Presentation is Presentation presentation
-        ? new
-        {
-          Message = Saves.Draft(store.Root, presentation, only),
-          Mixed = Saves.Mixed(store.Root, presentation, only),
-          Parts = Saves.Parts(store.Root, presentation)
-        }
-        : new { Message = "", Mixed = (string?)null, Parts = new List<SavePart>() };
+        ? Saves.Box(store.Root, presentation, only)
+        : new SaveBox("", null, []);
     }));
     app.MapPost("/api/save", (SaveRequest request) => Saving(() =>
     {
       // A nudge just made may still be in the watcher's debounce, and the draft must describe it.
       store.Refresh();
-      return Saves.Save(store.Root, request.Message, store.Deck.Error is null ? store.Presentation : null,
+      DeckVersion saved = Saves.Save(store.Root, request.Message, store.Deck.Error is null ? store.Presentation : null,
         request.Files);
+      saveCache.Invalidate();
+      return saved;
     }));
     app.MapGet("/api/media", (HttpContext context, string path, string? fill, string? at) =>
     {
@@ -473,7 +471,7 @@ public static partial class PreviewServer
 
   /// <summary>Moves, deletes, or restores a slide's line in presentation.yaml, with its file for the last two, and
   /// reloads, answering with the move that puts it back.</summary>
-  private static IResult Move(PresentationStore store, SlideMove move)
+  private static IResult Move(PresentationStore store, SlideMove move, SaveCache saveCache)
   {
     if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
     {
@@ -500,7 +498,7 @@ public static partial class PreviewServer
         string slideBefore = transaction.Read(file)
           ?? throw new FileNotFoundException($"Could not find file '{file}'.", file);
         List<Comment> comments = CommentFile.RemoveSlide(presentation, move.Slide,
-          CommentFile.Author(presentation.Root), DateTime.Now, Saves.Snapshot(presentation.Root), transaction);
+          CommentFile.Author(presentation.Root), DateTime.Now, saveCache.Snapshot(), transaction);
         undo = Patcher.MoveInFile(list, move, transaction)! with
         {
           Restore = slideBefore,
@@ -537,7 +535,7 @@ public static partial class PreviewServer
 
   /// <summary>Adds, removes, rewords, replies to, restores, resolves, or reopens comments and reloads, answering with
   /// the change that undoes it.</summary>
-  private static IResult Comment(PresentationStore store, CommentChange change)
+  private static IResult Comment(PresentationStore store, CommentChange change, SaveCache saveCache)
   {
     if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
     {
@@ -551,12 +549,12 @@ public static partial class PreviewServer
     }
     return Write<CommentChange>(store, presentation, transaction =>
       (CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
-        Saves.Snapshot(presentation.Root), transaction), null));
+        saveCache.Snapshot(), transaction), null));
   }
 
   /// <summary>Keeps a variant of a pick, or none, or reopens one, and reloads, answering with the change that undoes
   /// it.</summary>
-  private static IResult Pick(PresentationStore store, PickChange change)
+  private static IResult Pick(PresentationStore store, PickChange change, SaveCache saveCache)
   {
     if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
     {
@@ -570,7 +568,7 @@ public static partial class PreviewServer
     return Write(store, presentation, transaction =>
     {
       (PickChange undo, Dictionary<string, string?> wrote) = PickFile.Apply(presentation, change,
-        CommentFile.Author(presentation.Root), DateTime.Now, Saves.Snapshot(presentation.Root), transaction);
+        CommentFile.Author(presentation.Root), DateTime.Now, saveCache.Snapshot(), transaction);
       return (undo, wrote.Keys);
     });
   }
@@ -1125,4 +1123,66 @@ public sealed class ExportProgress
 {
   public string? Stage { get; set; }
   public double? Fraction { get; set; }
+}
+
+/// <summary>Caches <see cref="Saves.Status"/> and <see cref="Saves.Snapshot"/> for one store version and HEAD, so
+/// reloads across open tabs and back-to-back comments don't repeat the same git calls.</summary>
+internal sealed class SaveCache
+{
+  private readonly PresentationStore store;
+  private readonly object gate = new();
+  private (long Version, long Head)? statusKey;
+  private SaveStatus? status;
+  private (long Version, long Head)? snapshotKey;
+  private Snapshot? snapshot;
+
+  public SaveCache(PresentationStore store)
+  {
+    this.store = store;
+  }
+
+  public SaveStatus Status()
+  {
+    (long Version, long Head) key = (store.Version, store.HeadVersion);
+    lock (gate)
+    {
+      if (statusKey == key && status is not null)
+      {
+        return status;
+      }
+      SaveStatus computed = Saves.Status(store.Root);
+      statusKey = key;
+      status = computed;
+      return computed;
+    }
+  }
+
+  public Snapshot? Snapshot()
+  {
+    (long Version, long Head) key = (store.Version, store.HeadVersion);
+    lock (gate)
+    {
+      if (snapshotKey == key)
+      {
+        return snapshot;
+      }
+      Snapshot? computed = Saves.Snapshot(store.Root);
+      snapshotKey = key;
+      snapshot = computed;
+      return computed;
+    }
+  }
+
+  public void Invalidate()
+  {
+    lock (gate)
+    {
+      statusKey = null;
+      status = null;
+      snapshotKey = null;
+      snapshot = null;
+    }
+  }
+
+
 }

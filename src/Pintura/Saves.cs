@@ -18,6 +18,9 @@ public record SaveRequest(string? Message, List<string>? Files);
 /// <summary>Edits a save can take without the rest, as the save box lists them, and the files they're in.</summary>
 public record SavePart(string Label, List<string> Files);
 
+/// <summary>Everything the save box shows, computed from one pass over git's state.</summary>
+public record SaveBox(string Message, string? Mixed, List<SavePart> Parts);
+
 /// <summary>Saving is committing what the page changed in the presentation and its theme, and only that, so the page's
 /// readers can keep versions without knowing git while agents commit their own work. Books are Libreta's to save.
 /// </summary>
@@ -28,14 +31,15 @@ public static class Saves
   /// <summary>Outside a repository everything is unsaved, and the page's.</summary>
   public static SaveStatus Status(string root)
   {
-    if (!Inside(root))
+    if (!Revisions.Inside(root))
     {
       return new SaveStatus(true, 1, [], true);
     }
     VersionScope scope = Revisions.Scope(root);
     Pending pending = Pend(scope, root);
     Dictionary<string, bool> edited = pending.Edited;
-    return new SaveStatus(pending.Changed.Count > 0, Revisions.Count(scope, "HEAD") + 1,
+    int next = pending.Head is null ? 1 : Revisions.Count(scope, pending.Head) + 1;
+    return new SaveStatus(pending.Changed.Count > 0, next,
       [.. edited.Keys.Select(scope.Slide).OfType<string>().Order(StringComparer.Ordinal)],
       edited.Keys.Any(path => scope.Slide(path) is null));
   }
@@ -46,18 +50,13 @@ public static class Saves
   {
     try
     {
-      if (!Inside(root))
-      {
-        return null;
-      }
-      (int exit, string head, _) = Revisions.Run(root, "rev-parse", "--short", "HEAD");
-      if (exit != 0)
+      if (Revisions.TryLocate(root) is not { } info || Revisions.Head(info.Top) is not string head)
       {
         return null;
       }
       VersionScope scope = Revisions.Scope(root);
-      List<string> changed = Substantive(scope, Changes(scope));
-      return new Snapshot(head.Trim(), changed.Any(path => scope.Slide(path) is null),
+      List<string> changed = Substantive(scope, head, Changes(scope, head));
+      return new Snapshot(head[..Math.Min(7, head.Length)], changed.Any(path => scope.Slide(path) is null),
         changed.Select(scope.Slide).OfType<string>().ToHashSet(StringComparer.Ordinal));
     }
     catch (InvalidDataException)
@@ -69,7 +68,7 @@ public static class Saves
   /// <summary>The deck's files that differ from its last version, those of them that are more than comments or
   /// reformatting, and the ones the page wrote, each with whether something besides the page changed it too. Before
   /// the first version, every file is the page's.</summary>
-  private record Pending(List<string> All, List<string> Changed, Dictionary<string, bool> Wrote)
+  private record Pending(string? Head, List<string> All, List<string> Changed, Dictionary<string, bool> Wrote)
   {
     public Dictionary<string, bool> Edited => Wrote.Where(pair => Changed.Contains(pair.Key))
       .ToDictionary(pair => pair.Key, pair => pair.Value);
@@ -79,35 +78,64 @@ public static class Saves
   /// when the page wrote it. Given files, the page's edits are only the parts they're in.</summary>
   private static Pending Pend(VersionScope scope, string root, IReadOnlyCollection<string>? only = null)
   {
-    List<string> all = Changes(scope);
-    List<string> changed = Substantive(scope, all);
-    Dictionary<string, bool> wrote = Born(scope)
+    string? head = Revisions.Head(scope.Top);
+    List<string> all = Changes(scope, head);
+    List<string> changed = Substantive(scope, head, all);
+    Dictionary<string, bool> wrote = head is not null
       ? PageEdits.Read(scope, root, all.ToHashSet(StringComparer.Ordinal))
       : all.ToDictionary(path => path, _ => false);
-    if (only is not null)
+    return Narrow(scope, new Pending(head, all, changed, wrote), only);
+  }
+
+  private static Pending Narrow(VersionScope scope, Pending pending, IReadOnlyCollection<string>? only)
+  {
+    if (only is null)
     {
-      HashSet<string> chosen = [.. Groups(scope, wrote.Keys.Where(changed.Contains))
-        .Where(files => files.Any(only.Contains)).SelectMany(files => files)];
-      wrote = wrote.Where(pair => chosen.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
+      return pending;
     }
-    return new Pending(all, changed, wrote);
+    HashSet<string> chosen = [.. Groups(scope, pending.Head, pending.Wrote.Keys.Where(pending.Changed.Contains))
+      .Where(files => files.Any(only.Contains)).SelectMany(files => files)];
+    Dictionary<string, bool> wrote = pending.Wrote.Where(pair => chosen.Contains(pair.Key))
+      .ToDictionary(pair => pair.Key, pair => pair.Value);
+    return pending with { Wrote = wrote };
+  }
+
+  /// <summary>The draft message, mixed-edit warning, and saveable parts, computed from one git pass.</summary>
+  public static SaveBox Box(string root, Presentation current, IReadOnlyCollection<string>? only = null)
+  {
+    if (!Revisions.Inside(root))
+    {
+      return new SaveBox(First, null, []);
+    }
+    VersionScope scope = Revisions.Scope(root);
+    Pending all = Pend(scope, root);
+    Pending chosen = Narrow(scope, all, only);
+    string message = Draft(root, current, scope, chosen);
+    string? mixed = Mixed(scope, current, chosen);
+    List<SavePart> parts = Parts(scope, current, all);
+    return new SaveBox(message, mixed, parts);
   }
 
   /// <summary>The parts of the page's edits a save can take without the rest, in slide order; none outside a
   /// repository or before its first version, which takes everything.</summary>
   public static List<SavePart> Parts(string root, Presentation current)
   {
-    if (!Inside(root))
+    if (!Revisions.Inside(root))
     {
       return [];
     }
     VersionScope scope = Revisions.Scope(root);
-    if (!Born(scope))
+    return Parts(scope, current, Pend(scope, root));
+  }
+
+  private static List<SavePart> Parts(VersionScope scope, Presentation current, Pending pending)
+  {
+    if (pending.Head is null)
     {
       return [];
     }
     int Number(string path) => current.Slides.FindIndex(slide => slide.Id == scope.Slide(path)) + 1;
-    return [.. Groups(scope, Pend(scope, root).Edited.Keys)
+    return [.. Groups(scope, pending.Head, pending.Edited.Keys)
       .OrderBy(files => files is [string file] && scope.Slide(file) is not null ? Number(file) : int.MaxValue)
       .Select(files => new SavePart(Label(scope, files, Number), files))];
   }
@@ -115,14 +143,15 @@ public static class Saves
   /// <summary>Each slide's file is a part, as are presentation.yaml and the theme. A slide deleted or restored goes
   /// with presentation.yaml, since a version listing a slide it lacks, or lacking one it lists, doesn't load, and so
   /// do the pick files, since a pick resolved rewrites the list.</summary>
-  private static List<List<string>> Groups(VersionScope scope, IEnumerable<string> edited)
+  private static List<List<string>> Groups(VersionScope scope, string? head, IEnumerable<string> edited)
   {
     List<List<string>> slides = [];
     List<string> listed = [];
     List<string> themed = [];
     foreach (string path in edited.Order(StringComparer.Ordinal))
     {
-      if (path == scope.Manifest || Picked(scope, path) || scope.Slide(path) is not null && CameOrWent(scope, path))
+      if (path == scope.Manifest || Picked(scope, path) ||
+        scope.Slide(path) is not null && CameOrWent(scope, head, path))
       {
         listed.Add(path);
       }
@@ -150,9 +179,9 @@ public static class Saves
     return scope.Slide(path) is null && path != scope.Manifest && !Picked(scope, path);
   }
 
-  private static bool CameOrWent(VersionScope scope, string path)
+  private static bool CameOrWent(VersionScope scope, string? head, string path)
   {
-    bool saved = Revisions.Run(scope.Top, "rev-parse", "--verify", "--quiet", $"HEAD:{path}").Exit == 0;
+    bool saved = head is not null && GitObjects.For(scope.Top).TryRead($"{head}:{path}", out _, out _);
     return saved != File.Exists(Path.Combine(scope.Top, path));
   }
 
@@ -183,28 +212,22 @@ public static class Saves
       : char.ToUpperInvariant(label[0]) + label[1..];
   }
 
-  private static bool Born(VersionScope scope)
-  {
-    return Revisions.Run(scope.Top, "rev-parse", "--verify", "--quiet", "HEAD").Exit == 0;
-  }
-
-  private static List<string> Substantive(VersionScope scope, List<string> changes)
+  private static List<string> Substantive(VersionScope scope, string? head, List<string> changes)
   {
     return [.. changes.Where(path => path != scope.CommentFile && path != scope.ResolvedFile &&
-      !Reformatted(scope, path))];
+      !Reformatted(scope, head, path))];
   }
 
   /// <summary>Whether a YAML file reads as it did in the last version, differing only in comments, blank lines,
   /// indentation or the order of a mapping's keys.</summary>
-  private static bool Reformatted(VersionScope scope, string path)
+  private static bool Reformatted(VersionScope scope, string? head, string path)
   {
     string file = Path.Combine(scope.Top, path);
-    if (!path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) || !File.Exists(file))
+    if (head is null || !path.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) || !File.Exists(file))
     {
       return false;
     }
-    (int exit, string before, _) = Revisions.Run(scope.Top, "show", $"HEAD:{path}");
-    if (exit != 0)
+    if (GitObjects.For(scope.Top).TryReadText($"{head}:{path}") is not string before)
     {
       return false;
     }
@@ -259,7 +282,7 @@ public static class Saves
     IReadOnlyCollection<string>? only = null)
   {
     root = Path.GetFullPath(root);
-    if (!Inside(root))
+    if (!Revisions.Inside(root))
     {
       Check(Revisions.Run(root, "init", "-q"));
     }
@@ -269,7 +292,9 @@ public static class Saves
     {
       throw new InvalidDataException("there are no changes to save");
     }
-    string subject = string.IsNullOrWhiteSpace(message) ? Draft(root, current, only) : message.Trim();
+    string subject = string.IsNullOrWhiteSpace(message)
+      ? Draft(root, current ?? PresentationLoader.Load(root), scope, pending)
+      : message.Trim();
     List<string> files = [.. pending.All.Where(path => path == scope.CommentFile || path == scope.ResolvedFile ||
       path == scope.PickFile || path == scope.ResolvedPickFile || pending.Wrote.ContainsKey(path))];
     List<string> paths = [.. files.Select(path => $":(literal){path}")];
@@ -284,19 +309,18 @@ public static class Saves
   /// <summary>The deck's files that differ from its last version, as repository paths: every file it had that changed
   /// or went, and of the new ones only YAML and the pictures and CSVs YAML names, so an export or a screenshot left
   /// in the folder isn't saved with it.</summary>
-  private static List<string> Changes(VersionScope scope)
+  private static List<string> Changes(VersionScope scope, string? head)
   {
     string[] Listed(params string[] arguments)
     {
       (int exit, string output, _) = Revisions.Run(scope.Top, [.. arguments, "--", .. scope.Saved]);
       return exit == 0 ? output.Split('\0', StringSplitOptions.RemoveEmptyEntries) : [];
     }
-    bool born = Born(scope);
     var changed = new SortedSet<string>(StringComparer.Ordinal);
     var added = new List<string>(Listed("ls-files", "-z", "--others", "--exclude-standard"));
-    if (born)
+    if (head is not null)
     {
-      string[] entries = Listed("diff", "-z", "--name-status", "--no-renames", "HEAD");
+      string[] entries = Listed("diff", "-z", "--name-status", "--no-renames", head);
       for (int index = 0; index + 1 < entries.Length; index += 2)
       {
         if (entries[index] == "A")
@@ -361,18 +385,30 @@ public static class Saves
   public static string Draft(string root, Presentation? current = null, IReadOnlyCollection<string>? only = null)
   {
     Presentation after = current ?? PresentationLoader.Load(root);
+    if (!Revisions.Inside(root))
+    {
+      return First;
+    }
+    VersionScope scope = Revisions.Scope(root);
+    return Draft(root, after, scope, Pend(scope, root, only));
+  }
+
+  private static string Draft(string root, Presentation after, VersionScope scope, Pending pending)
+  {
+    if (pending.Head is null)
+    {
+      return First;
+    }
     Presentation before;
     try
     {
-      before = Revisions.Load(root, "HEAD");
+      before = Revisions.Load(root, pending.Head);
     }
     catch (InvalidDataException)
     {
       return First;
     }
     DeckDiff diff = Differ.Compare(before, after);
-    VersionScope scope = Revisions.Scope(root);
-    Pending pending = Pend(scope, root, only);
     HashSet<string> edited = [.. pending.Edited.Keys];
     HashSet<string> mine = [.. edited.Select(scope.Slide).OfType<string>()];
     HashSet<string> others = [.. pending.Changed.Where(path => !edited.Contains(path)).Select(scope.Slide)
@@ -401,12 +437,17 @@ public static class Saves
   /// null when there are none.</summary>
   public static string? Mixed(string root, Presentation current, IReadOnlyCollection<string>? only = null)
   {
-    if (!Inside(root))
+    if (!Revisions.Inside(root))
     {
       return null;
     }
     VersionScope scope = Revisions.Scope(root);
-    List<string> mixed = [.. Pend(scope, root, only).Edited.Where(pair => pair.Value).Select(pair => pair.Key)];
+    return Mixed(scope, current, Pend(scope, root, only));
+  }
+
+  private static string? Mixed(VersionScope scope, Presentation current, Pending pending)
+  {
+    List<string> mixed = [.. pending.Edited.Where(pair => pair.Value).Select(pair => pair.Key)];
     List<int> numbers = [.. mixed.Select(scope.Slide).OfType<string>()
       .Select(id => current.Slides.FindIndex(slide => slide.Id == id) + 1).Where(number => number > 0)];
     List<string> parts = numbers.Count > 0 ? [Numbers(numbers)] : [];
@@ -545,21 +586,16 @@ public static class Saves
   private static List<string> Identity(string top)
   {
     var settings = new List<string>();
-    string name = Revisions.Run(top, "config", "user.name").Output.Trim();
+    (string name, string email) = Revisions.Identity(top);
     if (name.Length == 0)
     {
-      settings.AddRange(["-c", $"user.name={CommentFile.Author(top)}"]);
+      settings.AddRange(["-c", $"user.name={Environment.UserName}"]);
     }
-    if (Revisions.Run(top, "config", "user.email").Output.Trim().Length == 0)
+    if (email.Length == 0)
     {
       settings.AddRange(["-c", $"user.email={Environment.UserName}@{Environment.MachineName}"]);
     }
     return settings;
-  }
-
-  private static bool Inside(string root)
-  {
-    return Revisions.Run(root, "rev-parse", "--is-inside-work-tree").Exit == 0;
   }
 
   private static void Check((int Exit, string Output, string Error) result)

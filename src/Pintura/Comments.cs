@@ -404,22 +404,13 @@ public static class CommentFile
   {
     try
     {
-      var start = new ProcessStartInfo("git", ["config", "user.name"])
-      {
-        WorkingDirectory = root,
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-        UseShellExecute = false
-      };
-      using Process process = Process.Start(start)!;
-      string name = process.StandardOutput.ReadToEnd().Trim();
-      process.WaitForExit();
-      if (process.ExitCode == 0 && name.Length > 0)
+      string name = Revisions.Identity(root).Name;
+      if (name.Length > 0)
       {
         return name;
       }
     }
-    catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+    catch (InvalidDataException)
     {
     }
     return Environment.UserName;

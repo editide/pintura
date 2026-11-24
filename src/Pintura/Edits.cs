@@ -21,7 +21,7 @@ public static class PageEdits
   {
     try
     {
-      if (Revisions.Run(root, "rev-parse", "--is-inside-work-tree").Exit != 0)
+      if (Revisions.TryLocate(root) is not { } info)
       {
         return;
       }
@@ -29,12 +29,12 @@ public static class PageEdits
       string file = RepositoryPath(scope, root, path);
       lock (gate)
       {
-        Dictionary<string, Entry> entries = Load(scope, root);
+        Dictionary<string, Entry> entries = Load(scope, info.GitDir);
         bool alone = entries.TryGetValue(file, out Entry? entry)
           ? entry.Alone && entry.Left == Blob(before)
           : Blob(before) == Saved(scope, file);
         entries[file] = new Entry(alone, Blob(File.Exists(path) ? File.ReadAllText(path) : null));
-        Store(scope, root, entries);
+        Store(scope, info.GitDir, entries);
       }
     }
     catch (Exception exception) when (exception is InvalidDataException or IOException or
@@ -47,16 +47,17 @@ public static class PageEdits
   /// besides the page changed it too; the rest were saved or put back since, and are forgotten.</summary>
   public static Dictionary<string, bool> Read(VersionScope scope, string root, IReadOnlySet<string> changed)
   {
+    string gitDir = Revisions.TryLocate(root)?.GitDir ?? Path.Combine(scope.Top, ".git");
     lock (gate)
     {
-      Dictionary<string, Entry> entries = Load(scope, root);
+      Dictionary<string, Entry> entries = Load(scope, gitDir);
       if (entries.Keys.Where(file => !changed.Contains(file)).ToList() is [_, ..] gone)
       {
         foreach (string file in gone)
         {
           entries.Remove(file);
         }
-        Store(scope, root, entries);
+        Store(scope, gitDir, entries);
       }
       return entries.ToDictionary(pair => pair.Key, pair =>
       {
@@ -69,14 +70,15 @@ public static class PageEdits
   /// <summary>Forgets the files a save committed.</summary>
   public static void Forget(VersionScope scope, string root, IEnumerable<string> files)
   {
+    string gitDir = Revisions.TryLocate(root)?.GitDir ?? Path.Combine(scope.Top, ".git");
     lock (gate)
     {
-      Dictionary<string, Entry> entries = Load(scope, root);
+      Dictionary<string, Entry> entries = Load(scope, gitDir);
       foreach (string file in files)
       {
         entries.Remove(file);
       }
-      Store(scope, root, entries);
+      Store(scope, gitDir, entries);
     }
   }
 
@@ -92,8 +94,10 @@ public static class PageEdits
   /// <summary>The file's blob in the last version, empty when it had none.</summary>
   private static string Saved(VersionScope scope, string file)
   {
-    (int exit, string output, _) = Revisions.Run(scope.Top, "rev-parse", "--verify", "--quiet", $"HEAD:{file}");
-    return exit == 0 ? output.Trim() : "";
+    return Revisions.Head(scope.Top) is string head &&
+      GitObjects.For(scope.Top).TryRead($"{head}:{file}", out string hash, out _)
+      ? hash
+      : "";
   }
 
   /// <summary>Text hashed as git hashes a file, so it compares with the last version's blob.</summary>
@@ -108,9 +112,9 @@ public static class PageEdits
     return Convert.ToHexString(SHA1.HashData([.. header, .. body])).ToLowerInvariant();
   }
 
-  private static Dictionary<string, Entry> Load(VersionScope scope, string root)
+  private static Dictionary<string, Entry> Load(VersionScope scope, string gitDir)
   {
-    string file = Record(scope, root);
+    string file = Record(scope, gitDir);
     try
     {
       return File.Exists(file)
@@ -123,9 +127,9 @@ public static class PageEdits
     }
   }
 
-  private static void Store(VersionScope scope, string root, Dictionary<string, Entry> entries)
+  private static void Store(VersionScope scope, string gitDir, Dictionary<string, Entry> entries)
   {
-    string file = Record(scope, root);
+    string file = Record(scope, gitDir);
     if (entries.Count == 0)
     {
       if (File.Exists(file))
@@ -139,12 +143,10 @@ public static class PageEdits
   }
 
   /// <summary>One record a presentation, since a repository may hold several.</summary>
-  private static string Record(VersionScope scope, string root)
+  private static string Record(VersionScope scope, string gitDir)
   {
     string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(scope.Presentation)))[..12];
-    string path = Revisions.Run(root, "rev-parse", "--git-path", $"pintura/edits/{key.ToLowerInvariant()}.json")
-      .Output.Trim();
-    return Path.GetFullPath(Path.Combine(root, path));
+    return Path.Combine(gitDir, "pintura", "edits", $"{key.ToLowerInvariant()}.json");
   }
 
 

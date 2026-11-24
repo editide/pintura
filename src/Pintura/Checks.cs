@@ -221,16 +221,28 @@ public static class Checks
     {
       return findings;
     }
+    List<(string Name, string Problem)> existing = [.. files.Where(file =>
+      File.Exists(Path.Combine(presentation.Root, file.Name)))];
+    if (existing.Count == 0)
+    {
+      return findings;
+    }
     try
     {
-      if (Revisions.Run(presentation.Root, "rev-parse", "--is-inside-work-tree").Exit != 0)
+      if (!Revisions.Inside(presentation.Root))
       {
         return findings;
       }
-      foreach ((string name, string problem) in files)
+      (int exit, string output, _) = Revisions.Run(presentation.Root,
+        ["ls-files", "-z", "--", .. existing.Select(file => file.Name)]);
+      if (exit != 0)
       {
-        if (File.Exists(Path.Combine(presentation.Root, name)) &&
-          Revisions.Run(presentation.Root, "ls-files", "--error-unmatch", "--", name).Exit != 0)
+        return findings;
+      }
+      HashSet<string> tracked = [.. output.Split('\0', StringSplitOptions.RemoveEmptyEntries)];
+      foreach ((string name, string problem) in existing)
+      {
+        if (!tracked.Contains(name))
         {
           findings.Add(new Finding("warning", kind, kind,
             $"{name} isn't in git, so {problem}; commit it with the slides") { Topic = kind });

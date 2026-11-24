@@ -402,11 +402,25 @@ public static class PickFile
       throw new PatchException($"pick {id} kept {resolved.Chosen}, so there's nothing to choose again");
     }
     var files = new Dictionary<string, string>(StringComparer.Ordinal);
+    VersionScope? scope = resolved.Rev is not null && Revisions.Inside(presentation.Root)
+      ? Revisions.Scope(presentation.Root) : null;
+    string? commit = null;
+    if (scope is not null && resolved.Rev is not null)
+    {
+      try
+      {
+        commit = Revisions.Commit(presentation.Root, resolved.Rev);
+      }
+      catch (InvalidDataException)
+      {
+      }
+    }
     foreach (string slide in Slides(pick).Skip(1))
     {
-      (int exit, string text, _) = resolved.Rev is null ? (1, "", "")
-        : Revisions.Run(presentation.Root, "show", $"{resolved.Rev}:./slides/{slide}.yaml");
-      if (exit != 0)
+      string? text = scope is not null && commit is not null
+        ? GitObjects.For(scope.Top).TryReadText($"{commit}:{scope.Slides}/{slide}.yaml")
+        : null;
+      if (text is null)
       {
         throw new PatchException($"slides/{slide}.yaml wasn't saved when pick {id} was resolved, so its variants " +
           "can't be brought back");
@@ -477,17 +491,22 @@ public static class PickFile
     {
       return false;
     }
-    (int exit, string then, _) = (1, "", "");
+    string? then = null;
     try
     {
-      (exit, then, _) = Revisions.Run(presentation.Root, "show", $"{rev}:./slides/{slide.Id}.yaml");
+      if (Revisions.Inside(presentation.Root))
+      {
+        VersionScope scope = Revisions.Scope(presentation.Root);
+        string commit = Revisions.Commit(presentation.Root, rev);
+        then = GitObjects.For(scope.Top).TryReadText($"{commit}:{scope.Slides}/{slide.Id}.yaml");
+      }
     }
     catch (InvalidDataException)
     {
       return false;
     }
     string Normal(string text) => Unmarked(text, pick).ReplaceLineEndings("\n").TrimEnd();
-    return exit == 0 && Normal(File.ReadAllText(path)) != Normal(then);
+    return then is not null && Normal(File.ReadAllText(path)) != Normal(then);
   }
 
   /// <summary>A slide's text without its <c>rejected</c> line; with <paramref name="pick"/>, only a line naming that
