@@ -418,10 +418,17 @@ public static class HeadlessRunner
         var names = new List<string>(colors.Count);
         foreach (Color entry in colors)
         {
-          hexes.Add(entry.Hex ?? ColorMath.Resolve(entry, theme));
-          names.Add(ColorLabel(entry.ToString()));
+          if (entry.IsNone)
+          {
+            names.Add("None");
+          }
+          else
+          {
+            hexes.Add(entry.Hex ?? ColorMath.Resolve(entry, theme));
+            names.Add(ColorLabel(entry.ToString()));
+          }
         }
-        return new DisplayInfo(string.Join(", ", names), hexes);
+        return new DisplayInfo(string.Join(", ", names), hexes.Count > 0 ? hexes : null);
       }
       case Frame frame when key == "frame" && frame.Rect.Length == 4:
         return new DisplayInfo(

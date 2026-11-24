@@ -222,9 +222,9 @@ try
 // One line rather than a stack trace, whatever a command meets; a debug build adds the trace for a bug.
 catch (Exception exception)
 {
-  bool expected = exception is LoadException or BookException or ArgumentException or IOException or
-    UnauthorizedAccessException or InvalidDataException or InvalidOperationException or HttpRequestException or
-    JsonException or TimeoutException or OperationCanceledException;
+  bool expected = exception is not ArgumentNullException and (LoadException or BookException or ArgumentException or
+    IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or
+    HttpRequestException or JsonException or TimeoutException or OperationCanceledException);
   Console.Error.WriteLine(expected ? exception.Message : $"{exception.GetType().Name}: {exception.Message}");
 #if DEBUG
   if (!expected)
