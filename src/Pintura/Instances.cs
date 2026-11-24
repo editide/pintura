@@ -25,7 +25,7 @@ public record ServerInstance(int ProcessId, string Root, int Port, bool Headless
 /// </summary>
 public class InstanceRegistry
 {
-  private static readonly TimeSpan ConnectTimeout = TimeSpan.FromMilliseconds(500);
+  private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(2);
   private readonly string folder;
 
   public InstanceRegistry(string folder)
@@ -132,7 +132,7 @@ public class InstanceRegistry
         return false;
       }
     }
-    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or Win32Exception)
     {
       return false;
     }
