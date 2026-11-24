@@ -649,13 +649,7 @@ public partial class Importer
     JsonObject properties = draft.Properties;
     string stem = Unique((string?)properties["chart"] ?? draft.Id, charts.Keys.ToHashSet());
     string type = (string)properties["type"]!;
-    string family = type switch
-    {
-      "pie" or "doughnut" => "pie",
-      _ when type.EndsWith("line", StringComparison.Ordinal) => "line",
-      _ when type.EndsWith("bar", StringComparison.Ordinal) => "bar",
-      _ => "column"
-    };
+    string family = Pintura.Chart.FamilyOf(type);
     List<string> categories = properties["categories"]!.AsArray().Select(node => (string)node!).ToList();
     var grid = new List<List<string>> { categories.Prepend("series").ToList() };
     var series = new OrderedDictionary<string, OrderedDictionary<string, JsonNode?>>();
@@ -1896,7 +1890,7 @@ public partial class Importer
       if (level > 0)
       {
         string? bullet = (string?)paragraph["bullet"];
-        prefix = new string(' ', (level - 1) * 2) + (bullet is not null && Numbered().IsMatch(bullet)
+        prefix = new string(' ', (level - 1) * 2) + (bullet is not null && PowerPointVocabulary.Numbered().IsMatch(bullet)
           ? $"{bullet} "
           : "- ");
       }
@@ -2335,9 +2329,6 @@ public partial class Importer
 
   [GeneratedRegex("[A-Z]")]
   private static partial Regex CamelHump();
-
-  [GeneratedRegex(@"^\d+\.$")]
-  private static partial Regex Numbered();
 
   #endregion
 

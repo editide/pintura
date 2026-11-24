@@ -152,11 +152,8 @@ public static class ThemeView
 
   private static StylePayload Style(string name, TextProperties style, Theme theme, UsesPayload uses)
   {
-    TextProperties text = theme.Styles.Text;
-    object? Get(string key)
-    {
-      return style.Get(key) ?? text.Get(key);
-    }
+    TextProperties[] layers = [theme.Styles.Text, style];
+    object? Get(string key) => PropertyLayers.Cascade(layers, key)?.Value;
     var color = (Color)Get("color")!;
     string font = (string)Get("font")!;
     return new StylePayload
@@ -232,10 +229,7 @@ public static class ThemeView
       {
         layers.Add(formatting.Properties);
       }
-      object? Get(string key)
-      {
-        return layers.Select(layer => layer.Get(key)).LastOrDefault(value => value is not null);
-      }
+      object? Get(string key) => PropertyLayers.Cascade(layers, key)?.Value;
       string font = (string)Get("font")!;
       var text = new RunPayload
       {

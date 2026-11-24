@@ -311,7 +311,34 @@ public class Shadow
 
 /// <summary>Text properties set at one level. Each set property remembers where it was written, so the cascade can
 /// report the file and line behind every effective value.</summary>
-public class TextProperties
+/// <summary>A layer of keyed properties with provenance, merged in order by <see cref="PropertyLayers.Cascade"/>.
+/// </summary>
+public interface IPropertyLayer
+{
+  object? Get(string key);
+  Dictionary<string, Origin> Origins { get; }
+}
+
+/// <summary>Resolves a key across ordered property layers, returning the last non-null value and its origin.</summary>
+public static class PropertyLayers
+{
+  public static (object Value, Origin Origin)? Cascade(IEnumerable<IPropertyLayer?> layers, string key)
+  {
+    (object Value, Origin Origin)? found = null;
+    foreach (IPropertyLayer? layer in layers)
+    {
+      if (layer?.Get(key) is object value)
+      {
+        found = (value, layer.Origins[key]);
+      }
+    }
+    return found;
+  }
+
+
+}
+
+public class TextProperties : IPropertyLayer
 {
   public static readonly string[] Character = ["font", "size", "color", "bold", "italic", "underline"];
   public static readonly string[] Paragraph = ["align", "space_before", "space_after", "line_spacing"];
@@ -708,8 +735,16 @@ public class ChartSeriesOptions
 
 /// <summary>Chart keys set at one level: the theme's <c>chart</c> base, a named chart style, or a chart file. Maps
 /// merge key by key, so each nested key remembers where it was written under its dotted path.</summary>
-public class ChartProperties
+public class ChartProperties : IPropertyLayer
 {
+  /// <summary>The theme's <c>chart</c> base, the chart's named style (if any), and the chart's own properties, in
+  /// cascade order.</summary>
+  public static ChartProperties[] Levels(StyleSheet styles, Chart chart)
+  {
+    return chart.Style is null
+      ? [styles.Chart, chart.Properties]
+      : [styles.Chart, styles.Charts[chart.Style], chart.Properties];
+  }
   public static readonly string[] Keys =
   [
     "title", "legend", "data_labels.show", "data_labels.format", "data_labels.position", "data_labels.color",

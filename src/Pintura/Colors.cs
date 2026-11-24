@@ -139,7 +139,7 @@ public static class ColorMath
     return (lighter + 0.05) / (darker + 0.05);
   }
 
-  private static (double Hue, double Saturation, double Luminance) ToHsl(string hex)
+  internal static (double Hue, double Saturation, double Luminance) ToHsl(string hex)
   {
     double red = Convert.ToInt32(hex.Substring(1, 2), 16) / 255.0;
     double green = Convert.ToInt32(hex.Substring(3, 2), 16) / 255.0;
@@ -159,7 +159,7 @@ public static class ColorMath
     return (hue / 6, saturation, luminance);
   }
 
-  private static string FromHsl(double hue, double saturation, double luminance)
+  internal static string FromHsl(double hue, double saturation, double luminance)
   {
     if (saturation == 0)
     {

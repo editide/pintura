@@ -205,44 +205,13 @@ public partial class PowerPointMapping
       findings.Add($"{where}: {themed} {(tint is null ? $"at luminance {mod ?? 100}/{off ?? 0}" : $"at a {tint}% tint")}" +
         " has no step in the format, so it is fixed as hex");
     }
-    (double h, double s, double l) = Hsl(baseHex);
+    (double h, double s, double l) = ColorMath.ToHsl(baseHex);
     if (tint is not null)
     {
       l += (1 - l) * (1 - tint.Value / 100);
     }
     l = Math.Clamp(l * (mod ?? 100) / 100 + (off ?? 0) / 100, 0, 1);
-    return new JsonObject { ["hex"] = Hex(h, s, l) };
-  }
-
-  private static (double, double, double) Hsl(string hex)
-  {
-    double[] rgb = [.. new[] { 1, 3, 5 }.Select(start => int.Parse(hex.AsSpan(start, 2), NumberStyles.HexNumber) / 255.0)];
-    double max = rgb.Max();
-    double min = rgb.Min();
-    double l = (max + min) / 2;
-    if (max == min)
-    {
-      return (0, 0, l);
-    }
-    double d = max - min;
-    double s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    double h = max == rgb[0] ? (rgb[1] - rgb[2]) / d + (rgb[1] < rgb[2] ? 6 : 0)
-      : max == rgb[1] ? (rgb[2] - rgb[0]) / d + 2
-      : (rgb[0] - rgb[1]) / d + 4;
-    return (h / 6, s, l);
-  }
-
-  private static string Hex(double h, double s, double l)
-  {
-    double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    double p = 2 * l - q;
-    double Channel(double t)
-    {
-      t = (t + 1) % 1;
-      return t < 1.0 / 6 ? p + (q - p) * 6 * t : t < 0.5 ? q : t < 2.0 / 3 ? p + (q - p) * (2.0 / 3 - t) * 6 : p;
-    }
-    double[] channels = s == 0 ? [l, l, l] : [Channel(h + 1.0 / 3), Channel(h), Channel(h - 1.0 / 3)];
-    return "#" + string.Concat(channels.Select(value => ((int)Math.Round(value * 255)).ToString("X2")));
+    return new JsonObject { ["hex"] = ColorMath.FromHsl(h, s, l) };
   }
 
   private JsonObject? Font(string? family)
@@ -1622,13 +1591,7 @@ public partial class PowerPointMapping
 
   private static string Family(string type)
   {
-    return type switch
-    {
-      "pie" or "doughnut" => "pie",
-      _ when type.EndsWith("line", StringComparison.Ordinal) => "line",
-      _ when type.EndsWith("bar", StringComparison.Ordinal) => "bar",
-      _ => "column"
-    };
+    return Pintura.Chart.FamilyOf(type);
   }
 
   private JsonObject Chart(JsonObject element, string slide, Ids ids, string where)

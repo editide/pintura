@@ -208,7 +208,8 @@ public static partial class Patcher
   {
     double[] numbers = edit.Numbers!.Select(Round).ToArray();
     string value = $"[{string.Join(", ", numbers.Select(number => number.ToString(CultureInfo.InvariantCulture)))}]";
-    (YamlNode? node, YamlNode? parent, string key) = Locate(Parse(text), edit.Path);
+    YamlNode root = Parse(text);
+    (YamlNode? node, _, _) = Locate(root, edit.Path);
 
     bool Written(string candidate)
     {
@@ -227,39 +228,7 @@ public static partial class Patcher
       }
       return First(edit, Written, Splice(text, node, value));
     }
-    if (edit.Source is not null)
-    {
-      throw Conflict(edit);
-    }
-    string entry = $"{key}: {value}";
-    switch (parent)
-    {
-      case YamlMappingNode { Style: MappingStyle.Flow } map:
-        (int mapStart, int mapEnd) = Node.Extent(text, map);
-        int at = mapEnd - 1;
-        while (at > 0 && text[at - 1] == ' ')
-        {
-          at--;
-        }
-        return First(edit, Written, map.Children.Count == 0
-          ? Splice(text, mapStart, mapEnd, $"{{ {entry} }}")
-          : Splice(text, at, at, $", {entry}"));
-      case YamlMappingNode map:
-        YamlNode first = map.Children.First().Key;
-        return First(edit, Written,
-          Splice(text, (int)first.Start.Index, (int)first.Start.Index, $"{entry}\n{Indent(first)}"));
-      case YamlScalarNode scalar when OneLine(scalar):
-        // The shorthand title: Revenue becomes the map it stands for, text first as the docs write it.
-        string source = Node.Span(text, scalar);
-        return First(edit, candidate => Written(candidate) && TextAt(candidate, $"{Parent(edit.Path)}.text") ==
-            scalar.Value,
-          Splice(text, scalar, $"{{ text: {source}, {entry} }}"),
-          Splice(text, scalar, $"{{ text: {DoubleQuoted(scalar.Value ?? "")}, {entry} }}"));
-      case YamlScalarNode:
-        throw new PatchException($"{Parent(edit.Path)} is written across lines; give it a {key} in the file");
-      default:
-        throw Conflict(edit);
-    }
+    return AddMissing(text, root, edit, [value], Written);
   }
 
   private static double Round(double value)
@@ -302,6 +271,14 @@ public static partial class Patcher
       }
       return First(edit, Written, Splice(text, node, value), Splice(text, node, DoubleQuoted(value)));
     }
+    return AddMissing(text, root, edit, [value, DoubleQuoted(value)], Written);
+  }
+
+  /// <summary>Adds a missing key to its nearest existing ancestor, placing it in documented key order in block maps,
+  /// appending in flow maps, and expanding a shorthand title, placeholder, or <c>none</c> where needed.</summary>
+  private static string AddMissing(string text, YamlNode root, ValueEdit edit, string[] rendered,
+    Func<string, bool> written)
+  {
     if (edit.Source is not null)
     {
       throw Conflict(edit);
@@ -310,9 +287,9 @@ public static partial class Patcher
     YamlNode parent = Locate(root, holder).Node!;
     string[] missing = edit.Path[(holder.Length + 1)..].Split('.');
 
-    string Entry(string written)
+    string Entry(string value)
     {
-      string nested = written;
+      string nested = value;
       for (int index = missing.Length - 1; index > 0; index--)
       {
         nested = $"{{ {missing[index]}: {nested} }}";
@@ -322,7 +299,7 @@ public static partial class Patcher
 
     string[] Candidates(Func<string, string> place)
     {
-      return [place(Entry(value)), place(Entry(DoubleQuoted(value)))];
+      return rendered.Select(value => place(Entry(value))).ToArray();
     }
 
     bool words = holder == "title" || (holder.StartsWith("placeholders.", StringComparison.Ordinal) &&
@@ -331,13 +308,13 @@ public static partial class Patcher
     {
       case YamlScalarNode scalar when words && OneLine(scalar):
         string source = Node.Span(text, scalar);
-        return First(edit, candidate => Written(candidate) && TextAt(candidate, $"{holder}.text") == scalar.Value,
+        return First(edit, candidate => written(candidate) && TextAt(candidate, $"{holder}.text") == scalar.Value,
           [.. Candidates(entry => Splice(text, scalar, $"{{ text: {source}, {entry} }}")),
             .. Candidates(entry => Splice(text, scalar, $"{{ text: {DoubleQuoted(scalar.Value ?? "")}, {entry} }}"))]);
       case YamlScalarNode when words:
         throw new PatchException($"{holder} is written across lines; give it a {missing[0]} in the file");
       case YamlScalarNode { Value: "none" } none when OneLine(none):
-        return First(edit, Written, Candidates(entry => Splice(text, none, $"{{ {entry} }}")));
+        return First(edit, written, Candidates(entry => Splice(text, none, $"{{ {entry} }}")));
       case YamlMappingNode { Style: MappingStyle.Flow } map:
         (int mapStart, int mapEnd) = Node.Extent(text, map);
         int at = mapEnd - 1;
@@ -345,12 +322,12 @@ public static partial class Patcher
         {
           at--;
         }
-        return First(edit, Written, Candidates(entry => map.Children.Count == 0
+        return First(edit, written, Candidates(entry => map.Children.Count == 0
           ? Splice(text, mapStart, mapEnd, $"{{ {entry} }}")
           : Splice(text, at, at, $", {entry}")));
       case YamlMappingNode map:
         (YamlNode key, int end) = KeyBefore(text, map, missing[0]);
-        return First(edit, Written, Candidates(entry => Splice(text, end, end, $"\n{Indent(key)}{entry}")));
+        return First(edit, written, Candidates(entry => Splice(text, end, end, $"\n{Indent(key)}{entry}")));
       default:
         throw new PatchException($"{holder} isn't a map; give it a {missing[0]} in the file");
     }

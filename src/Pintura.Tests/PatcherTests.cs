@@ -145,7 +145,7 @@ public class PatcherTests
     string patched = Apply(slide, new ValueEdit("title.frame", null, [40, 30, 800, 44]));
 
     // Assert
-    patched.ShouldBe("layout: content\ntitle:\n  frame: [40, 30, 800, 44]\n  text: Revenue\n  size: 30\n");
+    patched.ShouldBe("layout: content\ntitle:\n  text: Revenue\n  frame: [40, 30, 800, 44]\n  size: 30\n");
   }
 
   [Fact]

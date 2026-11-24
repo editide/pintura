@@ -2029,14 +2029,8 @@ public partial class PresentationLoader
   /// </summary>
   private void ValidateChart(Chart chart, Node dataNode)
   {
-    ChartProperties[] levels = chart.Style is null
-      ? [styles.Chart, chart.Properties]
-      : [styles.Chart, styles.Charts[chart.Style], chart.Properties];
-    (object Value, Origin Origin)? Effective(string key)
-    {
-      ChartProperties? level = levels.LastOrDefault(candidate => candidate.Get(key) is not null);
-      return level is null ? null : (level.Get(key)!, level.Origins[key]);
-    }
+    ChartProperties[] levels = ChartProperties.Levels(styles, chart);
+    (object Value, Origin Origin)? Effective(string key) => PropertyLayers.Cascade(levels, key);
 
     if (Effective("data_labels.show") is ("percent", Origin showOrigin) && chart.Family != "pie")
     {

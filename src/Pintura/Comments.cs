@@ -183,7 +183,7 @@ public static class CommentFile
         throw node.Error($"comment {comment.Id} is written twice");
       }
       (int start, int end) = Node.Extent(text, node.Yaml);
-      entries.Add(new Entry(comment, text.LastIndexOf('\n', Math.Max(start - 1, 0)) + 1, end));
+      entries.Add(new Entry(comment, EntryList.LineStart(text, start), end));
     }
     return entries;
   }
@@ -511,7 +511,7 @@ public static class CommentFile
 
   private static string Stamp(DateTime now)
   {
-    return now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    return EntryList.Stamp(now);
   }
 
   private static Comment Draft(Presentation presentation, Comment draft, Texts files, string author, DateTime now,
@@ -676,27 +676,13 @@ public static class CommentFile
 
   private static string Insert(string text, List<Entry> entries, int index, Comment comment)
   {
-    if (entries.Count == 0)
-    {
-      return Render(comment) + "\n";
-    }
-    if (index < entries.Count)
-    {
-      return text.Insert(entries[index].Start, Render(comment) + "\n\n");
-    }
-    return $"{text.TrimEnd()}\n\n{Render(comment)}\n";
+    return EntryList.Insert(text, entries.Select(entry => entry.Start).ToList(), index, Render(comment));
   }
 
   /// <summary>The text without an entry and the blank lines after it, or null when it was the only one.</summary>
   private static string? Without(string text, List<Entry> entries, int index)
   {
-    if (entries.Count == 1)
-    {
-      return null;
-    }
-    return index + 1 < entries.Count
-      ? text.Remove(entries[index].Start, entries[index + 1].Start - entries[index].Start)
-      : text[..entries[index].Start].TrimEnd() + "\n";
+    return EntryList.Without(text, entries.Select(entry => entry.Start).ToList(), index);
   }
 
   private static string Replace(string text, List<Entry> entries, int index, Comment comment)

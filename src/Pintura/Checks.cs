@@ -962,16 +962,11 @@ public static class Checks
         var off = new List<(string Category, double Value, double Sum)>();
         for (int point = 0; point < chart.Categories.Count; point++)
         {
-          string labels = $"series.{total.Name}.points.{chart.Categories[point]}.data_labels.";
-          if (!item.Properties.ContainsKey($"{labels}show"))
-          {
-            labels = $"series.{total.Name}.data_labels.";
-          }
-          if (item.Properties.GetValueOrDefault($"{labels}show")?.Value is "none")
+          if (item.SeriesLabelShow(total.Name, chart.Categories[point]) == "none")
           {
             continue;
           }
-          NumberFormat? format = item.Properties.GetValueOrDefault($"{labels}format")?.Value is string name
+          NumberFormat? format = item.SeriesLabelFormat(total.Name, chart.Categories[point]) is string name
             ? presentation.Theme.Styles.Formats[name]
             : null;
           double tolerance = format is null ? 1e-9 : 0.5 * Math.Pow(10, -(format.Decimals ?? 0)) / (format.Scale ?? 1);
@@ -1019,13 +1014,7 @@ public static class Checks
         stepped = true;
         continue;
       }
-      string? name = new[]
-        {
-          $"series.{series.Name}.points.{category}.data_labels.format", $"series.{series.Name}.data_labels.format",
-          "data_labels.format"
-        }
-        .Select(key => item.Properties.GetValueOrDefault(key)?.Value as string)
-        .FirstOrDefault(found => found is not null);
+      string? name = item.SeriesLabelFormat(series.Name, category);
       NumberFormat? format = name is null ? null : presentation.Theme.Styles.Formats[name];
       double tolerance = format is null ? 1e-9 : 0.5 * Math.Pow(10, -(format.Decimals ?? 0)) / (format.Scale ?? 1);
       if (stepped && Math.Abs(value - level) > tolerance + 1e-9)

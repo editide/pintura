@@ -810,7 +810,7 @@ public partial class Exporter
     {
       return new JsonObject { ["type"] = "none" };
     }
-    JsonObject result = Numbered().IsMatch(character)
+    JsonObject result = PowerPointVocabulary.Numbered().IsMatch(character)
       ? new JsonObject { ["type"] = "numbered", ["numbering_scheme"] = "arabic_period" }
       : new JsonObject { ["type"] = "character", ["character"] = character };
     if (Truthy(Get(paragraph, "bulletColor")))
@@ -2918,9 +2918,6 @@ public partial class Exporter
 
 
   }
-
-  [GeneratedRegex(@"^\d+\.$")]
-  private static partial Regex Numbered();
 
   [GeneratedRegex(@"Y+|M+|D+|[^YMD]")]
   private static partial Regex DateTokens();

@@ -87,7 +87,7 @@ public static partial class PreviewServer
       store.Refresh();
       string[]? only = files is { Length: > 0 } ? files : null;
       return store.Deck.Error is null && store.Presentation is Presentation presentation
-        ? Saves.Box(store.Root, presentation, only)
+        ? Saves.Box(store.Root, presentation, only, commit => comparison.Diff(commit, presentation))
         : new SaveBox("", null, []);
     }));
     app.MapPost("/api/save", (SaveRequest request) => Saving(() =>
@@ -804,7 +804,7 @@ public class Comparison
   private readonly PresentationStore store;
   private readonly object gate = new object();
   private Side[] sides = [];
-  private (string? Base, string Commit, string? Head, Presentation After, string Json)? answer;
+  private (string? Base, string Commit, string? Head, Presentation After, DeckDiff Diff, string Json)? answer;
   private readonly object historyGate = new object();
   // The slides each version changed as drawn against the version before it, and those it renamed, by the version's
   // commit; commits never change, so neither do these.
@@ -861,7 +861,7 @@ public class Comparison
           }
         }
         string json = JsonSerializer.Serialize(payload, PayloadJson.Options);
-        answer = (revision, commit, headCommit, current, json);
+        answer = (revision, commit, headCommit, current, payload.Diff, json);
         return Results.Text(json, "application/json");
       }
     }
@@ -1060,6 +1060,21 @@ public class Comparison
       return element.Origin.Path;
     }
     return (item.Role == "title" ? slide.Title! : slide.Placeholders[item.Id]).Origin.Path;
+  }
+
+  /// <summary>The cached presentation and diff against <paramref name="commit"/> for <paramref name="current"/>,
+  /// reusing the loaded revision and diff already computed for the page.</summary>
+  public (Presentation Before, DeckDiff Diff) Diff(string commit, Presentation current)
+  {
+    lock (gate)
+    {
+      Side side = Before("HEAD", commit);
+      if (answer is { } last && last.Commit == commit && last.Head is null && last.After == current)
+      {
+        return (side.Presentation, last.Diff);
+      }
+      return (side.Presentation, Differ.Compare(side.Presentation, current));
+    }
   }
 
   /// <summary>The revision as loaded and drawn, loaded again only once the commit changes. Called under the gate.

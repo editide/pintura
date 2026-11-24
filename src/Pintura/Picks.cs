@@ -112,7 +112,7 @@ public static class PickFile
         throw node.Error($"pick {pick.Id} is written twice");
       }
       (int start, int end) = Node.Extent(text, node.Yaml);
-      int line = text.LastIndexOf('\n', Math.Max(start - 1, 0)) + 1;
+      int line = EntryList.LineStart(text, start);
       int dash = text.IndexOf('-', line);
       entries.Add(new Entry(pick, line, end, dash - line));
     }
@@ -436,7 +436,7 @@ public static class PickFile
 
   private static string Stamp(DateTime now)
   {
-    return now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    return EntryList.Stamp(now);
   }
 
   /// <summary>An entry's lines as written, moved to the dash's column 0, with the resolution as its last key.
@@ -566,33 +566,21 @@ public static class PickFile
 
   private static string Append(string text, List<Entry> entries, string lines)
   {
-    return entries.Count == 0 ? lines + "\n" : $"{text.TrimEnd()}\n\n{lines}\n";
+    return EntryList.Append(text, entries.Count, lines);
   }
 
   /// <summary>An entry's lines written before the <paramref name="index"/>th, indented as the file's entries are.
   /// </summary>
   private static string Insert(string text, List<Entry> entries, int index, string lines)
   {
-    if (entries.Count == 0)
-    {
-      return lines + "\n";
-    }
-    lines = Indented(lines, entries[0].Indent);
-    return index < entries.Count
-      ? text.Insert(entries[index].Start, lines + "\n\n")
-      : $"{text.TrimEnd()}\n\n{lines}\n";
+    string indented = entries.Count == 0 ? lines : Indented(lines, entries[0].Indent);
+    return EntryList.Insert(text, entries.Select(entry => entry.Start).ToList(), index, indented);
   }
 
   /// <summary>The text without an entry and the blank lines after it, or null when it was the only one.</summary>
   private static string? Without(string text, List<Entry> entries, int index)
   {
-    if (entries.Count == 1)
-    {
-      return null;
-    }
-    return index + 1 < entries.Count
-      ? text.Remove(entries[index].Start, entries[index + 1].Start - entries[index].Start)
-      : text[..entries[index].Start].TrimEnd() + "\n";
+    return EntryList.Without(text, entries.Select(entry => entry.Start).ToList(), index);
   }
 
   private static (string Text, List<Entry> Entries) Parsed(FileTransaction files, string path, string root,

@@ -49,6 +49,33 @@ public class SceneItem
   public bool Wrap => !Properties.TryGetValue("wrap", out Resolved? value) || (bool)value.Value;
   public int Columns => Properties.TryGetValue("columns", out Resolved? value) ? (int)value.Value : 1;
 
+  /// <summary>The effective <c>data_labels.show</c> for a series (and optional category point).</summary>
+  public string? SeriesLabelShow(string series, string? category = null)
+  {
+    if (category is not null && Properties.TryGetValue($"series.{series}.points.{category}.data_labels.show", out Resolved? point))
+    {
+      return point.Value as string;
+    }
+    return Properties.GetValueOrDefault($"series.{series}.data_labels.show")?.Value as string
+      ?? Properties.GetValueOrDefault("data_labels.show")?.Value as string;
+  }
+
+  /// <summary>The effective number format name for a series' (and optional category point's) values, falling back
+  /// through the series, chart labels, and optionally its axis.</summary>
+  public string? SeriesLabelFormat(string series, string? category = null, bool axisFallback = false)
+  {
+    string? Named(string key) => Properties.GetValueOrDefault(key)?.Value as string;
+    string? format = (category is not null ? Named($"series.{series}.points.{category}.data_labels.format") : null)
+      ?? Named($"series.{series}.data_labels.format")
+      ?? Named("data_labels.format");
+    if (format is not null || !axisFallback)
+    {
+      return format;
+    }
+    string axis = Named($"series.{series}.axis") == "secondary" ? "secondary_axis" : "value_axis";
+    return Named($"{axis}.format");
+  }
+
 
 }
 
@@ -553,9 +580,7 @@ public class SceneBuilder
     properties["text.font"] = new Resolved(styles.Text.Font!, styles.Text.Origins["font"]);
     properties["text.size"] = new Resolved(styles.Text.Size!, styles.Text.Origins["size"]);
     properties["text.color"] = new Resolved(styles.Text.Color!, styles.Text.Origins["color"]);
-    ChartProperties?[] levels = [styles.Chart, chart.Style is null ? null : styles.Charts[chart.Style],
-      chart.Properties];
-    foreach (ChartProperties level in levels.OfType<ChartProperties>())
+    foreach (ChartProperties level in Pintura.ChartProperties.Levels(styles, chart))
     {
       foreach (string key in Pintura.ChartProperties.Keys)
       {

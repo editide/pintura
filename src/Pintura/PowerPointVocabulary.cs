@@ -1,10 +1,11 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Pintura;
 
 /// <summary>Two-way vocabulary shared between <see cref="Exporter"/> and <see cref="PowerPointMapping"/> so every
 /// name, enum, and key format between Pintura's model and editide's PowerPoint tools is defined once.</summary>
-public static class PowerPointVocabulary
+public static partial class PowerPointVocabulary
 {
   private static readonly (string Model, string Tool)[] SchemePairs =
   [
@@ -144,13 +145,14 @@ public static class PowerPointVocabulary
     ("underline", "is_underlined")
   ];
 
-  public static readonly HashSet<string> ArrowMarkers = ["arrow", "triangle", "stealth", "diamond", "oval"];
+  public static readonly HashSet<string> ArrowMarkers =
+    new(PresentationLoader.Markers, StringComparer.Ordinal);
   public static readonly HashSet<string> ChartMarkerShapes = ["circle", "square", "diamond", "triangle"];
   public static readonly HashSet<string> ChartTypes =
-  [
-    "clustered_column", "stacked_column", "percent_stacked_column", "clustered_bar", "stacked_bar",
-    "percent_stacked_bar", "line", "stacked_line", "percent_stacked_line", "pie", "doughnut", "waterfall"
-  ];
+    new(Chart.Types, StringComparer.Ordinal);
+
+  [GeneratedRegex(@"^\d+\.$")]
+  public static partial Regex Numbered();
 
   /// <summary>Encodes a chart category or series key as <c>{index}:{name}</c>.</summary>
   public static string ChartDataKey(int index, string name)

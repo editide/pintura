@@ -101,7 +101,8 @@ public static class Saves
   }
 
   /// <summary>The draft message, mixed-edit warning, and saveable parts, computed from one git pass.</summary>
-  public static SaveBox Box(string root, Presentation current, IReadOnlyCollection<string>? only = null)
+  public static SaveBox Box(string root, Presentation current, IReadOnlyCollection<string>? only = null,
+    Func<string, (Presentation Before, DeckDiff Diff)?>? compare = null)
   {
     if (!Revisions.Inside(root))
     {
@@ -110,7 +111,7 @@ public static class Saves
     VersionScope scope = Revisions.Scope(root);
     Pending all = Pend(scope, root);
     Pending chosen = Narrow(scope, all, only);
-    string message = Draft(root, current, scope, chosen);
+    string message = Draft(root, current, scope, chosen, compare);
     string? mixed = Mixed(scope, current, chosen);
     List<SavePart> parts = Parts(scope, current, all);
     return new SaveBox(message, mixed, parts);
@@ -393,22 +394,32 @@ public static class Saves
     return Draft(root, after, scope, Pend(scope, root, only));
   }
 
-  private static string Draft(string root, Presentation after, VersionScope scope, Pending pending)
+  private static string Draft(string root, Presentation after, VersionScope scope, Pending pending,
+    Func<string, (Presentation Before, DeckDiff Diff)?>? compare = null)
   {
     if (pending.Head is null)
     {
       return First;
     }
     Presentation before;
+    DeckDiff diff;
     try
     {
-      before = Revisions.Load(root, pending.Head);
+      if (compare?.Invoke(pending.Head) is var (cachedBefore, cachedDiff))
+      {
+        before = cachedBefore;
+        diff = cachedDiff;
+      }
+      else
+      {
+        before = Revisions.Load(root, pending.Head);
+        diff = Differ.Compare(before, after);
+      }
     }
     catch (InvalidDataException)
     {
       return First;
     }
-    DeckDiff diff = Differ.Compare(before, after);
     HashSet<string> edited = [.. pending.Edited.Keys];
     HashSet<string> mine = [.. edited.Select(scope.Slide).OfType<string>()];
     HashSet<string> others = [.. pending.Changed.Where(path => !edited.Contains(path)).Select(scope.Slide)

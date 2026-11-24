@@ -173,9 +173,7 @@ public static class Outline
     string? Named(string key) => item.Properties.GetValueOrDefault(key)?.Value as string;
     string Spell(string series, double value)
     {
-      string axis = Named($"series.{series}.axis") == "secondary" ? "secondary_axis" : "value_axis";
-      string? name = Named($"series.{series}.data_labels.format") ?? Named("data_labels.format") ??
-        Named($"{axis}.format");
+      string? name = item.SeriesLabelFormat(series, axisFallback: true);
       return name is not null && presentation.Theme.Styles.Formats.GetValueOrDefault(name) is { Date: null } format
         ? format.Spell(value)
         : value.ToString("0.###", CultureInfo.InvariantCulture);
