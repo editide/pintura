@@ -31,11 +31,17 @@ public record SlideDiff
 /// <summary>An element, the title, or a placeholder, added, removed, or changed.</summary>
 public record ItemDiff(string Id, string Owner, string Kind, string Status, List<ChangeEntry> Changes);
 
+/// <summary>Structured target of a diff entry (a table cell or chart part/series/point), so the page marks changes
+/// without regex-parsing the diff key.</summary>
+public record ChangeTarget(string Kind, string? Part = null, string? Series = null, string? Point = null,
+  int? Row = null, int? Column = null);
+
 /// <summary>A value as displayed on each side, with the line that set it. Cause is the theme or layout value both
 /// sides took it from, when the slide itself didn't change it.</summary>
 public record ChangeEntry(string Key, string? Before, string? After, string? BeforeOrigin, string? AfterOrigin)
 {
   public string? Cause { get; init; }
+  public ChangeTarget? Target { get; init; }
 }
 
 /// <summary>A theme or layout value, named by its file and key path, and the elements it restyled.</summary>
@@ -256,9 +262,73 @@ public static partial class Differ
       string? shared = had && has ? (first == second ? second : null) : first ?? second;
       string? cause = shared is null ? null : $"{later.Theme.Display}/{shared}";
       changes.Add(new ChangeEntry(key, had ? old.Display : null, has ? current.Display : null,
-        had ? old.Origin : null, has ? current.Origin : null) { Cause = cause });
+        had ? old.Origin : null, has ? current.Origin : null) { Cause = cause, Target = TargetFor(key) });
     }
   }
+
+  private static ChangeTarget? TargetFor(string key)
+  {
+    if (CellKeyPattern().Match(key) is { Success: true } cell)
+    {
+      return new ChangeTarget("cell", Row: int.Parse(cell.Groups[1].Value, CultureInfo.InvariantCulture),
+        Column: int.Parse(cell.Groups[2].Value, CultureInfo.InvariantCulture));
+    }
+    if (PointKeyPattern().Match(key) is { Success: true } point)
+    {
+      return new ChangeTarget("chart", Part: point.Groups[3].Value, Series: point.Groups[1].Value,
+        Point: point.Groups[2].Value);
+    }
+    if (SeriesKeyPattern().Match(key) is { Success: true } series)
+    {
+      return new ChangeTarget("chart", Part: series.Groups[2].Value, Series: series.Groups[1].Value);
+    }
+    if (key.StartsWith("series ", StringComparison.Ordinal))
+    {
+      return new ChangeTarget("chart", Part: "values", Series: key["series ".Length..]);
+    }
+    if (key is "title" or "legend" or "categories" or "series_colors")
+    {
+      return new ChangeTarget("chart", Part: key);
+    }
+    if (key.StartsWith("data_labels.", StringComparison.Ordinal))
+    {
+      return new ChangeTarget("chart", Part: "data_labels");
+    }
+    if (key.StartsWith("markers.", StringComparison.Ordinal))
+    {
+      return new ChangeTarget("chart", Part: "markers");
+    }
+    if (key == "value_axis.format" || key == "value_axis.visible")
+    {
+      return new ChangeTarget("chart", Part: "value_axis");
+    }
+    if (key == "value_axis.gridlines")
+    {
+      return new ChangeTarget("chart", Part: "gridline");
+    }
+    if (key.StartsWith("value_axis.", StringComparison.Ordinal))
+    {
+      return new ChangeTarget("chart", Part: "value_axis_and_gridline");
+    }
+    if (key.StartsWith("secondary_axis.", StringComparison.Ordinal))
+    {
+      return new ChangeTarget("chart", Part: "secondary_axis");
+    }
+    if (key.StartsWith("category_axis.", StringComparison.Ordinal))
+    {
+      return new ChangeTarget("chart", Part: "category_axis");
+    }
+    return null;
+  }
+
+  [GeneratedRegex(@"^cell (\d+),(\d+)([. ]|$)")]
+  private static partial Regex CellKeyPattern();
+
+  [GeneratedRegex(@"^series\.(.+?)\.points\.(.+?)\.(data_labels|markers|color)(\.|$)")]
+  private static partial Regex PointKeyPattern();
+
+  [GeneratedRegex(@"^series\.(.+?)\.(data_labels|markers|type|axis)(\.|$)")]
+  private static partial Regex SeriesKeyPattern();
 
   /// <summary>The file within the theme and the key path of a value the theme or a layout sets, leaving out the line,
   /// which moves with any edit above it, and the theme's folder, which each side may name differently.</summary>

@@ -217,6 +217,49 @@ function chartParts(changes, chart) {
   const pointAt = (category) => chart.categories.indexOf(category);
   const parts = [];
   for (const change of changes) {
+    const target = change.target;
+    if (target?.kind === 'chart') {
+      const part = target.part;
+      if (part === 'title' || part === 'legend') {
+        parts.push({ parts: [part] });
+      } else if (part === 'data_labels' && !target.series) {
+        parts.push({ parts: ['label'] });
+      } else if (part === 'markers' && !target.series) {
+        parts.push({ parts: ['marker', 'legend'] });
+      } else if (part === 'value_axis' || part === 'gridline' || part === 'secondary_axis' || part === 'category_axis') {
+        parts.push({ parts: [part] });
+      } else if (part === 'value_axis_and_gridline') {
+        parts.push({ parts: ['value_axis', 'gridline'] });
+      } else if (part === 'categories') {
+        parts.push({ parts: ['category_axis'] });
+      } else if (target.series && target.point) {
+        const named = { data_labels: ['label'], markers: ['marker'], color: MARKS }[part];
+        parts.push({ parts: named, series: seriesAt(target.series), point: pointAt(target.point) });
+      } else if (target.series && part === 'values') {
+        const index = seriesAt(target.series);
+        for (const point of changedEntries(change).filter((point) => point < chart.categories.length)) {
+          parts.push({ parts: [...MARKS, 'label'], series: index, point });
+        }
+        if (!pie) {
+          parts.push({ parts: ['line'], series: index });
+        }
+      } else if (target.series) {
+        const named = { data_labels: ['label'], markers: ['marker', 'legend'] }[part] ||
+          [...MARKS, 'line', 'label', 'legend'];
+        parts.push({ parts: named, series: seriesAt(target.series) });
+      } else if (part === 'series_colors') {
+        for (const index of changedEntries(change)) {
+          if (pie && index < chart.categories.length) {
+            parts.push({ parts: ['slice', 'legend'], point: index });
+          } else if (!pie && index < chart.series.length) {
+            parts.push({ parts: ['bar', 'marker', 'line', 'legend'], series: index });
+          }
+        }
+      } else {
+        return null;
+      }
+      continue;
+    }
     const key = change.key;
     const point = /^series\.(.+?)\.points\.(.+?)\.(data_labels|markers|color)(\.|$)/.exec(key);
     const series = /^series\.(.+?)\.(data_labels|markers|type|axis)(\.|$)/.exec(key);
@@ -272,12 +315,20 @@ function chartParts(changes, chart) {
 function changedCells(changes) {
   const cells = new Map();
   for (const change of changes) {
-    const cell = /^cell (\d+),(\d+)([. ]|$)/.exec(change.key);
-    if (!cell) {
-      return null;
+    let row;
+    let column;
+    if (change.target?.kind === 'cell') {
+      ({ row, column } = change.target);
+    } else {
+      const cell = /^cell (\d+),(\d+)([. ]|$)/.exec(change.key);
+      if (!cell) {
+        return null;
+      }
+      row = Number(cell[1]);
+      column = Number(cell[2]);
     }
     if (!markedInWords(change)) {
-      cells.set(`${cell[1]},${cell[2]}`, { row: Number(cell[1]), column: Number(cell[2]) });
+      cells.set(`${row},${column}`, { row, column });
     }
   }
   return [...cells.values()];

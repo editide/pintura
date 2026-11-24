@@ -129,8 +129,11 @@ function unit(key) {
   return key === 'rotate' || key === 'first_slice_angle' ? '°' : '';
 }
 
-// Formats from the server's display string, which diffs carry too, rather than its value.
-function propertyValue({ key, display }) {
+// Formats from the server's pre-structured display when present, falling back to parsing display for diffs and tests.
+function propertyValue({ key, display, shown: preformatted }) {
+  if (preformatted) {
+    return preformatted;
+  }
   const shown = String(display);
   if (shown === 'none') {
     return { text: 'None' };
@@ -176,14 +179,24 @@ function propertyValue({ key, display }) {
   return { text: shown };
 }
 
-// The level that set a value, from the file its origin names: a slide, a layout, the theme, or a chart's or table's
-// own file. A value with no origin is one the engine or PowerPoint defines.
+// The level that set a value, from a structured { file, line, key } source or an origin string. A value with no origin
+// is one the engine or PowerPoint defines.
 function originOf(origin) {
   if (!origin) {
     return { level: 'default', label: 'Default' };
   }
-  // A file and line, then the key; a theme value behind a restyle names no line.
-  const [, file, line, key] = /^(.+?)(?::(\d+))?(?: ([\w.\[\]-]+))?$/.exec(origin) || [null, origin];
+  let file;
+  let line;
+  let key;
+  if (typeof origin === 'object') {
+    ({ file, line = null, key } = origin);
+  } else {
+    // A file and line, then the key; a theme value behind a restyle names no line.
+    const match = /^(.+?)(?::(\d+))?(?: ([\w.\[\]-]+))?$/.exec(origin) || [null, origin];
+    file = match[1];
+    line = match[2] ? Number(match[2]) : null;
+    key = match[3];
+  }
   const name = file.split('/').pop();
   const layout = /\/layouts\/([^/]+)\.yaml$/.exec(file);
   const [level, label] =
@@ -194,7 +207,7 @@ function originOf(origin) {
             : name === 'presentation.yaml' ? ['presentation', 'Presentation']
               : name === 'styles.yaml' || name === 'theme.yaml' ? ['theme', 'Theme']
                 : ['file', name];
-  return { level, label, file, line: line ? Number(line) : null, key };
+  return { level, label, file, line, key };
 }
 
 function hasText(element) {
@@ -588,7 +601,7 @@ function renderElementPanel(detail, selection, panel) {
   const box = node ? measureBox(node) : null;
   renderGlance(detail, { item, node, box, selection }, panel);
   renderNumbers(detail.paragraphs || [], panel);
-  const home = originOf(detail.origin).file;
+  const home = originOf(detail.source || detail.origin).file;
   if (detail.cells) {
     renderCell(detail, selection, home, panel);
   }
@@ -617,7 +630,7 @@ function renderElementHeader(detail, panel) {
   element('h2', null, header).textContent = elementName(detail);
   const line = element('div', 'element-kind', header);
   element('span', null, line).textContent = kindSummary(detail);
-  const origin = originOf(detail.origin);
+  const origin = originOf(detail.source || detail.origin);
   if (detail.owner === 'theme' || detail.owner === 'layout') {
     element('span', 'chip owner', line).textContent = origin.label;
   }
@@ -626,7 +639,7 @@ function renderElementHeader(detail, panel) {
 
 // A row as the sections show it: set by the element's own file, or inherited and naming where from.
 function sectionRow(detail, group, property, home) {
-  const origin = property.origin ? originOf(property.origin) : null;
+  const origin = property.source || property.origin ? originOf(property.source || property.origin) : null;
   const own = Boolean(origin) && (origin.file === home || origin.level === 'chart' || origin.level === 'table');
   const key = detail.kind === 'chart' && (group === 'labels' || group === 'text')
     ? property.key.replace(/^(data_labels|text)\./, '')
