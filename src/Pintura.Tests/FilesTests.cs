@@ -263,5 +263,28 @@ public class FilesTests
     File.Exists(added).ShouldBeFalse();
   }
 
+  [Fact]
+  public void Rolling_back_after_a_write_conflict_leaves_the_external_edit_intact()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    string first = folder.PathTo("slides/one.yaml");
+    string second = folder.PathTo("slides/two.yaml");
+    folder.Write("slides/one.yaml", "title: One");
+    folder.Write("slides/two.yaml", "title: Two");
+    var transaction = new FileTransaction();
+    transaction.Write(first, "title: One edited\n");
+    transaction.Read(second).ShouldBe("title: Two\n");
+    File.WriteAllText(second, "title: Agent save\n");
+
+    // Act
+    Should.Throw<PatchException>(() => transaction.Write(second, "title: Mouse\n")).Conflict.ShouldBeTrue();
+    transaction.Restore();
+
+    // Assert
+    File.ReadAllText(first).ShouldBe("title: One\n");
+    File.ReadAllText(second).ShouldBe("title: Agent save\n");
+  }
+
 
 }

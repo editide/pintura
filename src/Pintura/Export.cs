@@ -537,12 +537,15 @@ public static class ExportGaps
 
   private static IEnumerable<string> ChartFormats(SceneItem item, Theme theme)
   {
+    bool percentStacked = item.Chart?.Type.StartsWith("percent_stacked", StringComparison.Ordinal) == true;
     var seen = new HashSet<string>(StringComparer.Ordinal);
     foreach ((string key, Resolved resolved) in item.Properties)
     {
-      if ((key == "value_axis.format" || key == "secondary_axis.format" || key == "data_labels.format" ||
-        key.EndsWith(".data_labels.format", StringComparison.Ordinal)) &&
-        resolved.Value is string { Length: > 0 } name && seen.Add(name))
+      bool formatKey = (key == "value_axis.format" && !percentStacked)
+        || key == "secondary_axis.format"
+        || ((key == "data_labels.format" || key.EndsWith(".data_labels.format", StringComparison.Ordinal))
+          && item.Properties.GetValueOrDefault(key[..^"format".Length] + "show")?.Value as string == "value");
+      if (formatKey && resolved.Value is string { Length: > 0 } name && seen.Add(name))
       {
         if (!theme.Styles.Formats.TryGetValue(name, out NumberFormat? format))
         {
@@ -561,11 +564,37 @@ public static class ExportGaps
 
   private static bool WaterfallPointLabelStyled(SceneItem item)
   {
-    foreach ((string key, Resolved resolved) in item.Properties)
+    var points = new HashSet<string>(StringComparer.Ordinal);
+    foreach (string key in item.Properties.Keys)
     {
-      if (key.Contains(".points.", StringComparison.Ordinal) &&
-        (key.EndsWith(".data_labels.color", StringComparison.Ordinal) ||
-        key.EndsWith(".data_labels.bold", StringComparison.Ordinal) && resolved.Value is true))
+      int at = key.IndexOf(".data_labels.", StringComparison.Ordinal);
+      if (at > 0 && key.Contains(".points.", StringComparison.Ordinal))
+      {
+        points.Add(key[..(at + 1)]);
+      }
+    }
+    foreach (string pointPrefix in points)
+    {
+      string? pointShow = item.Properties.GetValueOrDefault($"{pointPrefix}data_labels.show")?.Value as string;
+      if (pointShow is not ("value" or "percent"))
+      {
+        continue;
+      }
+      int split = pointPrefix.IndexOf(".points.", StringComparison.Ordinal);
+      string seriesPrefix = pointPrefix[..(split + 1)];
+      string? seriesShow = item.Properties.GetValueOrDefault($"{seriesPrefix}data_labels.show")?.Value as string
+        ?? item.Properties.GetValueOrDefault("data_labels.show")?.Value as string;
+      if (seriesShow is not ("value" or "percent"))
+      {
+        return true;
+      }
+      object? pointColor = item.Properties.GetValueOrDefault($"{pointPrefix}data_labels.color")?.Value;
+      object? seriesColor = item.Properties.GetValueOrDefault($"{seriesPrefix}data_labels.color")?.Value
+        ?? item.Properties.GetValueOrDefault("data_labels.color")?.Value;
+      bool pointBold = item.Properties.GetValueOrDefault($"{pointPrefix}data_labels.bold")?.Value is true;
+      bool seriesBold = (item.Properties.GetValueOrDefault($"{seriesPrefix}data_labels.bold")?.Value
+        ?? item.Properties.GetValueOrDefault("data_labels.bold")?.Value) is true;
+      if (!Equals(pointColor, seriesColor) || pointBold != seriesBold)
       {
         return true;
       }

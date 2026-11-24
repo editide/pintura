@@ -28,6 +28,7 @@ public class PresentationStore : IDisposable
   private long version = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
   private long assetVersion;
   private long headVersion;
+  private long changeVersion;
   private int dirty = 1;
   private bool disposed;
 
@@ -73,6 +74,10 @@ public class PresentationStore : IDisposable
   /// <summary>Bumped when a branch or HEAD moves, by a commit or a checkout, which changes what the page compares
   /// against though no slide changed.</summary>
   public long HeadVersion => Interlocked.Read(ref headVersion);
+
+  /// <summary>Bumped on every file change or reload, even when what the page draws doesn't change, so git status
+  /// caches don't stay stale.</summary>
+  public long ChangeVersion => Interlocked.Read(ref changeVersion);
 
   /// <summary>Reloads now rather than after the watcher's debounce. The version moves only if what the page draws
   /// changed, so an open tab doesn't redraw for nothing.</summary>
@@ -241,6 +246,7 @@ public class PresentationStore : IDisposable
 
   private void OnChanged(object sender, FileSystemEventArgs eventArgs)
   {
+    Interlocked.Increment(ref changeVersion);
     bool source = SourceExtensions.Contains(Path.GetExtension(eventArgs.FullPath).ToLowerInvariant()) ||
       Directory.Exists(eventArgs.FullPath) ||
       eventArgs.ChangeType is WatcherChangeTypes.Deleted or WatcherChangeTypes.Renamed;
@@ -288,6 +294,7 @@ public class PresentationStore : IDisposable
       }
     }
     Interlocked.Exchange(ref dirty, 0);
+    Interlocked.Increment(ref changeVersion);
     long next = Version + 1;
     Presentation presentation;
     DeckPayload deck;

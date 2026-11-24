@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -478,7 +479,7 @@ public static class HeadlessServer
       }
       process.Kill();
     }
-    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or Win32Exception)
     {
     }
     registry.Unregister(instance);
@@ -491,7 +492,7 @@ public static class HeadlessServer
       using Process process = Process.GetProcessById(processId);
       return process.StartTime.ToUniversalTime().Ticks;
     }
-    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or Win32Exception)
     {
       return null;
     }

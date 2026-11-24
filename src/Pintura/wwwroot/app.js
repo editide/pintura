@@ -359,16 +359,12 @@ function renderGrid() {
       const shown = shownSlide(slide);
       const drawn = JSON.stringify([deck.size, shown, pickOf(slide)]);
       let entry = gridCells.get(id);
-      if (!entry || entry.drawn !== drawn) {
+      const fresh = !entry || entry.drawn !== drawn;
+      if (fresh) {
         const cell = element('button', 'grid-cell');
         cell.type = 'button';
         cell.dataset.slide = id;
         const frame = element('div', 'grid-frame', cell);
-        if (shown) {
-          mountThumbnail(frame, shown, deck.size, width);
-        } else {
-          mountAbsent(frame, deck.size, width);
-        }
         element('div', 'grid-caption', cell);
         cell.addEventListener('click', () => {
           select(id);
@@ -376,12 +372,19 @@ function renderGrid() {
         });
         entry = { drawn, cell, frame };
         gridCells.set(id, entry);
-      } else {
-        scaleFrame(entry.frame, deck.size, width);
       }
       const { cell, frame } = entry;
       cell.style.width = `${width}px`;
       row.append(cell);
+      if (fresh) {
+        if (shown) {
+          mountThumbnail(frame, shown, deck.size, width);
+        } else {
+          mountAbsent(frame, deck.size, width);
+        }
+      } else {
+        scaleFrame(frame, deck.size, width);
+      }
       delete cell.dataset.change;
       markThumbnail(cell, id);
       markComments(frame, id);

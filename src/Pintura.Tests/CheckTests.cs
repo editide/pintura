@@ -1385,6 +1385,67 @@ public class CheckTests
   }
 
   [Fact]
+  public void Export_gaps_ignore_hidden_waterfall_point_labels_and_catch_bold_override()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/charts/bridge.csv", """
+      bridge,Start,Gain,End
+      Value,100,20,120
+      """);
+    deck.Write("deck/charts/bridge.yaml", """
+      type: waterfall
+      data: bridge.csv
+      totals: [Start, End]
+      data_labels:
+        show: value
+        color: dark1
+        bold: true
+      series:
+        Value:
+          points:
+            Gain:
+              data_labels:
+                show: none
+      """);
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Bridge
+      elements:
+        - id: bridge
+          chart: bridge
+          frame: [40, 120, 600, 320]
+      """);
+
+    // Act
+    Presentation hiddenDeck = deck.Load();
+    hiddenDeck.Slides.ShouldAllBe(slide => slide.Error == null);
+    List<Finding> hidden = Checks.Export(hiddenDeck);
+    deck.Write("deck/charts/bridge.yaml", """
+      type: waterfall
+      data: bridge.csv
+      totals: [Start, End]
+      data_labels:
+        show: value
+        color: dark1
+        bold: true
+      series:
+        Value:
+          points:
+            Gain:
+              data_labels:
+                bold: false
+      """);
+    Presentation overriddenDeck = deck.Load();
+    overriddenDeck.Slides.ShouldAllBe(slide => slide.Error == null);
+    List<Finding> overridden = Checks.Export(overriddenDeck);
+
+    // Assert
+    hidden.ShouldNotContain(finding => finding.Message.Contains("waterfall"));
+    overridden.ShouldContain(finding => finding.Message == ExportGaps.WaterfallPointLabel);
+  }
+
+  [Fact]
   public void Geometry_on_a_slide_of_hundreds_of_boxes_takes_moments()
   {
     // Arrange

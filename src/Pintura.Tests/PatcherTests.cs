@@ -1684,6 +1684,32 @@ public class PatcherTests
     undone.ShouldBe(Slide);
   }
 
+  [Fact]
+  public void Adding_a_frame_to_a_block_map_with_only_multiline_entries_inserts_before_the_first_key()
+  {
+    // Arrange
+    const string text = """
+      layout: content
+      title:
+        text: |
+          First line
+          Second line
+      """;
+
+    // Act
+    string patched = Apply(text, new ValueEdit("title.frame", null, Numbers: [40, 20, 600, 60]));
+
+    // Assert
+    patched.ShouldBe("""
+      layout: content
+      title:
+        frame: [40, 20, 600, 60]
+        text: |
+          First line
+          Second line
+      """);
+  }
+
   #endregion
 
 }

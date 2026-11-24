@@ -621,6 +621,7 @@ public class IncrementalExportTests
     report.Reused.ShouldBe(1);
     report.Billed.ShouldBe(new ExportBilling(1, 0, 0));
     resumed.Calls.ShouldNotContain("edit_theme");
+    resumed.Calls.ShouldContain("delete_layout");
     resumed.Calls.Count(call => call == "add_slide").ShouldBe(1);
   }
 

@@ -213,7 +213,7 @@ public sealed class FileTransaction
         {
           continue;
         }
-        if (written.TryGetValue(path, out byte[]? ours) && !Same(current, ours))
+        if (!written.TryGetValue(path, out byte[]? ours) || !Same(current, ours))
         {
           continue;
         }

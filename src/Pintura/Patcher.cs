@@ -326,16 +326,26 @@ public static partial class Patcher
           ? Splice(text, mapStart, mapEnd, $"{{ {entry} }}")
           : Splice(text, at, at, $", {entry}")));
       case YamlMappingNode map:
-        (YamlNode key, int end) = KeyBefore(text, map, missing[0]);
-        return First(edit, written, Candidates(entry => Splice(text, end, end, $"\n{Indent(key)}{entry}")));
+        if (KeyBefore(text, map, missing[0]) is (YamlNode key, int end))
+        {
+          return First(edit, written, Candidates(entry => Splice(text, end, end, $"\n{Indent(key)}{entry}")));
+        }
+        if (map.Children.Count > 0)
+        {
+          YamlNode first = map.Children.First().Key;
+          int start = Node.Extent(text, first).Start;
+          return First(edit, written, Candidates(entry => Splice(text, start, start, $"{entry}\n{Indent(first)}")));
+        }
+        throw new PatchException($"there's no line to write {missing[0]} after; add it in the file");
       default:
         throw new PatchException($"{holder} isn't a map; give it a {missing[0]} in the file");
     }
   }
 
   /// <summary>The key of the one-line entry a new <paramref name="key"/> goes after, and where that entry's line
-  /// ends: the last entry the docs write before it, or else the first.</summary>
-  private static (YamlNode Key, int End) KeyBefore(string text, YamlMappingNode map, string key)
+  /// ends: the last entry the docs write before it, or else the first, or null when the map has no one-line entry.
+  /// </summary>
+  private static (YamlNode Key, int End)? KeyBefore(string text, YamlMappingNode map, string key)
   {
     int rank = Array.IndexOf(KeyOrder, key);
     KeyValuePair<YamlNode, YamlNode>[] entries = map.Children
@@ -349,7 +359,7 @@ public static partial class Patcher
     }
     if (after.Key is null)
     {
-      throw new PatchException($"there's no line to write {key} after; add it in the file");
+      return null;
     }
     int end = Node.Extent(text, after.Value).End;
     while (end < text.Length && text[end] is not ('\n' or '\r'))

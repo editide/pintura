@@ -277,9 +277,10 @@ public partial class Exporter
           billed = new ExportBilling(billed.Slides + exporter.Billed.Slides, billed.Layouts + exporter.Billed.Layouts,
             billed.Masters + exporter.Billed.Masters);
           // Saved beside the scratch copy first, so a failed download leaves the last export and its manifest whole.
-          saved = Path.Combine(scratch.FullName, $"pass {index + 1}", Path.GetFileName(file));
-          Directory.CreateDirectory(Path.GetDirectoryName(saved)!);
-          session.Save(saved);
+          string next = Path.Combine(scratch.FullName, $"pass {index + 1}", Path.GetFileName(file));
+          Directory.CreateDirectory(Path.GetDirectoryName(next)!);
+          session.Save(next);
+          saved = next;
         }
         catch (Exception exception)
         {
@@ -2654,6 +2655,21 @@ public partial class Exporter
           .Select(index => (JsonNode?)index))
       });
       deckSlides.RemoveRange(slides.Count, current.Count - slides.Count);
+    }
+    if (previous.Any(slide => slide.Id.Length == 0))
+    {
+      // Resuming a partial Translate leaves blank.pptx's initial layout until its placeholder slide is gone.
+      JsonNode? office = Call("list_slide_layouts", new JsonObject())?[0];
+      if (office is not null && Text(office["theme_name"]) is string themeName)
+      {
+        foreach (JsonNode? layout in Items(office["layouts"]))
+        {
+          if (Text(layout?["name"]) is string name && !design.Defined.ContainsKey(name))
+          {
+            Call("delete_layout", new JsonObject { ["layout_name"] = name, ["theme_name"] = themeName });
+          }
+        }
+      }
     }
     Sections(deck, true);
   }

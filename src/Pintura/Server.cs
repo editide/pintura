@@ -349,49 +349,62 @@ public static partial class PreviewServer
   /// file alone for the page to redraw from.</summary>
   private static IResult Edit(PresentationStore store, EditRequest request)
   {
-    if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+    return WithLoaded(store, presentation =>
     {
-      return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
-    }
-    if (request.Edits.Count == 0)
+      if (request.Edits.Count == 0)
+      {
+        return Refused("the edit carries no values", StatusCodes.Status400BadRequest);
+      }
+      var files = new List<(string Path, string? Name, List<ValueEdit> Edits)>();
+      foreach (IGrouping<string?, ValueEdit> group in request.Edits.GroupBy(edit => edit.File))
+      {
+        bool listing = group.Key == presentation.Origin.File;
+        string? path = listing ? Path.Combine(presentation.Root, "presentation.yaml")
+          : group.Key is not null ? ThemeFile(presentation.Theme, group.Key)
+          : presentation.Find(request.Slide!) is not null ? SlideFile(presentation, request.Slide!)
+          : null;
+        if (path is null)
+        {
+          return Refused(group.Key is null ? $"no slide {request.Slide}"
+            : $"the mouse writes only the theme's theme.yaml and layouts, not {group.Key}",
+            StatusCodes.Status404NotFound);
+        }
+        if (listing && !group.All(Renamed))
+        {
+          return Refused("the mouse writes only presentation.yaml's fields and section names",
+            StatusCodes.Status400BadRequest);
+        }
+        if (!listing && !group.All(edit => Writable(edit, group.Key is not null)))
+        {
+          return Refused(group.Key is null
+            ? "the mouse writes frames, line ends, text, fills, outlines, styles, and alignments, adds text boxes, and " +
+              "deletes elements"
+            : "the mouse writes a layout's frames, areas, fills, and outlines, and deletes its elements",
+            StatusCodes.Status400BadRequest);
+        }
+        if (group.Select(edit => Unnamed(edit, presentation.Theme)).FirstOrDefault(problem => problem is not null) is
+          string unnamed)
+        {
+          return Refused(unnamed, StatusCodes.Status400BadRequest);
+        }
+        files.Add((path, group.Key, group.Select(edit => edit with { File = null }).ToList()));
+      }
+      return Patch(store, presentation, files);
+    });
+  }
+
+  /// <summary>Takes the file lock before reading <see cref="PresentationStore.Presentation"/>, so back-to-back write
+  /// requests never run against a pre-refresh snapshot.</summary>
+  private static IResult WithLoaded(PresentationStore store, Func<Presentation, IResult> run)
+  {
+    lock (Files.Gate)
     {
-      return Refused("the edit carries no values", StatusCodes.Status400BadRequest);
+      if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+      {
+        return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
+      }
+      return run(presentation);
     }
-    var files = new List<(string Path, string? Name, List<ValueEdit> Edits)>();
-    foreach (IGrouping<string?, ValueEdit> group in request.Edits.GroupBy(edit => edit.File))
-    {
-      bool listing = group.Key == presentation.Origin.File;
-      string? path = listing ? Path.Combine(presentation.Root, "presentation.yaml")
-        : group.Key is not null ? ThemeFile(presentation.Theme, group.Key)
-        : presentation.Find(request.Slide!) is not null ? SlideFile(presentation, request.Slide!)
-        : null;
-      if (path is null)
-      {
-        return Refused(group.Key is null ? $"no slide {request.Slide}"
-          : $"the mouse writes only the theme's theme.yaml and layouts, not {group.Key}",
-          StatusCodes.Status404NotFound);
-      }
-      if (listing && !group.All(Renamed))
-      {
-        return Refused("the mouse writes only presentation.yaml's fields and section names",
-          StatusCodes.Status400BadRequest);
-      }
-      if (!listing && !group.All(edit => Writable(edit, group.Key is not null)))
-      {
-        return Refused(group.Key is null
-          ? "the mouse writes frames, line ends, text, fills, outlines, styles, and alignments, adds text boxes, and " +
-            "deletes elements"
-          : "the mouse writes a layout's frames, areas, fills, and outlines, and deletes its elements",
-          StatusCodes.Status400BadRequest);
-      }
-      if (group.Select(edit => Unnamed(edit, presentation.Theme)).FirstOrDefault(problem => problem is not null) is
-        string unnamed)
-      {
-        return Refused(unnamed, StatusCodes.Status400BadRequest);
-      }
-      files.Add((path, group.Key, group.Select(edit => edit with { File = null }).ToList()));
-    }
-    return Patch(store, presentation, files);
   }
 
   /// <summary>The theme's <c>theme.yaml</c> or a layout's file, by the name origins give it.</summary>
@@ -482,63 +495,62 @@ public static partial class PreviewServer
   /// reloads, answering with the move that puts it back.</summary>
   private static IResult Move(PresentationStore store, SlideMove move, SaveCache saveCache)
   {
-    if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+    return WithLoaded(store, presentation =>
     {
-      return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
-    }
-    if (!PresentationLoader.IsSlideStem(move.Slide))
-    {
-      return Refused($"{move.Slide} isn't a slide's file stem", StatusCodes.Status400BadRequest);
-    }
-    if (move.Pick is not null && (move.Delete || move.Restore is not null))
-    {
-      return Refused($"pick {move.Pick} waits on you to keep one of its variants, or none, rather than deleting it",
-        StatusCodes.Status400BadRequest);
-    }
-    string list = Path.Combine(presentation.Root, "presentation.yaml");
-    string file = SlideFile(presentation, move.Slide);
-    // A delete or restore touches the slide, the list, and the comments; one step failing puts back the others, so
-    // the page never loses a slide without the undo that brings it back.
-    return Write<SlideMove?>(store, presentation, transaction =>
-    {
-      SlideMove? undo;
-      if (move.Delete)
+      if (!PresentationLoader.IsSlideStem(move.Slide))
       {
-        string slideBefore = transaction.Read(file)
-          ?? throw new FileNotFoundException($"Could not find file '{file}'.", file);
-        List<Comment> comments = CommentFile.RemoveSlide(presentation, move.Slide,
-          CommentFile.Author(presentation.Root), DateTime.Now, saveCache.Snapshot(), transaction);
-        undo = Patcher.MoveInFile(list, move, transaction)! with
-        {
-          Restore = slideBefore,
-          Comments = comments.Count > 0 ? comments : null
-        };
-        transaction.Write(file, null);
+        return Refused($"{move.Slide} isn't a slide's file stem", StatusCodes.Status400BadRequest);
       }
-      else if (move.Restore is string text)
+      if (move.Pick is not null && (move.Delete || move.Restore is not null))
       {
-        if (File.Exists(file))
+        return Refused($"pick {move.Pick} waits on you to keep one of its variants, or none, rather than deleting it",
+          StatusCodes.Status400BadRequest);
+      }
+      string list = Path.Combine(presentation.Root, "presentation.yaml");
+      string file = SlideFile(presentation, move.Slide);
+      // A delete or restore touches the slide, the list, and the comments; one step failing puts back the others, so
+      // the page never loses a slide without the undo that brings it back.
+      return Write<SlideMove?>(store, presentation, transaction =>
+      {
+        SlideMove? undo;
+        if (move.Delete)
         {
-          throw new PatchException($"slides/{move.Slide}.yaml exists again, so restoring it was dropped", true);
-        }
-        transaction.Write(file, text);
-        undo = Patcher.MoveInFile(list, move, transaction);
-        if (move.Comments is { Count: > 0 } comments)
-        {
-          store.Refresh();
-          foreach (Comment comment in comments)
+          string slideBefore = transaction.Read(file)
+            ?? throw new FileNotFoundException($"Could not find file '{file}'.", file);
+          List<Comment> comments = CommentFile.RemoveSlide(presentation, move.Slide,
+            CommentFile.Author(presentation.Root), DateTime.Now, saveCache.Snapshot(), transaction);
+          undo = Patcher.MoveInFile(list, move, transaction)! with
           {
-            CommentFile.Apply(store.Presentation!, new CommentChange(Reopen: comment.Id), "", DateTime.Now,
-              transaction: transaction);
+            Restore = slideBefore,
+            Comments = comments.Count > 0 ? comments : null
+          };
+          transaction.Write(file, null);
+        }
+        else if (move.Restore is string text)
+        {
+          if (File.Exists(file))
+          {
+            throw new PatchException($"slides/{move.Slide}.yaml exists again, so restoring it was dropped", true);
+          }
+          transaction.Write(file, text);
+          undo = Patcher.MoveInFile(list, move, transaction);
+          if (move.Comments is { Count: > 0 } comments)
+          {
+            store.Refresh();
+            foreach (Comment comment in comments)
+            {
+              CommentFile.Apply(store.Presentation!, new CommentChange(Reopen: comment.Id), "", DateTime.Now,
+                transaction: transaction);
+            }
           }
         }
-      }
-      else
-      {
-        undo = Patcher.MoveInFile(list, move, transaction);
-      }
-      string[] recorded = move.Delete || move.Restore is not null ? [list, file] : [list];
-      return (undo, recorded);
+        else
+        {
+          undo = Patcher.MoveInFile(list, move, transaction);
+        }
+        string[] recorded = move.Delete || move.Restore is not null ? [list, file] : [list];
+        return (undo, recorded);
+      });
     });
   }
 
@@ -546,39 +558,37 @@ public static partial class PreviewServer
   /// the change that undoes it.</summary>
   private static IResult Comment(PresentationStore store, CommentChange change, SaveCache saveCache)
   {
-    if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+    return WithLoaded(store, presentation =>
     {
-      return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
-    }
-    if (change.Kinds != 1 || change.Many?.Any(each => each.Kinds != 1 || each.Many is not null) == true)
-    {
-      return Refused("a change adds, removes, rewords, replies to, restores, resolves, or reopens one comment, or " +
-        "several at once",
-        StatusCodes.Status400BadRequest);
-    }
-    return Write<CommentChange>(store, presentation, transaction =>
-      (CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
-        saveCache.Snapshot(), transaction), null));
+      if (change.Kinds != 1 || change.Many?.Any(each => each.Kinds != 1 || each.Many is not null) == true)
+      {
+        return Refused("a change adds, removes, rewords, replies to, restores, resolves, or reopens one comment, or " +
+          "several at once",
+          StatusCodes.Status400BadRequest);
+      }
+      return Write<CommentChange>(store, presentation, transaction =>
+        (CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
+          saveCache.Snapshot(), transaction), null));
+    });
   }
 
   /// <summary>Keeps a variant of a pick, or none, or reopens one, and reloads, answering with the change that undoes
   /// it.</summary>
   private static IResult Pick(PresentationStore store, PickChange change, SaveCache saveCache)
   {
-    if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+    return WithLoaded(store, presentation =>
     {
-      return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
-    }
-    if ((change.Pick is null) == (change.Reopen is null) ||
-      change.Reopen?.Files.Keys.Any(slide => !PresentationLoader.IsSlideStem(slide)) == true)
-    {
-      return Refused("a change resolves a pick or reopens one", StatusCodes.Status400BadRequest);
-    }
-    return Write(store, presentation, transaction =>
-    {
-      (PickChange undo, Dictionary<string, string?> wrote) = PickFile.Apply(presentation, change,
-        CommentFile.Author(presentation.Root), DateTime.Now, saveCache.Snapshot(), transaction);
-      return (undo, wrote.Keys);
+      if ((change.Pick is null) == (change.Reopen is null) ||
+        change.Reopen?.Files.Keys.Any(slide => !PresentationLoader.IsSlideStem(slide)) == true)
+      {
+        return Refused("a change resolves a pick or reopens one", StatusCodes.Status400BadRequest);
+      }
+      return Write(store, presentation, transaction =>
+      {
+        (PickChange undo, Dictionary<string, string?> wrote) = PickFile.Apply(presentation, change,
+          CommentFile.Author(presentation.Root), DateTime.Now, saveCache.Snapshot(), transaction);
+        return (undo, wrote.Keys);
+      });
     });
   }
 
@@ -1160,7 +1170,7 @@ internal sealed class SaveCache
 
   public SaveStatus Status()
   {
-    (long Version, long Head) key = (store.Version, store.HeadVersion);
+    (long Change, long Head) key = (store.ChangeVersion, store.HeadVersion);
     lock (gate)
     {
       if (statusKey == key && status is not null)
@@ -1176,7 +1186,7 @@ internal sealed class SaveCache
 
   public Snapshot? Snapshot()
   {
-    (long Version, long Head) key = (store.Version, store.HeadVersion);
+    (long Change, long Head) key = (store.ChangeVersion, store.HeadVersion);
     lock (gate)
     {
       if (snapshotKey == key)

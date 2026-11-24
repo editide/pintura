@@ -95,6 +95,7 @@ button {
 }
 
 .sidebar {
+  grid-column: 1;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -257,6 +258,9 @@ button {
 }
 
 body.exported #view {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
   position: relative;
   display: flex;
   flex-direction: column;
