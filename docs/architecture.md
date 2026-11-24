@@ -367,7 +367,6 @@ A re-export starts from the last one and rewrites only the slides whose model ch
 What the export can't write, which it reports rather than approximates:
 
 - Picture crop, alt text, and opacity.
-- Sections, on editide before 1.0.7, which has no `edit_sections`.
 - Callout tails (which come out normalized), right-triangle direction, brace and bracket curl, and opacity with no fill.
 - Text columns, `${slide}` inside a slide's own text, and hidden layout elements.
 - Reversed chart axes, plot insets, `negative_style`, unknown number formats or scales, and waterfall label styles.

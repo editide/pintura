@@ -89,7 +89,7 @@ public class EditideTests
   private static FakeEditide Uploaded()
   {
     return new FakeEditide()
-      .Answer("GET /version", HttpStatusCode.OK, """{ "version": "1.0.6" }""")
+      .Answer("GET /version", HttpStatusCode.OK, """{ "version": "1.0.7" }""")
       .Answer("POST /api/presentations", HttpStatusCode.OK, """{ "file_id": "deck-1", "filename": "deck.pptx" }""");
   }
 
@@ -214,7 +214,7 @@ public class EditideTests
     // Arrange
     using var folder = new TempFolder();
     FakeEditide editide = new FakeEditide()
-      .Answer("GET /version", HttpStatusCode.OK, """{ "version": "1.0.6" }""")
+      .Answer("GET /version", HttpStatusCode.OK, """{ "version": "1.0.7" }""")
       .Answer("POST /api/presentations", HttpStatusCode.Unauthorized, """{ "error": "Invalid API key" }""");
 
     // Act

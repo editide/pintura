@@ -588,38 +588,6 @@ public class IncrementalExportTests
   }
 
   [Fact]
-  public void Tools_without_edit_sections_leave_the_deck_whole_and_report_the_sections_as_a_gap()
-  {
-    // Arrange
-    using var fixture = new DeckFixture();
-    var tools = new BlandTools { Missing = "edit_sections" };
-
-    // Act
-    ExportReport report = Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
-
-    // Assert
-    report.Gaps.ShouldContain(gap => gap.StartsWith("sections aren't exported"));
-    File.Exists(fixture.Folder.PathTo("out/deck.pptx")).ShouldBeTrue();
-  }
-
-  [Fact]
-  public void Tools_without_edit_sections_raise_no_gap_for_a_presentation_without_sections()
-  {
-    // Arrange
-    using var fixture = new DeckFixture();
-    string output = fixture.Folder.PathTo("out/deck.pptx");
-    Exporter.Write(fixture.Load(), output, new BlandTools());
-    Slides(fixture, "one", "two");
-    var tools = new BlandTools { Missing = "edit_sections" };
-
-    // Act
-    ExportReport report = Exporter.Write(fixture.Load(), output, tools);
-
-    // Assert
-    report.Gaps.ShouldNotContain(gap => gap.StartsWith("sections"));
-  }
-
-  [Fact]
   public void A_failure_partway_through_saves_finished_slides_so_the_next_export_resumes_incrementally()
   {
     // Arrange

@@ -55,7 +55,7 @@ public partial class Exporter
   private int written;
   private int layoutsWritten;
   private int mastersWritten;
-  private readonly SortedSet<string> notes = new SortedSet<string>(StringComparer.Ordinal);
+  private readonly Workarounds notes = new Workarounds();
   private readonly Dictionary<int, JsonArray> tableFixes = new Dictionary<int, JsonArray>();
   private JsonObject deck = new JsonObject();
 
@@ -74,7 +74,7 @@ public partial class Exporter
 
   /// <summary>How the exporter works around editide's tools where the deck still comes out right, for whoever drops
   /// each workaround once the tools no longer need it.</summary>
-  public IReadOnlyCollection<string> Workarounds => notes;
+  public IReadOnlyCollection<string> Workarounds => notes.Notes;
 
   /// <summary>A release compiles each call out, its text included, since the notes are for development.</summary>
   [Conditional("DEBUG")]
@@ -192,6 +192,7 @@ public partial class Exporter
     DirectoryInfo scratch = Directory.CreateTempSubdirectory("pintura-export-");
     try
     {
+      var workarounds = new Workarounds();
       string start = Path.Combine(scratch.FullName, Path.GetFileName(file));
       if (incremental)
       {
@@ -205,8 +206,10 @@ public partial class Exporter
           source.CopyTo(target);
         }
         Resize(start, Items(deck["size"]).Select(side => Number(side) ?? 0).ToArray());
+        workarounds.Add("slide size: editide's tools can't set slide size, so ppt/presentation.xml is patched directly");
       }
       Describe(start, presentation.Name);
+      workarounds.Add("deck metadata: editide's tools can't set title or dates, so docProps/core.xml is patched directly");
       Dictionary<string, string> drawn = DrawSvgs(deck, presentation.Root, rasterize);
       foreach ((string picture, string source, string key) in pictures)
       {
@@ -221,7 +224,6 @@ public partial class Exporter
       HashSet<string> pending = [.. passes.SelectMany(pass => pass)];
       IReadOnlyList<ExportedSlide>? held = incremental ? previous!.Slides : null;
       IReadOnlyList<string> designGaps = previous?.DesignGaps ?? [];
-      var workarounds = new SortedSet<string>(StringComparer.Ordinal);
       var billed = new ExportBilling(0, 0, 0);
       int calls = 0;
       int reused = 0;
@@ -272,7 +274,7 @@ public partial class Exporter
             reused = exporter.Reused;
           }
           calls += counting.Calls;
-          workarounds.UnionWith(exporter.Workarounds);
+          workarounds.AddRange(exporter.Workarounds);
           billed = new ExportBilling(billed.Slides + exporter.Billed.Slides, billed.Layouts + exporter.Billed.Layouts,
             billed.Masters + exporter.Billed.Masters);
           // Saved beside the scratch copy first, so a failed download leaves the last export and its manifest whole.
@@ -301,7 +303,7 @@ public partial class Exporter
       Place(saved, file, aside);
       ClearResume(resume);
       return new ExportReport(file, deck["slides"]!.AsArray().Count, calls, watch.Elapsed, exporter.Gaps, reused,
-        workarounds)
+        workarounds.Notes)
       {
         Edited = aside,
         Billed = billed
@@ -612,7 +614,7 @@ public partial class Exporter
     return tools.Call(tool, Clean(input).AsObject());
   }
 
-  private static JsonNode Clean(JsonNode node)
+  private JsonNode Clean(JsonNode node)
   {
     if (node is JsonObject map)
     {
@@ -622,6 +624,11 @@ public partial class Exporter
         if (value is not null)
         {
           clean[key] = Clean(value);
+        }
+        else
+        {
+          Workaround("null keys: editide's tools read a missing key rather than null, so nulls are stripped before " +
+            "each call");
         }
       }
       return clean;
@@ -1599,6 +1606,8 @@ public partial class Exporter
     List<JsonNode?> categories = Items(Get(properties, "categories"));
     if (bar)
     {
+      Workaround("bar chart order: editide's tools have no reversed category axis (c:orientation maxMin), so bar " +
+        "categories and clustered series are reversed");
       categories.Reverse();
     }
     List<Series> series = Items(Get(properties, "series")).Select((entry, index) =>
@@ -2615,6 +2624,8 @@ public partial class Exporter
       }
       if (pages.Count > 0)
       {
+        Workaround("slide number: editide's tools write a slide-number field only into placeholders, so a ${slide}-only " +
+          "box becomes a slide_number placeholder");
         edit["header_footer"] = new JsonObject { ["slide_number"] = true };
       }
       foreach ((string key, JsonNode? value) in Elements(drawn.Where(item => !IsPageNumber(item)), adds.Count)
@@ -2754,18 +2765,7 @@ public partial class Exporter
         sections.Add(new JsonObject { ["name"] = names[index] ?? DefaultSection, ["first_slide"] = index + 1 });
       }
     }
-    try
-    {
-      Call("edit_sections", new JsonObject { ["sections"] = sections });
-    }
-    catch (InvalidOperationException error) when (error.Message.Contains("Unknown tool"))
-    {
-      Workaround("sections: editide before 1.0.7 has no edit_sections");
-      if (named)
-      {
-        gaps.Add("sections aren't exported, as this editide has no edit_sections");
-      }
-    }
+    Call("edit_sections", new JsonObject { ["sections"] = sections });
   }
 
   /// <summary>Whether a slide loaded, keeping why not as a gap when it didn't.</summary>

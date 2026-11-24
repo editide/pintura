@@ -12,7 +12,7 @@ namespace Pintura;
 public sealed class EditideTools : IToolHost
 {
   /// <summary>The oldest editide API the fixtures pass on.</summary>
-  public static readonly Version Minimum = new Version(1, 0, 6);
+  public static readonly Version Minimum = new Version(1, 0, 7);
 
   private const string PptxType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 

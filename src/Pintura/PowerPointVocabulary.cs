@@ -1,7 +1,31 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace Pintura;
+
+/// <summary>Notes how export and import work around gaps in editide's tools so each workaround can be dropped as
+/// editide lands its fix. Release builds compile every call out, along with its text.</summary>
+public sealed class Workarounds
+{
+  private readonly SortedSet<string> notes = new SortedSet<string>(StringComparer.Ordinal);
+
+  public IReadOnlyCollection<string> Notes => notes;
+
+  [Conditional("DEBUG")]
+  public void Add(string note)
+  {
+    notes.Add(note);
+  }
+
+  [Conditional("DEBUG")]
+  public void AddRange(IEnumerable<string> items)
+  {
+    notes.UnionWith(items);
+  }
+
+
+}
 
 /// <summary>Two-way vocabulary shared between <see cref="Exporter"/> and <see cref="PowerPointMapping"/> so every
 /// name, enum, and key format between Pintura's model and editide's PowerPoint tools is defined once.</summary>

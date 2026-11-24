@@ -2358,6 +2358,7 @@ public static class ImportCommand
     string written = themeOnly ? Importer.Scratch(target) : target;
 
     var findings = new List<string>();
+    var workarounds = new Workarounds();
     string? media = null;
     try
     {
@@ -2376,6 +2377,7 @@ public static class ImportCommand
         model = mapped.Deck;
         pictures = mapped.Media;
         findings.AddRange(mapped.Findings);
+        workarounds.AddRange(mapped.Workarounds);
       }
       else
       {
@@ -2417,6 +2419,15 @@ public static class ImportCommand
       foreach (string finding in findings.Distinct())
       {
         output.WriteLine($"- {finding}");
+      }
+    }
+    if (workarounds.Notes.Count > 0)
+    {
+      output.WriteLine();
+      output.WriteLine("workarounds:");
+      foreach (string note in workarounds.Notes)
+      {
+        output.WriteLine($"- {note}");
       }
     }
     return 0;

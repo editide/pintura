@@ -9,7 +9,10 @@ namespace Pintura;
 
 /// <summary>What a mapping of the tools' reads made: the model's JSON, with pictures relative to
 /// <see cref="Media"/>, and everything in the deck it had no place for.</summary>
-public record PowerPointDeck(JsonObject Deck, string Media, List<string> Findings);
+public record PowerPointDeck(JsonObject Deck, string Media, List<string> Findings)
+{
+  public IReadOnlyCollection<string> Workarounds { get; init; } = [];
+}
 
 /// <summary>editide's reads of a <c>.pptx</c> as the model's JSON, in effective values, for the importer to write.
 ///
@@ -30,6 +33,7 @@ public partial class PowerPointMapping
   private readonly JsonObject reads;
   private readonly string name;
   private readonly Package package;
+  private readonly Workarounds workarounds;
   private readonly List<string> findings = new List<string>();
   private bool wholeTheme;
   private readonly Dictionary<string, string> hex = new Dictionary<string, string>();
@@ -41,11 +45,12 @@ public partial class PowerPointMapping
   private JsonObject text = new JsonObject();
   private readonly Dictionary<int, JsonObject> levels = new Dictionary<int, JsonObject>();
 
-  private PowerPointMapping(JsonObject reads, string name, Package package)
+  private PowerPointMapping(JsonObject reads, string name, Package package, Workarounds workarounds)
   {
     this.reads = reads;
     this.name = name;
     this.package = package;
+    this.workarounds = workarounds;
     JsonObject master = Master;
     foreach ((string key, JsonNode? value) in master["theme_colors"]?.AsObject() ?? new JsonObject())
     {
@@ -60,14 +65,18 @@ public partial class PowerPointMapping
   /// as a template, takes them all.</summary>
   public static PowerPointDeck Map(JsonObject reads, string deck, string media, bool wholeTheme = false)
   {
-    using var package = new Package(deck, media);
-    var mapping = new PowerPointMapping(reads, Path.GetFileNameWithoutExtension(deck), package)
+    var workarounds = new Workarounds();
+    using var package = new Package(deck, media, workarounds);
+    var mapping = new PowerPointMapping(reads, Path.GetFileNameWithoutExtension(deck), package, workarounds)
     {
       wholeTheme = wholeTheme || reads["layouts"]!.AsArray().All(layout => layout!["slides"]!.AsArray().Count == 0)
     };
     mapping.findings.AddRange(reads["findings"]?.AsArray().Select(finding => (string)finding!) ?? []);
     JsonObject result = mapping.Build();
-    return new PowerPointDeck(result, media, mapping.findings.Distinct().ToList());
+    return new PowerPointDeck(result, media, mapping.findings.Distinct().ToList())
+    {
+      Workarounds = workarounds.Notes
+    };
   }
 
   private JsonObject Master => reads["master"]!.AsObject();
@@ -308,9 +317,10 @@ public partial class PowerPointMapping
     return result;
   }
 
-  private List<Paragraph> ExpandElement(JsonObject element, Layers layers, string where, bool lines = false)
+  private List<Paragraph> ExpandElement(JsonObject element, Layers layers, PartLocation where, bool lines = false)
   {
-    return Expand(element["text_component"], layers, where, package.Breaks(where, (int?)element["id"]), lines);
+    return Expand(element["text_component"], layers, where.ToString(), package.Breaks(where, (int?)element["id"]),
+      lines);
   }
 
   /// <summary>The paragraphs of <paramref name="component"/>, with each line break in <paramref name="breaks"/>,
@@ -349,6 +359,7 @@ public partial class PowerPointMapping
           // read that missing fill as tx1.
           if (run["text_style"]?["font_color"] is not JsonObject own || (string?)own["scheme"] == "tx1")
           {
+            workarounds.Add("link color: read tools report a link following the theme hyperlink color as tx1");
             character["color"] = new JsonObject { ["theme"] = "hyperlink" };
           }
           if ((bool?)run["text_style"]?["is_underlined"] != false)
@@ -401,8 +412,9 @@ public partial class PowerPointMapping
         (double?)style["margin_left"] ?? 0,
         -((double?)style["indent"] ?? 0),
         // The tools read a bullet that follows its text's color as tx1.
-        bulleted && (bullet["color"] as JsonObject)?["scheme"]?.GetValue<string>() != "tx1"
-          ? Color(bullet["color"], where) : null,
+        bulleted && (bullet["color"] as JsonObject)?["scheme"]?.GetValue<string>() == "tx1"
+          ? NoteBulletColor()
+          : bulleted ? Color(bullet["color"], where) : null,
         bulletSize,
         properties,
         runs));
@@ -412,6 +424,12 @@ public partial class PowerPointMapping
       paragraphs.RemoveAt(paragraphs.Count - 1);
     }
     return paragraphs;
+  }
+
+  private JsonObject? NoteBulletColor()
+  {
+    workarounds.Add("bullet color: read tools report a bullet following its text color as tx1");
+    return null;
   }
 
   /// <summary>The character properties most of the runs' text shares, with a flag on only when every run has it.
@@ -506,7 +524,7 @@ public partial class PowerPointMapping
           continue;
         }
         List<Paragraph> paragraphs = ExpandElement(element, ElementLayers(layers, element),
-          $"slide {slide["index"]}");
+          PartLocation.ForSlide((int)slide["index"]!));
         yield return (paragraphs, BoxProperties(Merge(read["default_text_layout"],
           element["text_component"]?["text_layout"]), null, null));
       }
@@ -798,10 +816,13 @@ public partial class PowerPointMapping
 
       // The reads can't tell which layouts hide the master's shapes, and few do, so every layout shows them, behind
       // its own.
+      PartLocation location = PartLocation.ForLayout(layoutName);
       int behind = 0;
       foreach (JsonObject element in Ordered(Master))
       {
-        if (Element(element, Master, SlideLayers(Master), ids, "the master") is JsonObject item)
+        workarounds.Add("master shapes: read tools can't say which layouts hide master shapes, so every layout " +
+          "copies them");
+        if (Element(element, Master, SlideLayers(Master), ids, PartLocation.Master) is JsonObject item)
         {
           draft.Elements.Insert(behind++, item);
         }
@@ -813,7 +834,7 @@ public partial class PowerPointMapping
         {
           continue;
         }
-        if (Element(element, read, layers, ids, where) is JsonObject item)
+        if (Element(element, read, layers, ids, location) is JsonObject item)
         {
           draft.Elements.Add(item);
         }
@@ -822,6 +843,10 @@ public partial class PowerPointMapping
       if (read["background"] is JsonObject background && (bool?)background["follows_theme"] != true &&
         Color(background["color"], where) is JsonObject color)
       {
+        if (background["follows_theme"] is null)
+        {
+          workarounds.Add("layout background: read tools omit follows_theme when false");
+        }
         draft.Json.Insert(2, "background", color);
       }
       if (draft.Areas.Count > 0)
@@ -946,7 +971,7 @@ public partial class PowerPointMapping
   }
 
   /// <summary>One element as the model's item, or null when it has nothing to draw.</summary>
-  private JsonObject? Element(JsonObject element, JsonObject read, Layers layers, Ids ids, string where,
+  private JsonObject? Element(JsonObject element, JsonObject read, Layers layers, Ids ids, PartLocation where,
     string? slideStem = null)
   {
     string kind = (string)element["kind"]!;
@@ -954,6 +979,7 @@ public partial class PowerPointMapping
     JsonObject? defaults = (bool?)element["grouped"] == true ? null : read;
     if (defaults is null)
     {
+      workarounds.Add("grouped elements: read tools don't fold group children into slide defaults");
       layers = new Layers(null, null, null);
     }
     switch (kind)
@@ -976,7 +1002,7 @@ public partial class PowerPointMapping
 
   /// <summary>An element's id: the name it has in the package, unless PowerPoint made it up, or its kind and count.
   /// </summary>
-  private string Id(JsonObject element, string kind, Ids ids, string where)
+  private string Id(JsonObject element, string kind, Ids ids, PartLocation where)
   {
     string? named = package.Name(where, (int?)element["id"]);
     return named is not null && !DefaultName().IsMatch(named) && Kebab(named, "") is { Length: > 0 } id
@@ -997,13 +1023,14 @@ public partial class PowerPointMapping
     return item;
   }
 
-  private JsonObject? TextElement(JsonObject element, Layers layers, Ids ids, string where, JsonObject? read)
+  private JsonObject? TextElement(JsonObject element, Layers layers, Ids ids, PartLocation where, JsonObject? read)
   {
+    string label = where.ToString();
     string shapeType = (string?)element["shape_type"] ?? "rectangle";
     Layers own = ElementLayers(layers, element);
     List<Paragraph> paragraphs = ExpandElement(element, own, where);
     JsonObject style = Merge(read?["text_element_shape_style"], element["shape_style"]);
-    if (shapeType != "rectangle" || HasOutline(style, where))
+    if (shapeType != "rectangle" || HasOutline(style, label))
     {
       return Shape(element, shapeType, style, paragraphs, own, ids, where, read);
     }
@@ -1013,10 +1040,10 @@ public partial class PowerPointMapping
     }
     var properties = new JsonObject { ["frame"] = Frame(element) };
     Rotation(element, properties);
-    Effects(style, properties, where);
+    Effects(style, properties, label);
     BoxText(properties, paragraphs, Merge(read?["default_text_layout"],
       element["text_component"]?["text_layout"]), element);
-    return Item(Id(element, "text", ids, where), "text", properties, Paragraphs(paragraphs, where));
+    return Item(Id(element, "text", ids, where), "text", properties, Paragraphs(paragraphs, label));
   }
 
   private bool HasOutline(JsonObject style, string where)
@@ -1025,7 +1052,7 @@ public partial class PowerPointMapping
       Stroke(style, where) is JsonObject stroke && stroke["stroke"] is null;
   }
 
-  private JsonObject? ShapeElement(JsonObject element, Layers layers, Ids ids, string where, JsonObject? read)
+  private JsonObject? ShapeElement(JsonObject element, Layers layers, Ids ids, PartLocation where, JsonObject? read)
   {
     string shapeType = (string?)element["shape_type"] ?? (string?)read?["default_shape_type"] ?? "rectangle";
     JsonObject style = Merge(read?["shape_element_shape_style"], element["shape_style"]);
@@ -1042,7 +1069,7 @@ public partial class PowerPointMapping
     return Shape(element, shapeType, style, paragraphs, own, ids, where, read);
   }
 
-  private JsonObject Line(JsonObject element, JsonObject style, Ids ids, string where)
+  private JsonObject Line(JsonObject element, JsonObject style, Ids ids, PartLocation where)
   {
     double left = (double)element["position"]!["left"]!;
     double top = (double)element["position"]!["top"]!;
@@ -1055,13 +1082,14 @@ public partial class PowerPointMapping
       ["from"] = new JsonArray(Round(horizontal ? left + width : left), Round(vertical ? top + height : top)),
       ["to"] = new JsonArray(Round(horizontal ? left : left + width), Round(vertical ? top : top + height))
     };
-    Stroked(properties, style, where);
+    Stroked(properties, style, where.ToString());
     return Item(Id(element, "line", ids, where), "line", properties, null);
   }
 
   // OOXML's arc, unrotated and unflipped, is Pintura's: the tools give its angles as turns clockwise from the right.
-  private JsonObject Arc(JsonObject element, JsonObject style, Ids ids, string where)
+  private JsonObject Arc(JsonObject element, JsonObject style, Ids ids, PartLocation where)
   {
+    string label = where.ToString();
     double Angle(string handle, double fallback)
     {
       double turns = (double?)element["shape_adjustments"]?[handle] ?? fallback;
@@ -1078,9 +1106,9 @@ public partial class PowerPointMapping
     if ((double?)position["rotation"] is double rotation and not 0 || (bool?)position["flip_horizontal"] == true ||
       (bool?)position["flip_vertical"] == true)
     {
-      findings.Add($"{where}: an arc's rotation and flips aren't imported, so it may sweep elsewhere");
+      findings.Add($"{label}: an arc's rotation and flips aren't imported, so it may sweep elsewhere");
     }
-    Stroked(properties, style, where);
+    Stroked(properties, style, label);
     return Item(Id(element, "arc", ids, where), "arc", properties, null);
   }
 
@@ -1107,8 +1135,9 @@ public partial class PowerPointMapping
   }
 
   private JsonObject Shape(JsonObject element, string shapeType, JsonObject style, List<Paragraph> paragraphs,
-    Layers layers, Ids ids, string where, JsonObject? read)
+    Layers layers, Ids ids, PartLocation location, JsonObject? read)
   {
+    string where = location.ToString();
     var properties = new JsonObject { ["frame"] = Frame(element) };
     double width = (double)element["size"]!["width"]!;
     double height = (double)element["size"]!["height"]!;
@@ -1167,7 +1196,7 @@ public partial class PowerPointMapping
     Rotation(element, properties);
     BoxText(properties, paragraphs, Merge(read?["default_text_layout"], element["text_component"]?["text_layout"]),
       element);
-    return Item(Id(element, "shape", ids, where), "shape", properties,
+    return Item(Id(element, "shape", ids, location), "shape", properties,
       paragraphs.Count > 0 ? Paragraphs(paragraphs, where) : null);
   }
 
@@ -1414,10 +1443,11 @@ public partial class PowerPointMapping
     return levels.Where(pair => Matches(pair.Value)).Select(pair => pair.Key).DefaultIfEmpty(paragraph.Level).First();
   }
 
-  private JsonObject? Picture(JsonObject element, Ids ids, string where, JsonObject? read)
+  private JsonObject? Picture(JsonObject element, Ids ids, PartLocation location, JsonObject? read)
   {
-    string id = Id(element, "picture", ids, where);
-    string? file = package.Picture(where, (int?)element["id"], id.StartsWith("picture-", StringComparison.Ordinal)
+    string where = location.ToString();
+    string id = Id(element, "picture", ids, location);
+    string? file = package.Picture(location, (int?)element["id"], id.StartsWith("picture-", StringComparison.Ordinal)
       ? null
       : id);
     if (file is null)
@@ -1472,7 +1502,7 @@ public partial class PowerPointMapping
     {
       int index = (int)slide["index"]!;
       JsonObject read = slide["read"]!.AsObject();
-      string where = $"slide {index}";
+      PartLocation where = PartLocation.ForSlide(index);
       LayoutDraft? layout = layouts.FirstOrDefault(candidate => candidate.ReadId == slide["layout"]?.ToJsonString());
       if (layout is null)
       {
@@ -1530,8 +1560,9 @@ public partial class PowerPointMapping
   /// <summary>A slide's title or one of its layout's placeholders, filled, or nothing when it is empty; unmatched for
   /// a placeholder the layout makes an area, which the slide fills with an element.</summary>
   private (bool Matched, JsonObject? Item) SlidePlaceholder(JsonObject element, JsonObject read, Layers layers,
-    LayoutDraft layout, string where)
+    LayoutDraft layout, PartLocation location)
   {
+    string where = location.ToString();
     string role = (string?)element["placeholder"]?["role"] ?? "body";
     bool title = role is "title" or "centered_title";
     JsonObject? target = title
@@ -1541,7 +1572,7 @@ public partial class PowerPointMapping
     {
       return (false, null);
     }
-    List<Paragraph> paragraphs = ExpandElement(element, ElementLayers(layers, element), where, lines: true);
+    List<Paragraph> paragraphs = ExpandElement(element, ElementLayers(layers, element), location, lines: true);
     if (paragraphs.Count == 0)
     {
       return (true, null);
@@ -1589,9 +1620,10 @@ public partial class PowerPointMapping
     return Pintura.Chart.FamilyOf(type);
   }
 
-  private JsonObject Chart(JsonObject element, string slide, Ids ids, string where)
+  private JsonObject Chart(JsonObject element, string slide, Ids ids, PartLocation location)
   {
-    string id = Id(element, "chart", ids, where);
+    string where = location.ToString();
+    string id = Id(element, "chart", ids, location);
     string stem = Unique(slide, chartStems);
     List<JsonObject> series = (element["series_list"]?.AsArray() ?? []).Select(node => node!.AsObject())
       .OrderBy(entry => (int?)entry["order"] ?? (int?)entry["index"] ?? 0).ToList();
@@ -1639,6 +1671,8 @@ public partial class PowerPointMapping
       .OrderBy(key => PowerPointVocabulary.ParseChartDataKey(key).Index).ToList();
     if (family == "bar")
     {
+      workarounds.Add("bar chart order: read tools don't report reversed category axes, so bar categories and " +
+        "clustered series are reversed on read");
       categoryKeys.Reverse();
     }
     string? CategoryName(int? index) => categoryKeys
@@ -2494,9 +2528,10 @@ public partial class PowerPointMapping
     return cell["style"]?["fill"] ?? cell["fill"] ?? row["default_cell_fill"] ?? element["default_cell_fill"];
   }
 
-  private JsonObject Table(JsonObject element, string slide, Ids ids, string where)
+  private JsonObject Table(JsonObject element, string slide, Ids ids, PartLocation location)
   {
-    string id = Id(element, "table", ids, where);
+    string where = location.ToString();
+    string id = Id(element, "table", ids, location);
     string stem = Unique(slide, tableStems);
     var tableLayers = new Layers(element["default_text_style"], element["default_paragraph_style"],
       element["default_bullet"]);
@@ -2717,8 +2752,33 @@ public partial class PowerPointMapping
 
   #region The package
 
-  /// <summary>The <c>.pptx</c> itself, for what the tools' reads leave out: where a picture's image is, and sections.
-  /// </summary>
+  private enum PartKind
+  {
+    Master,
+    Slide,
+    Layout
+  }
+
+  /// <summary>A typed reference to a slide, layout, or master part in the <c>.pptx</c> package, which formats to its
+  /// human-readable finding location.</summary>
+  private readonly record struct PartLocation(PartKind Kind, int Slide = 0, string? Layout = null)
+  {
+    public static PartLocation Master => new PartLocation(PartKind.Master);
+
+    public static PartLocation ForSlide(int number) => new PartLocation(PartKind.Slide, Slide: number);
+
+    public static PartLocation ForLayout(string name) => new PartLocation(PartKind.Layout, Layout: name);
+
+    public override string ToString() => Kind switch
+    {
+      PartKind.Master => "the master",
+      PartKind.Slide => $"slide {Slide}",
+      _ => $"layout {Layout}"
+    };
+  }
+
+  /// <summary>The <c>.pptx</c> itself, for what the tools' reads leave out: element names, line breaks, pictures, and
+  /// sections.</summary>
   private sealed class Package : IDisposable
   {
     private static readonly XNamespace P = "http://schemas.openxmlformats.org/presentationml/2006/main";
@@ -2729,14 +2789,20 @@ public partial class PowerPointMapping
 
     private readonly ZipArchive zip;
     private readonly string media;
+    private readonly Workarounds workarounds;
     private readonly HashSet<string> written = new HashSet<string>();
     private readonly Dictionary<string, string> copied = new Dictionary<string, string>();
     private readonly Dictionary<string, XDocument> documents = new Dictionary<string, XDocument>();
+    private List<string>? slideParts;
+    private Dictionary<string, string>? layoutParts;
+    private string? masterPart;
+    private bool masterResolved;
 
-    public Package(string deck, string media)
+    public Package(string deck, string media, Workarounds workarounds)
     {
       zip = ZipFile.OpenRead(deck);
       this.media = media;
+      this.workarounds = workarounds;
       Directory.CreateDirectory(media);
     }
 
@@ -2761,17 +2827,23 @@ public partial class PowerPointMapping
     }
 
     /// <summary>The name PowerPoint shows in its selection pane for the element with <paramref name="id"/>.</summary>
-    public string? Name(string where, int? id)
+    public string? Name(PartLocation where, int? id)
     {
-      return id is not null && Part(where) is string part
+      string? name = id is not null && Part(where) is string part
         ? (string?)Xml(part)?.Descendants().FirstOrDefault(element => element.Name.LocalName == "cNvPr" &&
           (int?)element.Attribute("id") == id)?.Attribute("name")
         : null;
+      if (name is not null)
+      {
+        workarounds.Add("element names: read tools omit selection-pane names (cNvPr/@name), so they are read from " +
+          "the .pptx package");
+      }
+      return name;
     }
 
     /// <summary>For each paragraph of the element with <paramref name="id"/>, how many runs it has and which of them
     /// follow a line break, or null when it has no break.</summary>
-    public List<(int Runs, HashSet<int> Broken)>? Breaks(string where, int? id)
+    public List<(int Runs, HashSet<int> Broken)>? Breaks(PartLocation where, int? id)
     {
       XElement? body = id is not null && Part(where) is string part
         ? Xml(part)?.Descendants(P + "cNvPr").FirstOrDefault(element => (int?)element.Attribute("id") == id)
@@ -2781,6 +2853,7 @@ public partial class PowerPointMapping
       {
         return null;
       }
+      workarounds.Add("line breaks: read tools omit <a:br> line breaks, so they are read from the .pptx package");
       return body.Elements(A + "p").Select(paragraph =>
       {
         var broken = new HashSet<int>();
@@ -2834,44 +2907,67 @@ public partial class PowerPointMapping
 
     private List<string> SlideParts()
     {
+      if (slideParts is not null)
+      {
+        return slideParts;
+      }
       Dictionary<string, string> relationships = Relationships("ppt/presentation.xml");
-      return (Xml("ppt/presentation.xml")?.Root?.Element(P + "sldIdLst")?.Elements(P + "sldId") ?? [])
+      return slideParts = (Xml("ppt/presentation.xml")?.Root?.Element(P + "sldIdLst")?.Elements(P + "sldId") ?? [])
         .Select(slide => relationships.GetValueOrDefault((string)slide.Attribute(R + "id")!) ?? "")
         .ToList();
     }
 
-    /// <summary>The part a read's <paramref name="where"/> names: a slide by its number, a layout by its name, or the
-    /// master the first slide's layout belongs to, which is the one the reads come from, or without slides the first.
-    /// </summary>
-    private string? Part(string where)
+    private Dictionary<string, string> LayoutParts()
     {
-      if (where == "the master")
+      if (layoutParts is not null)
       {
-        string? used = SlideParts().Take(1).SelectMany(slide => Relationships(slide).Values)
-          .FirstOrDefault(target => target.StartsWith("ppt/slideLayouts/", StringComparison.Ordinal));
-        return used is null
-          ? Relationships("ppt/presentation.xml").Values.FirstOrDefault(target =>
-            target.StartsWith("ppt/slideMasters/", StringComparison.Ordinal))
-          : Relationships(used).Values.FirstOrDefault(target =>
-            target.StartsWith("ppt/slideMasters/", StringComparison.Ordinal));
+        return layoutParts;
       }
-      if (where.StartsWith("slide ", StringComparison.Ordinal))
-      {
-        int number = int.Parse(where["slide ".Length..], CultureInfo.InvariantCulture);
-        List<string> slides = SlideParts();
-        return number <= slides.Count ? slides[number - 1] : null;
-      }
-      string layout = where["layout ".Length..];
-      return zip.Entries.Select(entry => entry.FullName)
+      var map = new Dictionary<string, string>(StringComparer.Ordinal);
+      foreach (string part in zip.Entries.Select(entry => entry.FullName)
         .Where(part => part.StartsWith("ppt/slideLayouts/", StringComparison.Ordinal) && part.EndsWith(".xml") &&
-          !part.Contains("/_rels/"))
-        .FirstOrDefault(part => (string?)Xml(part)?.Root?.Element(P + "cSld")?.Attribute("name") == layout);
+          !part.Contains("/_rels/")))
+      {
+        if ((string?)Xml(part)?.Root?.Element(P + "cSld")?.Attribute("name") is string name)
+        {
+          map.TryAdd(name, part);
+        }
+      }
+      return layoutParts = map;
+    }
+
+    /// <summary>The part <paramref name="where"/> names: a slide by its number, a layout by its name, or the master
+    /// the first slide's layout belongs to, which is the one the reads come from, or without slides the first.
+    /// </summary>
+    private string? Part(PartLocation where)
+    {
+      switch (where.Kind)
+      {
+        case PartKind.Master:
+          if (!masterResolved)
+          {
+            masterResolved = true;
+            string? used = SlideParts().Take(1).SelectMany(slide => Relationships(slide).Values)
+              .FirstOrDefault(target => target.StartsWith("ppt/slideLayouts/", StringComparison.Ordinal));
+            masterPart = used is null
+              ? Relationships("ppt/presentation.xml").Values.FirstOrDefault(target =>
+                target.StartsWith("ppt/slideMasters/", StringComparison.Ordinal))
+              : Relationships(used).Values.FirstOrDefault(target =>
+                target.StartsWith("ppt/slideMasters/", StringComparison.Ordinal));
+          }
+          return masterPart;
+        case PartKind.Slide:
+          List<string> slides = SlideParts();
+          return where.Slide >= 1 && where.Slide <= slides.Count ? slides[where.Slide - 1] : null;
+        default:
+          return where.Layout is not null && LayoutParts().TryGetValue(where.Layout, out string? part) ? part : null;
+      }
     }
 
     /// <summary>Copies the image of the picture with <paramref name="id"/> into the media folder, the SVG where there
     /// is one, returning its file name there, named <paramref name="stem"/> when given. An image several pictures
     /// show is copied once.</summary>
-    public string? Picture(string where, int? id, string? stem)
+    public string? Picture(PartLocation where, int? id, string? stem)
     {
       if (id is null || Part(where) is not string part || Xml(part) is not XDocument document)
       {
@@ -2891,6 +2987,8 @@ public partial class PowerPointMapping
       {
         return null;
       }
+      workarounds.Add("pictures: read tools omit picture bytes and SVG blips, so images are extracted from the .pptx " +
+        "package");
       string hash;
       using (Stream stream = entry.Open())
       {
@@ -2932,6 +3030,11 @@ public partial class PowerPointMapping
             sections[index + 1] = (string)section.Attribute("name")!;
           }
         }
+      }
+      if (sections.Count > 0)
+      {
+        workarounds.Add("sections: read tools omit presentation sections (p14:sectionLst), so they are read from the " +
+          ".pptx package");
       }
       return sections;
     }

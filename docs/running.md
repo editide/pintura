@@ -423,3 +423,4 @@ node --test src/Pintura.Tests/*.js
 ```
 
 A Debug build serves `src/Pintura/wwwroot` from source, so an edit to the page reloads it without a rebuild.
+`scripts/refresh-pptx-fixtures.sh` re-exports and reads back the fixture decks under `src/Pintura.Tests/fixtures/pptx/` through editide's API when a fixture or mapping changes; pass fixture names to refresh a subset.

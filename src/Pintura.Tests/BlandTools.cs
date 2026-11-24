@@ -17,9 +17,6 @@ public sealed class BlandTools : IToolHost
   /// <summary>Runs on each tool call before answering, such as to fail partway through an export.</summary>
   public Action<string, JsonObject>? Calling { get; init; }
 
-  /// <summary>A tool these tools fail, as an older editide does one it lacks.</summary>
-  public string? Missing { get; init; }
-
   /// <summary>What read_slide answers; a slide holding nothing when null.</summary>
   public JsonNode? SlideRead { get; init; }
 
@@ -52,10 +49,6 @@ public sealed class BlandTools : IToolHost
       tools.Calls.Add(tool);
       tools.Inputs.Add((tool, input));
       tools.Calling?.Invoke(tool, input);
-      if (tool == tools.Missing)
-      {
-        throw new InvalidOperationException($"{tool} failed: Unknown tool: '{tool}'");
-      }
       return tool switch
       {
         "list_slide_layouts" => JsonNode.Parse("""
