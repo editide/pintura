@@ -29,6 +29,24 @@ temporary="$(mktemp -d)"
 trap 'rm -rf "${temporary}"' EXIT
 echo "Downloading ${release_url}/${archive}"
 curl -fsSL "${release_url}/${archive}" -o "${temporary}/${archive}"
+curl -fsSL "${release_url}/SHA256SUMS" -o "${temporary}/SHA256SUMS"
+expected="$(awk -v f="${archive}" '$2 == f { print $1 }' "${temporary}/SHA256SUMS")"
+if [ -z "${expected}" ]; then
+  echo "No checksum found for ${archive} in SHA256SUMS." >&2
+  exit 1
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+  actual="$(sha256sum "${temporary}/${archive}" | awk '{ print $1 }')"
+elif command -v shasum >/dev/null 2>&1; then
+  actual="$(shasum -a 256 "${temporary}/${archive}" | awk '{ print $1 }')"
+else
+  echo "Neither sha256sum nor shasum is installed to verify ${archive}." >&2
+  exit 1
+fi
+if [ "${actual}" != "${expected}" ]; then
+  echo "Checksum mismatch for ${archive}: expected ${expected}, got ${actual}." >&2
+  exit 1
+fi
 tar -xzf "${temporary}/${archive}" -C "${temporary}"
 if [ "${platform}" = osx ]; then
   xattr -dr com.apple.quarantine "${temporary}/pintura" 2>/dev/null || true

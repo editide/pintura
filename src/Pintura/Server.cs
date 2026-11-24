@@ -262,7 +262,17 @@ public static partial class PreviewServer
         return Results.File(bytes, PptxType, name);
       }
       Findings(context, PickFile.Warnings(presentation));
-      return Results.File(await headless.Print(store.Deck.Size), "application/pdf", name);
+      await progress.Gate.WaitAsync();
+      try
+      {
+        progress.Stage = "Printing PDF";
+        return Results.File(await headless.Print(store.Deck.Size), "application/pdf", name);
+      }
+      finally
+      {
+        progress.Stage = null;
+        progress.Gate.Release();
+      }
     }
     catch (PlaywrightException exception)
     {
@@ -294,21 +304,20 @@ public static partial class PreviewServer
 
   private static string Html(Presentation presentation, string assets, ExportProgress progress)
   {
-    lock (progress)
+    progress.Gate.Wait();
+    try
     {
-      try
+      return HtmlExport.Build(presentation, assets, progress: (stage, fraction) =>
       {
-        return HtmlExport.Build(presentation, assets, progress: (stage, fraction) =>
-        {
-          progress.Stage = stage;
-          progress.Fraction = fraction;
-        });
-      }
-      finally
-      {
-        progress.Stage = null;
-        progress.Fraction = null;
-      }
+        progress.Stage = stage;
+        progress.Fraction = fraction;
+      });
+    }
+    finally
+    {
+      progress.Stage = null;
+      progress.Fraction = null;
+      progress.Gate.Release();
     }
   }
 
@@ -320,20 +329,19 @@ public static partial class PreviewServer
     string root = Path.GetFullPath(presentation.Root);
     string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(root)))[..12].ToLowerInvariant();
     string deck = Temporary.Folder("exports", key, name);
-    lock (progress)
+    progress.Gate.Wait();
+    try
     {
       progress.Fraction = 0;
-      try
-      {
-        ExportReport report = Exporter.Write(presentation, deck, ToolHosts.Default(),
-          fraction => progress.Fraction = fraction,
-          rasterize: pictures => headless.RasterizeAsync(pictures).GetAwaiter().GetResult());
-        return (File.ReadAllBytes(report.File), report);
-      }
-      finally
-      {
-        progress.Fraction = null;
-      }
+      ExportReport report = Exporter.Write(presentation, deck, ToolHosts.Default(),
+        fraction => progress.Fraction = fraction,
+        rasterize: pictures => headless.RasterizeAsync(pictures).GetAwaiter().GetResult());
+      return (File.ReadAllBytes(report.File), report);
+    }
+    finally
+    {
+      progress.Fraction = null;
+      progress.Gate.Release();
     }
   }
 
@@ -1129,6 +1137,7 @@ public class Comparison
 /// to show while it waits; null when none runs.</summary>
 public sealed class ExportProgress
 {
+  internal SemaphoreSlim Gate { get; } = new SemaphoreSlim(1, 1);
   public string? Stage { get; set; }
   public double? Fraction { get; set; }
 }

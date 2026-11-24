@@ -704,16 +704,16 @@ public static partial class Patcher
   /// <summary>Writes the slide kept from a pick in place of the pick's entry in <c>slides</c>.</summary>
   public static string Settle(string text, string pick, string slide)
   {
-    return Replace(text, new ListEntry(Pick: pick), YamlWriter.Text(slide));
+    return Replace(text, new ListEntry(Pick: pick), YamlWriter.Text(slide), new ListEntry(slide));
   }
 
   /// <summary>Writes a pick's entry back in place of the slide kept from it.</summary>
   public static string Unsettle(string text, string slide, string pick)
   {
-    return Replace(text, new ListEntry(slide), $"pick: {YamlWriter.Text(pick)}");
+    return Replace(text, new ListEntry(slide), $"pick: {YamlWriter.Text(pick)}", new ListEntry(Pick: pick));
   }
 
-  private static string Replace(string text, ListEntry entry, string line)
+  private static string Replace(string text, ListEntry entry, string line, ListEntry expected)
   {
     YamlSequenceNode list = Parse(text) is YamlMappingNode map && Value(map, "slides") is YamlSequenceNode found
       ? found
@@ -732,7 +732,13 @@ public static partial class Patcher
     string indent = text[start..text.IndexOf('-', start)];
     string newline = text[start..end].EndsWith("\r\n", StringComparison.Ordinal) ? "\r\n"
       : text[start..end].EndsWith('\n') ? "\n" : "";
-    return string.Concat(text[..start], indent, "- ", line, newline, text[end..]);
+    string written = string.Concat(text[..start], indent, "- ", line, newline, text[end..]);
+    if (Parse(written) is not YamlMappingNode after || Value(after, "slides") is not YamlSequenceNode afterList ||
+      afterList.Children.Count != list.Children.Count || Entry(afterList.Children[index]) != expected)
+    {
+      throw new PatchException($"couldn't rewrite {named} cleanly; change it in presentation.yaml");
+    }
+    return written;
   }
 
   private static YamlSequenceNode SlideList(YamlNode root, SlideMove move)

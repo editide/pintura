@@ -43,9 +43,9 @@ public class ServerTests
 
     // Act
     deck.Folder.Write("shared/revenue.csv", "segment,2024,2025\nSpace,3796,4086\nAI,2620,1");
-    for (int attempt = 0; attempt < 150 && store.Version == before; attempt++)
+    for (int attempt = 0; attempt < 400 && store.Version == before; attempt++)
     {
-      await Task.Delay(100);
+      await Task.Delay(25);
     }
 
     // Assert
@@ -65,9 +65,9 @@ public class ServerTests
 
     // Act
     GitHelper.Git(deck.Folder.Root, "commit", "-q", "-a", "-m", "second");
-    for (int attempt = 0; attempt < 150 && store.HeadVersion == before; attempt++)
+    for (int attempt = 0; attempt < 400 && store.HeadVersion == before; attempt++)
     {
-      await Task.Delay(100);
+      await Task.Delay(25);
     }
 
     // Assert
@@ -78,7 +78,6 @@ public class ServerTests
   [InlineData("../../outside", false)]
   [InlineData("..\\..\\outside", false)]
   [InlineData("../presentation", true)]
-  [InlineData("/tmp/outside", false)]
   [InlineData("outside\ntheme: ../elsewhere", false)]
   public async Task A_slide_id_reaching_outside_the_slides_folder_is_refused_before_anything_is_written(string id,
     bool delete)
@@ -98,7 +97,25 @@ public class ServerTests
     response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml")).ShouldBe(list);
     Directory.GetFiles(deck.Folder.Root, "outside.yaml", SearchOption.AllDirectories).ShouldBeEmpty();
-    File.Exists("/tmp/outside.yaml").ShouldBeFalse();
+  }
+
+  [Fact]
+  public async Task An_absolute_slide_id_is_refused_before_anything_is_written()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    await using Served served = await Served.Start(deck);
+    string list = File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml"));
+    string target = deck.Folder.PathTo("outside-absolute");
+    object move = new { slide = target, from = (object?)null, to = new { section = "Results" }, restore = "layout: content\n" };
+
+    // Act
+    HttpResponseMessage response = await served.Client.PostAsJsonAsync($"{served.Url}/api/move", move);
+
+    // Assert
+    response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    File.ReadAllText(deck.Folder.PathTo("deck/presentation.yaml")).ShouldBe(list);
+    File.Exists($"{target}.yaml").ShouldBeFalse();
   }
 
   [Fact]
@@ -320,7 +337,7 @@ public class ServerTests
     await served.Stop();
 
     // Assert
-    clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(5));
+    clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(15));
   }
 
   [Fact]

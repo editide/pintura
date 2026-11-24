@@ -26,13 +26,11 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
-      # Multi-file, since Playwright finds its driver beside the binary and single-file hides it. Trimming discards the
-      # runtime's precompiled code, so ReadyToRun restores it or startup doubles; trimming also turns off
-      # reflection-based JSON, which the payloads rely on.
+      # Multi-file, since Playwright finds its driver beside the binary and single-file hides it. ReadyToRun and
+      # reflection-based JSON are enabled in Pintura.csproj whenever PublishTrimmed=true.
       - run: >
           dotnet publish src/Pintura --configuration Release --runtime ${{ matrix.runtime }} --self-contained
-          -p:DebugType=none -p:PublishTrimmed=true -p:PublishReadyToRun=true
-          -p:JsonSerializerIsReflectionEnabledByDefault=true
+          -p:DebugType=none -p:PublishTrimmed=true
           --output out/pintura
           ${{ github.ref_type == 'tag' && format('-p:InformationalVersion={0}', github.ref_name) || '' }}
       - name: Package
@@ -49,11 +47,27 @@ jobs:
           name: pintura-${{ matrix.runtime }}
           path: out/pintura-${{ matrix.runtime }}.*
 
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - run: |
+          cd dist
+          sha256sum pintura-* > SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: SHA256SUMS
+          path: dist/SHA256SUMS
+
   # Installs each archive the way a customer would, from local files standing in for the release, then creates
   # a presentation in an empty folder and checks it, with no editide account, which fetches or finds the headless
   # browser. Windows serves them over HTTP; curl reads file:// URLs directly.
   install:
-    needs: build
+    needs: checksums
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]

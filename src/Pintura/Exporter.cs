@@ -2265,7 +2265,7 @@ public partial class Exporter
   // to 3 are PowerPoint's 2 to 4.
   public static JsonObject MasterStyles(JsonNode theme)
   {
-    JsonNode? title = Get(Items(Get(Get(theme, "title"), "paragraphs"))[0], "properties");
+    JsonNode? title = Get(Items(Get(Get(theme, "title"), "paragraphs")).FirstOrDefault(), "properties");
     JsonObject Flush(JsonObject style)
     {
       style["margin_left"] = 0;
@@ -2334,7 +2334,7 @@ public partial class Exporter
   private static JsonObject Placeholder(JsonNode item, string role, JsonNode? masterBase, string prompt)
   {
     JsonNode? properties = Get(item, "properties");
-    JsonNode? paragraph = Get(Items(Get(item, "paragraphs"))[0], "properties");
+    JsonNode? paragraph = Get(Items(Get(item, "paragraphs")).FirstOrDefault(), "properties");
     JsonObject entry = Box(Get(properties, "frame"));
     var placeholder = new JsonObject
     {
@@ -2452,7 +2452,7 @@ public partial class Exporter
     var fill = new JsonObject
     {
       ["id"] = id.DeepClone(),
-      ["text_component"] = TextComponent(item, Get(Items(Get(placeholder, "paragraphs"))[0], "properties"))
+      ["text_component"] = TextComponent(item, Get(Items(Get(placeholder, "paragraphs")).FirstOrDefault(), "properties"))
     };
     JsonNode? frame = Get(Get(item, "properties"), "frame");
     if (frame is not null && !Same(frame, Get(Get(placeholder, "properties"), "frame")))
@@ -2465,10 +2465,19 @@ public partial class Exporter
     return fill;
   }
 
-  private static bool Near(JsonNode? position, JsonNode? frame)
+  private static bool Near(JsonNode? position, JsonNode? size, JsonNode? frame)
   {
-    return Math.Abs((Number(Get(position, "left")) ?? 0) - (Number(frame?[0]) ?? 0)) < 0.5 &&
-      Math.Abs((Number(Get(position, "top")) ?? 0) - (Number(frame?[1]) ?? 0)) < 0.5;
+    if (Math.Abs((Number(Get(position, "left")) ?? 0) - (Number(frame?[0]) ?? 0)) >= 0.5 ||
+      Math.Abs((Number(Get(position, "top")) ?? 0) - (Number(frame?[1]) ?? 0)) >= 0.5)
+    {
+      return false;
+    }
+    if (size is not null && frame is JsonArray array && array.Count >= 4)
+    {
+      return Math.Abs((Number(Get(size, "width")) ?? 0) - (Number(array[2]) ?? 0)) < 0.5 &&
+        Math.Abs((Number(Get(size, "height")) ?? 0) - (Number(array[3]) ?? 0)) < 0.5;
+    }
+    return true;
   }
 
   private static JsonNode WithSection(JsonNode item, JsonNode slide)
@@ -2812,7 +2821,9 @@ public partial class Exporter
         JsonNode? target = holders.FirstOrDefault(element => !used.Contains(Get(element, "id")!.ToJsonString()) &&
           (role == "title"
             ? Text(Get(Get(element, "placeholder"), "role")) == "title"
-            : Near(Get(element, "position"), frame)));
+            : Near(Get(element, "position"), Get(element, "size"), frame)))
+          ?? (role == "title" ? null : holders.FirstOrDefault(element =>
+            !used.Contains(Get(element, "id")!.ToJsonString()) && Near(Get(element, "position"), null, frame)));
         if (target is null)
         {
           gaps.Add($"slide {Text(Get(slide, "id"))}: no placeholder on the slide for {Text(Get(item, "id"))}");

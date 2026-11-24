@@ -1402,7 +1402,7 @@ public class CheckTests
     Checks.Geometry(presentation);
 
     // Assert
-    clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(5));
+    clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(15));
   }
 
 

@@ -11,6 +11,13 @@
     <CompressionEnabled>false</CompressionEnabled>
   </PropertyGroup>
 
+  <!-- Trimming discards the runtime's precompiled code, so ReadyToRun restores it or startup doubles; trimming also
+       turns off reflection-based JSON, which the payloads rely on. -->
+  <PropertyGroup Condition="'$(PublishTrimmed)' == 'true'">
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Pintura.Tests" />
   </ItemGroup>

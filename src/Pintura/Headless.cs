@@ -68,7 +68,7 @@ public sealed class HeadlessBrowser : IAsyncDisposable
   private const float DeviceScale = 2;
   private const int ThemeWidth = 1440;
 
-  private readonly string url;
+  private readonly Func<string> url;
   private readonly Func<long>? assetVersion;
   private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
   private IPlaywright? playwright;
@@ -76,7 +76,11 @@ public sealed class HeadlessBrowser : IAsyncDisposable
   private IPage? page;
   private long? loadedAssets;
 
-  public HeadlessBrowser(string url, Func<long>? assetVersion = null)
+  public HeadlessBrowser(string url, Func<long>? assetVersion = null) : this(() => url, assetVersion)
+  {
+  }
+
+  public HeadlessBrowser(Func<string> url, Func<long>? assetVersion = null)
   {
     this.url = url;
     this.assetVersion = assetVersion;
@@ -118,7 +122,7 @@ public sealed class HeadlessBrowser : IAsyncDisposable
       {
         await preview.AddInitScriptAsync(
           "localStorage.setItem('pintura.view', JSON.stringify({ view: 'theme', nav: false }))");
-        await preview.GotoAsync($"{url}/");
+        await preview.GotoAsync($"{url()}/");
         await preview.WaitForSelectorAsync("#theme-view .theme-section");
         int height = await preview.EvaluateAsync<int>("""
           async () => {
@@ -217,7 +221,7 @@ public sealed class HeadlessBrowser : IAsyncDisposable
       long? currentAssets = assetVersion?.Invoke();
       if (loadedAssets is null || (currentAssets is not null && loadedAssets != currentAssets))
       {
-        await page.GotoAsync($"{url}/headless.html");
+        await page.GotoAsync($"{url()}/headless.html");
         await page.WaitForFunctionAsync("() => window.pintura");
         loadedAssets = currentAssets ?? 0;
       }

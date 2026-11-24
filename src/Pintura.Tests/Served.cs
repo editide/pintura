@@ -23,14 +23,13 @@ public sealed class Served : IAsyncDisposable
   /// a test needs the real page, and its books.</summary>
   public static async Task<Served> Start(DeckFixture deck, string? assets = null, bool background = false)
   {
-    string url = $"http://127.0.0.1:{PreviewServer.FreePort()}";
     var store = new PresentationStore(deck.Folder.PathTo("deck"), assets ?? deck.Folder.PathTo("deck"),
       TextWriter.Null, deck.Books, background);
-    var headless = new HeadlessBrowser(url, () => store.AssetVersion);
-    WebApplication app = PreviewServer.Create(assets ?? deck.Folder.Root, url);
+    WebApplication app = PreviewServer.Create(assets ?? deck.Folder.Root, "http://127.0.0.1:0");
+    var headless = new HeadlessBrowser(() => app.Urls.First(), () => store.AssetVersion);
     PreviewServer.Map(app, store, headless, null);
     await app.StartAsync();
-    return new Served(url, store, headless, app);
+    return new Served(app.Urls.First(), store, headless, app);
   }
 
   /// <summary>The page's own files, from the source folder.</summary>
