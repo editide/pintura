@@ -56,7 +56,8 @@ public static class Saves
       }
       VersionScope scope = Revisions.Scope(root);
       List<string> changed = Substantive(scope, head, Changes(scope, head));
-      return new Snapshot(head[..Math.Min(7, head.Length)], changed.Any(path => scope.Slide(path) is null),
+      (int exit, string abbreviated, _) = Revisions.Run(info.Top, "rev-parse", "--short", head);
+      return new Snapshot(exit == 0 ? abbreviated.Trim() : head, changed.Any(path => scope.Slide(path) is null),
         changed.Select(scope.Slide).OfType<string>().ToHashSet(StringComparer.Ordinal));
     }
     catch (InvalidDataException)

@@ -169,7 +169,7 @@ public class PresentationStore : IDisposable
       {
         return;
       }
-      var wanted = folders.Where(Directory.Exists).SelectMany(Linked).ToHashSet(StringComparer.Ordinal);
+      HashSet<string> wanted = folders.Where(Directory.Exists).SelectMany(Linked).ToHashSet(StringComparer.Ordinal);
       foreach (string folder in sourceWatchers.Keys.Where(folder => !wanted.Contains(folder)).ToList())
       {
         sourceWatchers[folder].Dispose();

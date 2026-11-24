@@ -87,7 +87,7 @@ public partial class PresentationLoader
         }
         RowInRange(value, number, rowCount);
         MapNode row = value.AsMap();
-        var formatting = (TableRow)ReadTableFormatting(row, "row", styles.Styles, styles.Formats);
+        TableRow formatting = (TableRow)ReadTableFormatting(row, "row", styles.Styles, styles.Formats);
         row.Done();
         if (formatting.Style is string rowStyle && style?.Rows.ContainsKey(rowStyle) != true)
         {
@@ -108,7 +108,7 @@ public partial class PresentationLoader
       foreach (Node entry in cellsNode.AsList())
       {
         MapNode cell = entry.AsMap();
-        var formatting = (TableCell)ReadTableFormatting(cell, "cell", styles.Styles, styles.Formats);
+        TableCell formatting = (TableCell)ReadTableFormatting(cell, "cell", styles.Styles, styles.Formats);
         cell.Done();
         RowInRange(entry, formatting.Row, rowCount);
         ColumnInRange(entry, formatting.Column, columnCount);
