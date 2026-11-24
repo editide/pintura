@@ -20,7 +20,7 @@ public class RevisionTests
 
     // Assert
     Slide two = committed.Slides.Single(slide => slide.Id == "two");
-    PayloadBuilder.Title(committed, two).ShouldBe("Results in Results");
+    SceneBuilder.Title(committed, two).ShouldBe("Results in Results");
     two.Title!.Origin.File.ShouldBe("deck/slides/two.yaml");
     committed.Theme.Display.ShouldBe("theme");
   }

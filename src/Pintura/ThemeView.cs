@@ -65,7 +65,6 @@ public record StylePayload
 
 public record StyleSamplePayload(string Text, string Slide);
 
-/// <summary>A layout drawn on its own, its title and placeholders holding their names.</summary>
 /// <summary>A layout drawn with specimen words: <paramref name="Slide"/> as a slide on it looks, and
 /// <paramref name="Stage"/> with the theme's and layout's files for the mouse to write.</summary>
 public record LayoutPayload(string Id, string Name, string File, SlidePayload Slide, SlidePayload Stage,
@@ -409,7 +408,7 @@ public static class ThemeView
 
     private static string Text(SceneParagraph paragraph)
     {
-      return string.Concat(paragraph.Runs.Select(run => run.Text));
+      return paragraph.PlainText;
     }
 
     private void Item(string slide, SceneItem item)

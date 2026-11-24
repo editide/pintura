@@ -55,8 +55,6 @@ public partial class PowerPointMapping
     bodyFont = (string?)master["theme_fonts"]?["minor"] ?? "Calibri";
   }
 
-  /// <summary>Maps <paramref name="reads"/>, as <see cref="DeckReads.Read"/> returns them, of the deck at
-  /// <paramref name="deck"/>, whose package the pictures are copied out of into <paramref name="media"/>.</summary>
   /// <summary>Maps the reads to the model's JSON. A deck takes only the layouts its slides use, unless
   /// <paramref name="wholeTheme"/>, as for a theme imported alone, the template it is; one whose slides use none, such
   /// as a template, takes them all.</summary>
@@ -803,7 +801,7 @@ public partial class PowerPointMapping
       int behind = 0;
       foreach (JsonObject element in Ordered(Master))
       {
-        if (Element(element, Master, SlideLayers(Master), ids, "the master", 1) is JsonObject item)
+        if (Element(element, Master, SlideLayers(Master), ids, "the master") is JsonObject item)
         {
           draft.Elements.Insert(behind++, item);
         }
@@ -815,7 +813,7 @@ public partial class PowerPointMapping
         {
           continue;
         }
-        if (Element(element, read, layers, ids, where, 1) is JsonObject item)
+        if (Element(element, read, layers, ids, where) is JsonObject item)
         {
           draft.Elements.Add(item);
         }
@@ -948,7 +946,7 @@ public partial class PowerPointMapping
   }
 
   /// <summary>One element as the model's item, or null when it has nothing to draw.</summary>
-  private JsonObject? Element(JsonObject element, JsonObject read, Layers layers, Ids ids, string where, int level,
+  private JsonObject? Element(JsonObject element, JsonObject read, Layers layers, Ids ids, string where,
     string? slideStem = null)
   {
     string kind = (string)element["kind"]!;
@@ -1016,8 +1014,8 @@ public partial class PowerPointMapping
     var properties = new JsonObject { ["frame"] = Frame(element) };
     Rotation(element, properties);
     Effects(style, properties, where);
-    BoxText(properties, paragraphs, own, Merge(read?["default_text_layout"],
-      element["text_component"]?["text_layout"]), element, where);
+    BoxText(properties, paragraphs, Merge(read?["default_text_layout"],
+      element["text_component"]?["text_layout"]), element);
     return Item(Id(element, "text", ids, where), "text", properties, Paragraphs(paragraphs, where));
   }
 
@@ -1167,8 +1165,8 @@ public partial class PowerPointMapping
     }
     Effects(style, properties, where);
     Rotation(element, properties);
-    BoxText(properties, paragraphs, layers, Merge(read?["default_text_layout"], element["text_component"]?["text_layout"]),
-      element, where);
+    BoxText(properties, paragraphs, Merge(read?["default_text_layout"], element["text_component"]?["text_layout"]),
+      element);
     return Item(Id(element, "shape", ids, where), "shape", properties,
       paragraphs.Count > 0 ? Paragraphs(paragraphs, where) : null);
   }
@@ -1232,8 +1230,6 @@ public partial class PowerPointMapping
     return stroke;
   }
 
-  /// <summary>One of PowerPoint's dash patterns as the format's <c>dash</c> or <c>dot</c>, or null for a solid line.
-  /// </summary>
   /// <summary>A border as <c>color</c>, <c>width</c>, and <c>dash</c> under <paramref name="prefix"/>, or null for
   /// none. A width PowerPoint leaves out is its 0.75 points, Pintura's default too, and a solid border is left solid
   /// unless <paramref name="solid"/> says so, as a point must over a dashed series.</summary>
@@ -1305,8 +1301,7 @@ public partial class PowerPointMapping
   }
 
   /// <summary>A box's text properties: what most of its runs and paragraphs share, and its box's own.</summary>
-  private void BoxText(JsonObject properties, List<Paragraph> paragraphs, Layers layers, JsonObject layout,
-    JsonObject element, string where)
+  private void BoxText(JsonObject properties, List<Paragraph> paragraphs, JsonObject layout, JsonObject element)
   {
     // A shape without text has no text to state properties for.
     if (paragraphs.Count == 0)
@@ -1507,7 +1502,7 @@ public partial class PowerPointMapping
             continue;
           }
         }
-        if (Element(element, read, layers, ids, where, 2, stem) is JsonObject item)
+        if (Element(element, read, layers, ids, where, stem) is JsonObject item)
         {
           RoomToGrow(item, layout);
           items.Add(item);
@@ -1566,8 +1561,8 @@ public partial class PowerPointMapping
     {
       properties["style"] = style;
     }
-    BoxText(properties, [joined], ElementLayers(layers, element), Merge(read["default_text_layout"],
-      element["text_component"]?["text_layout"]), element, where);
+    BoxText(properties, [joined], Merge(read["default_text_layout"],
+      element["text_component"]?["text_layout"]), element);
     foreach (string key in new[] { "valign", "insets", "fit", "wrap" })
     {
       if (properties[key] is null && target["properties"]![key] is JsonNode inherited)

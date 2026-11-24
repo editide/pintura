@@ -162,6 +162,8 @@ public class CommandLineTests
   [InlineData("--screenshot")]
   [InlineData("--screenshot cover --json")]
   [InlineData("--check --output out.png")]
+  [InlineData("--export-html deck.html --output other.html")]
+  [InlineData("--export deck.pptx --output other.pptx")]
   [InlineData("--check --port 5000")]
   [InlineData("--list --slide cover")]
   [InlineData("--element cover")]

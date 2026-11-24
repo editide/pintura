@@ -98,7 +98,7 @@ public static class HeadlessRunner
       HeadlessCommand.Outline => Outline.Write(presentation, json, output, only),
       HeadlessCommand.Slide => Slide(presentation, slide!, json, output),
       HeadlessCommand.Element => Element(presentation, slide!, element!, json, output),
-      HeadlessCommand.Export => Export(presentation, output),
+      HeadlessCommand.ExportJson => Export(presentation, output),
       HeadlessCommand.Comments => CommentList.Write(presentation, json, output, only),
       HeadlessCommand.Resolve => Resolve(presentation, ids!, output),
       HeadlessCommand.Picks => PickList.Write(presentation, json, output),
@@ -138,7 +138,7 @@ public static class HeadlessRunner
   {
     return presentation.Offered
       .Select(slide => new SlideEntry(slide.Number, slide.Id, slide.Error is null ? slide.Layout : null,
-        slide.Error is null ? PayloadBuilder.Title(presentation, slide) : null, slide.Section, slide.Error?.Message,
+        slide.Error is null ? SceneBuilder.Title(presentation, slide) : null, slide.Section, slide.Error?.Message,
         slide.Pick))
       .ToList();
   }
@@ -331,7 +331,7 @@ public static class HeadlessRunner
       : Paragraphs(item.Paragraphs, item.Properties, theme);
     List<CellEntry>? cells = item.Table?.Cells
       .Select(cell => new CellEntry(cell.Row, cell.Column, cell.Rows, cell.Columns,
-        string.Join(" / ", cell.Paragraphs.Select(paragraph => string.Concat(paragraph.Runs.Select(run => run.Text)))),
+        string.Join(" / ", cell.Paragraphs.Select(paragraph => paragraph.PlainText)),
         Differences(cell.Properties, item.Properties, theme), Paragraphs(cell.Paragraphs, cell.Properties, theme),
         cell.Trace))
       .ToList();
@@ -363,7 +363,7 @@ public static class HeadlessRunner
           Differences(run.Properties, paragraph.Properties, theme)))
         .Where(run => run.Properties.Count > 0 || run.Field is not null || paragraph.Runs.Count > 1)
         .ToList();
-      paragraphs.Add(new ParagraphEntry(index + 1, string.Concat(paragraph.Runs.Select(run => run.Text)),
+      paragraphs.Add(new ParagraphEntry(index + 1, paragraph.PlainText,
         paragraph.Level, paragraph.Style, own, runs));
     }
     return paragraphs;
@@ -533,7 +533,7 @@ public static class HeadlessRunner
 
   private static string PlainText(List<SceneParagraph> paragraphs)
   {
-    return string.Join(" / ", paragraphs.Select(paragraph => string.Concat(paragraph.Runs.Select(run => run.Text)))
+    return string.Join(" / ", paragraphs.Select(paragraph => paragraph.PlainText)
       .Where(text => text.Length > 0));
   }
 

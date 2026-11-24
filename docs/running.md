@@ -3,7 +3,8 @@
 Pintura has a local preview server for people and headless commands for agents and scripts.
 
 Presentation commands take the folder holding `presentation.yaml` before any options.
-`--help` and `--docs` work without one.
+`--help`, `--version`, `--new <folder>`, and `--docs` work without one.
+`pintura --new my-deck` creates a starter presentation with the default theme copied in, and `pintura --version` prints the build's version.
 
 ## Install the command
 
@@ -16,7 +17,7 @@ The script builds Pintura in place and links `~/.local/bin/pintura` to the build
 Users install a release instead, with `curl -fsSL https://raw.githubusercontent.com/editide/pintura/main/install.sh | sh`, or `irm https://raw.githubusercontent.com/editide/pintura/main/install.ps1 | iex` on Windows, which put a self-contained build in `~/.local/lib/pintura` or `%LOCALAPPDATA%\Programs\pintura`; `PINTURA_RELEASE_URL` points either at other archives.
 The preview, checks, screenshots, and the HTML and PDF exports need no account; `--export`, `--import`, and `--diff` against a `.pptx` run on editide's API and need an API key.
 `pintura --login` reads one from the dashboard, unechoed, or from standard input, checks it with editide's `whoami`, and keeps it in `pintura/account.json`: on Windows in the local application data folder, which stays on the machine, encrypted so only that Windows account can read it, and elsewhere under the user's config folder, readable only by its owner; `EDITIDE_API_KEY` stands in for the key while it's set, `--whoami` shows the plan and the slides exported this billing period, and `--logout` forgets the key.
-Pushing a `v*` tag runs `.github/workflows/release.yml`, which publishes trimmed, self-contained, multi-file builds for Linux, macOS, and Windows, installs and checks each on its platform, and attaches them to a GitHub release of that tag, the newest of which the install scripts fetch.
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which publishes trimmed, self-contained, multi-file builds for Linux, macOS (`arm64` and `x64`), and Windows, installs and checks each native build on its platform, and attaches them to a GitHub release of that tag, the newest of which the install scripts fetch.
 The build stays inside the repository because a development build serves the page from source.
 
 ## Read the format
@@ -279,7 +280,7 @@ It takes one revision, since the working tree is always the second side.
 
 ## Find the presentation
 
-Omitting the folder searches the working folder and up to three folders below it, skipping `bin`, `obj`, hidden folders, and symbolic links.
+Omitting the folder searches the working folder and up to three folders below it, skipping `bin`, `obj`, `node_modules`, hidden folders, and symbolic links.
 Exactly one presentation must be found; otherwise Pintura lists the candidates and asks for one.
 
 ## Look at a presentation without a server

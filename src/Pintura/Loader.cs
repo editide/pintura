@@ -1907,11 +1907,6 @@ public partial class PresentationLoader
     return LabelPositions[LabelPositionGroup(type)];
   }
 
-  public static string LabelPositionGroup(Chart chart)
-  {
-    return LabelPositionGroup(chart.Type);
-  }
-
   public static string LabelPositionGroup(string type)
   {
     string family = Chart.FamilyOf(type);
@@ -2039,7 +2034,7 @@ public partial class PresentationLoader
     }
     if (Effective("data_labels.position") is (string position, Origin positionOrigin))
     {
-      string group = LabelPositionGroup(chart);
+      string group = LabelPositionGroup(chart.Type);
       string[] allowed = LabelPositions[group];
       if (!allowed.Contains(position))
       {
@@ -2264,7 +2259,7 @@ public partial class PresentationLoader
         }
         if (drawn != "total" && options.Points[category].DataLabels.Position is string pointPosition)
         {
-          string group = drawn == "line" ? "line" : LabelPositionGroup(chart);
+          string group = drawn == "line" ? "line" : LabelPositionGroup(chart.Type);
           if (!LabelPositions[group].Contains(pointPosition))
           {
             throw Error(LabelKey("position")!, drawn == "line"
@@ -2327,10 +2322,10 @@ public partial class PresentationLoader
         throw Error("data_labels.position", $"a line places labels {Join(LabelPositions["line"])}, not {position}");
       }
       if (options.DataLabels.Position is string barPosition && drawn != "line"
-        && !LabelPositions[LabelPositionGroup(chart)].Contains(barPosition))
+        && !LabelPositions[LabelPositionGroup(chart.Type)].Contains(barPosition))
       {
         throw Error("data_labels.position",
-          $"a {chart.Type} places labels {Join(LabelPositions[LabelPositionGroup(chart)])}, not {barPosition}");
+          $"a {chart.Type} places labels {Join(LabelPositions[LabelPositionGroup(chart.Type)])}, not {barPosition}");
       }
     }
     if (chart.Series.All(series => chart.SeriesOptions.GetValueOrDefault(series.Name)?.Axis is not null))

@@ -561,7 +561,7 @@ public partial class Exporter
 
   /// <summary>Titles the deck as the presentation and dates it now, keeping when an earlier export created it, with no
   /// author, since the deck is the customer's.</summary>
-  public static void Describe(string deck, string title)
+  private static void Describe(string deck, string title)
   {
     XNamespace cp = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
     XNamespace dc = "http://purl.org/dc/elements/1.1/";

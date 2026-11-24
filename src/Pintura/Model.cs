@@ -37,7 +37,7 @@ public class Presentation
   [JsonIgnore] public IEnumerable<Slide> Offered => WithVariants(Slides);
 
   /// <summary>The slides with every variant offered in their place.</summary>
-  public IEnumerable<Slide> WithVariants(IEnumerable<Slide> slides)
+  private IEnumerable<Slide> WithVariants(IEnumerable<Slide> slides)
   {
     return slides.SelectMany(slide => Variants.Where(variant => slide.Pick is not null && variant.Pick == slide.Pick)
       .Prepend(slide));
@@ -309,8 +309,6 @@ public class Shadow
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
 }
 
-/// <summary>Text properties set at one level. Each set property remembers where it was written, so the cascade can
-/// report the file and line behind every effective value.</summary>
 /// <summary>A layer of keyed properties with provenance, merged in order by <see cref="PropertyLayers.Cascade"/>.
 /// </summary>
 public interface IPropertyLayer

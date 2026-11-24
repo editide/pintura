@@ -778,15 +778,10 @@ public static partial class PreviewServer
 /// <summary>Mouse edits to a slide's file and the theme's and layouts' files, applied together or not at all.</summary>
 public record EditRequest(string? Slide, List<ValueEdit> Edits);
 
-/// <summary>The page's before side: a revision drawn as the page draws the working tree, and what changed since.
-/// </summary>
 /// <summary>An element, the title, or a placeholder of a slide, or with no id the whole slide, to write back as the
 /// revision <paramref name="Base"/> has it.</summary>
 public record RevertRequest(string Base, string Slide, string? Id = null, string? Owner = null);
 
-/// <summary>The working tree against a revision; with <see cref="LastSave"/>, against the version before that save,
-/// since nothing drawn differs from the save itself; with <see cref="Head"/>, that later version drawn as
-/// <see cref="After"/> in the working tree's place.</summary>
 /// <summary>The changes since a version, or between two; <see cref="Latest"/> names the slides a later version draws as
 /// the working tree does, which take comments though the version shows in its place.</summary>
 public record ComparePayload(string Base, string Commit, DeckVersion Version, DeckPayload Before, DeckDiff Diff,
@@ -840,8 +835,8 @@ public class Comparison
         ComparePayload payload;
         if (headCommit is not null)
         {
-          Side earlier = Before(revision!, commit);
-          Side later = Before(head!, headCommit);
+          Side earlier = Before(commit);
+          Side later = Before(headCommit);
           DeckDiff latest = Differ.Compare(later.Presentation, current, renamed: Renamed(headCommit));
           // A slide renamed since takes its comments under a name the version doesn't know it by.
           HashSet<string> since = [.. latest.Slides.Where(slide => slide.Status != "moved").Select(slide => slide.Id),
@@ -871,9 +866,6 @@ public class Comparison
     }
   }
 
-  /// <summary>The newest version no later than <paramref name="before"/> that changed a slide as drawn, or the oldest
-  /// later than <paramref name="after"/>, with the version before it; not found past either end of the versions.
-  /// </summary>
   /// <summary>The nearest version before or after one that changed the slide, which is named as that one has it and
   /// followed through its renames. A page that stops waiting stops the walk at the next version, keeping what it
   /// learned of those it passed.</summary>
@@ -969,7 +961,7 @@ public class Comparison
       string commit = Revisions.Commit(store.Root, revision);
       lock (gate)
       {
-        return Results.Json(Before(revision, commit).Deck, PayloadJson.Options);
+        return Results.Json(Before(commit).Deck, PayloadJson.Options);
       }
     }
     catch (Exception exception) when (exception is InvalidDataException or LoadException)
@@ -994,7 +986,7 @@ public class Comparison
           return Refused("the presentation doesn't load; fix its error first");
         }
         current = presentation;
-        side = Before(request.Base, commit);
+        side = Before(commit);
       }
     }
     catch (Exception exception) when (exception is InvalidDataException or LoadException)
@@ -1068,7 +1060,7 @@ public class Comparison
   {
     lock (gate)
     {
-      Side side = Before("HEAD", commit);
+      Side side = Before(commit);
       if (answer is { } last && last.Commit == commit && last.Head is null && last.After == current)
       {
         return (side.Presentation, last.Diff);
@@ -1081,7 +1073,7 @@ public class Comparison
   /// </summary>
   private ComparePayload Compare(string revision, string commit, Presentation current)
   {
-    Side side = Before(revision, commit);
+    Side side = Before(commit);
     return new ComparePayload(revision, commit, side.Version, side.Deck,
       Differ.Compare(side.Presentation, current, renamed: Renamed(commit)));
   }
@@ -1096,7 +1088,7 @@ public class Comparison
 
   // Three: with nothing unsaved the page compares against the last save and then the version before it, and between
   // two versions it keeps both.
-  private Side Before(string revision, string commit)
+  private Side Before(string commit)
   {
     if (sides.FirstOrDefault(side => side.Commit == commit) is Side kept)
     {

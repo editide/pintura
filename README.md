@@ -143,7 +143,7 @@ Everything the blog calls a minefield (inheritance you can't see, element orderi
 - **area**: a named rectangle on a theme or layout that elements take as their frame.
 - **field**: a value the presentation fills into text, such as `${slide}` or `${footer}`.
 - **slide**: a file under `slides/` that picks a layout, writes its title and placeholders, and adds elements.
-- **element**: one thing on a slide or layout: text, shape, line, picture, chart, or table.
+- **element**: one thing on a slide or layout: text, shape, line, arc, picture, chart, or table.
 - **style**: a named set of text, table, or chart properties, such as `caption` or `positive`, defined in the theme's `styles.yaml`.
 
 ## Changing Pintura

@@ -124,6 +124,7 @@ public class SceneParagraph
   public List<SceneRun> Runs { get; init; } = new List<SceneRun>();
 
   public string Align => Properties.TryGetValue("align", out Resolved? value) ? (string)value.Value : "left";
+  public string PlainText => string.Concat(Runs.Select(run => run.Text));
 
 
 }
@@ -186,6 +187,12 @@ public class SceneBuilder
   {
     var builder = new SceneBuilder(presentation, slide);
     return string.Concat(runs.Select(run => run.Field is null ? run.Text : builder.FieldValue(run.Field).Text));
+  }
+
+  /// <summary>The slide's title as plain text with fields filled in, or empty when the slide has none.</summary>
+  public static string Title(Presentation presentation, Slide slide)
+  {
+    return slide.Title?.Text is List<Run> runs ? Text(presentation, slide, runs) : "";
   }
 
   private SlideScene Build()
@@ -314,14 +321,14 @@ public class SceneBuilder
         Set("to", element.To);
         Set("start", element.Start);
         Set("end", element.End);
-        Strokes(properties, styles.LineStroke, element.Stroke);
+        Strokes(properties, "stroke", styles.LineStroke, element.Stroke);
         break;
       case "arc":
         Set("arc.from", element.Arc![0]);
         Set("arc.to", element.Arc[1]);
         Set("start", element.Start);
         Set("end", element.End);
-        Strokes(properties, styles.LineStroke, element.Stroke);
+        Strokes(properties, "stroke", styles.LineStroke, element.Stroke);
         break;
       case "picture":
         Set("picture", element.Picture);
@@ -889,7 +896,7 @@ public class SceneBuilder
 
   private static string DefaultLabelPosition(Chart chart)
   {
-    return PresentationLoader.DefaultLabelPosition(PresentationLoader.LabelPositionGroup(chart)) ?? "center";
+    return PresentationLoader.DefaultLabelPosition(PresentationLoader.LabelPositionGroup(chart.Type)) ?? "center";
   }
 
   /// <summary>The text layers of a box: the base, <c>shape_text</c> in a shape, the bullet level when there is one,
@@ -1091,11 +1098,6 @@ public class SceneBuilder
 
   /// <summary>Merges a stroke key by key over the base, so <c>stroke: { color: accent1 }</c> keeps the base width.
   /// </summary>
-  private static void Strokes(Dictionary<string, Resolved> properties, Stroke? fallback, Stroke? own)
-  {
-    Strokes(properties, "stroke", fallback, own);
-  }
-
   private static void Strokes(Dictionary<string, Resolved> properties, string key, params Stroke?[] layers)
   {
     foreach (Stroke? stroke in layers)

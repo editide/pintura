@@ -70,8 +70,6 @@ public record SourceFile(string FullPath, string Display)
     return new SourceFile(fullPath, shown.Replace('\\', '/')) { Files = files ?? DiskFiles.Instance };
   }
 
-  public string Folder => System.IO.Path.GetDirectoryName(FullPath)!;
-
   public Node Load(string topic)
   {
     return LoadText(ReadText(topic), topic);

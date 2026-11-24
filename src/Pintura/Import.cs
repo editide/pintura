@@ -1273,8 +1273,6 @@ public partial class Importer
 
   #region Styling text
 
-  /// <summary>Gives each paragraph the style that turns what it loads as into what it should be, naming one where
-  /// none does, and each run the span that does the same for the run.</summary>
   /// <summary>A box's paragraphs, or a table cell's, as wanted and as loaded, and where their styles and spans go.
   /// </summary>
   private sealed record TextBlock(ItemDraft Draft, JsonArray Wanted, JsonArray Loaded,
@@ -1382,7 +1380,7 @@ public partial class Importer
           styles[chosen] = new OrderedDictionary<string, JsonNode?>(difference);
         }
         paragraphStyles.Add(chosen);
-        spans.Add(wanted["runs"]!.AsArray().Select(node => Span(block.Draft, node!.AsObject(), wanted)).ToList());
+        spans.Add(wanted["runs"]!.AsArray().Select(node => Span(node!.AsObject(), wanted)).ToList());
       }
       block.Store(paragraphStyles, spans);
     }
@@ -1459,7 +1457,7 @@ public partial class Importer
     return properties;
   }
 
-  private RunSpan Span(ItemDraft draft, JsonObject run, JsonObject paragraph)
+  private RunSpan Span(JsonObject run, JsonObject paragraph)
   {
     JsonObject before = Linked(paragraph, run);
     List<string> names = run["styles"]?.AsArray().Select(node => (string)node!).ToList() ?? new List<string>();
@@ -1904,8 +1902,6 @@ public partial class Importer
     return block && lines.Count > 1 ? text + "\n" : text;
   }
 
-  /// <summary>Runs as markup with no formatting of their own, links aside when <paramref name="links"/> is set, or
-  /// as a title's plain text when <paramref name="plain"/> is.</summary>
   /// <summary>The CSV the data was read from, or one named for the chart or table when it came from a book, whose
   /// values the import keeps.</summary>
   private static string CsvPath(JsonObject properties, string stem)

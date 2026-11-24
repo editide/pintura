@@ -1367,9 +1367,11 @@ main {
   box-shadow: var(--shadow-slide);
 }
 
-/* Elements may sit past the slide's edges, as on PowerPoint's pasteboard, drawn faded there. */
+/* Elements may sit past the slide's edges, as on PowerPoint's pasteboard, drawn faded there.
+   Dragging shouldn't select the slide's text; rewording it in place should. */
 #slide-frame .stage {
   overflow: visible;
+  user-select: none;
 }
 
 /* Holding Ctrl shows which numbers a Ctrl-click traces to the book. A run's inline style sets its own decoration. */
@@ -1446,11 +1448,6 @@ body.moving * {
 
 #slide-frame .item.line.selected .hit {
   stroke: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-/* Dragging shouldn't select the slide's text; rewording it in place should. */
-#slide-frame .stage {
-  user-select: none;
 }
 
 #slide-frame .text-flow[contenteditable="true"] {

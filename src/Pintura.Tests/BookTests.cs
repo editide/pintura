@@ -816,7 +816,7 @@ public class BookTests
     // Assert
     committed.Books["acme"].Root.ShouldBe(deck.Folder.PathTo("book"));
     committed.Files.ReadAllText(Path.Combine(committed.Books["acme"].Root, "book.yaml")).Trim().ShouldBe("name: Acme");
-    PayloadBuilder.Title(committed, committed.Slides[0]).ShouldBe("11,387 in revenue");
+    SceneBuilder.Title(committed, committed.Slides[0]).ShouldBe("11,387 in revenue");
   }
 
   [Fact]
@@ -835,7 +835,7 @@ public class BookTests
 
     // Assert
     committed.Slides[0].Error.ShouldBeNull();
-    PayloadBuilder.Title(committed, committed.Slides[0]).ShouldBe("#REF! in revenue");
+    SceneBuilder.Title(committed, committed.Slides[0]).ShouldBe("#REF! in revenue");
     deck.Error().Problem.ShouldStartWith("no line historical.segments.space_revenue in book acme");
   }
 

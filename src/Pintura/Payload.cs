@@ -185,9 +185,6 @@ public record ChartPayload
   public string EdgeColor { get; init; } = "";
 }
 
-/// <summary><see cref="Type"/> is the chart's family, <c>line</c> for a line over columns, or <c>total</c> for a
-/// stack's total, drawn only as its labels; null labels are none. <see cref="Traces"/> is the book cell behind each
-/// value, for a chart read from a book.</summary>
 /// <summary>Colors are a point's own color, by category, where the series colors any; on a line they outline its
 /// markers. <see cref="PointMarkers"/> are a line's points' own markers, over the series', by category, and
 /// <see cref="PointLabels"/> the points' own labels, null where a point takes the series'. <see cref="Dash"/> is a
@@ -316,11 +313,6 @@ public static class PayloadBuilder
     };
   }
 
-  public static string Title(Presentation presentation, Slide slide)
-  {
-    return slide.Title?.Text is List<Run> runs ? SceneBuilder.Text(presentation, slide, runs) : "";
-  }
-
   /// <summary>The slide as drawn; with <paramref name="stage"/>, a layout's specimen on which the mouse writes the
   /// theme's and layout's files instead, its areas drawn as items to move.</summary>
   public static SlidePayload Slide(Presentation presentation, Slide slide, PictureUrl pictureUrl, Layout? stage = null,
@@ -364,7 +356,7 @@ public static class PayloadBuilder
     {
       Id = slide.Id,
       Number = slide.Number,
-      Title = title is null ? null : string.Concat(title.Paragraphs![0].Runs.Select(run => run.Text)),
+      Title = title?.Paragraphs![0].PlainText,
       Layout = slide.Layout,
       Section = slide.Section,
       Pick = slide.Pick,
@@ -490,7 +482,7 @@ public static class PayloadBuilder
       Crop = Get<double[]>("crop"),
       Alt = Get<string>("alt"),
       Link = Get<string>("link"),
-      Text = item.Paragraphs is null ? null : Text(item, theme),
+      Text = item.Paragraphs is null ? null : Text(item.Properties, item.Paragraphs, theme),
       Chart = item.Chart is null ? null : Chart(item.Chart, properties, theme),
       Table = item.Table is null ? null : Table(item.Table, theme)
     };
@@ -828,19 +820,6 @@ public static class PayloadBuilder
 
     return new ShadowPayload(Hex(color.Value, theme)!, Number("opacity", 100), Number("blur", 0), Number("distance", 0),
       Number("angle", 0));
-  }
-
-  private static TextPayload Text(SceneItem item, Theme theme)
-  {
-    return new TextPayload
-    {
-      Insets = item.Insets,
-      Valign = item.Valign,
-      Fit = item.Fit,
-      Wrap = item.Wrap,
-      Columns = item.Columns,
-      Paragraphs = item.Paragraphs!.Select(paragraph => Paragraph(paragraph, theme)).ToList()
-    };
   }
 
   private static TextPayload Text(Dictionary<string, Resolved> properties, List<SceneParagraph> paragraphs,

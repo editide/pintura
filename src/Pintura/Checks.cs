@@ -52,7 +52,6 @@ public static class Checks
   private const int Agreeing = 2;
   private const int RepeatedOnSlides = 3;
 
-  /// <summary>Every check but the export's, which <paramref name="export"/> adds, in the order they print.</summary>
   /// <summary>What a change introduced and what it cleared. A finding is the same one when the other side has it word
   /// for word, or failing that the same kind at the same level on the same element, so text overflowing by more than
   /// it did is still the overflow that was there.</summary>
@@ -937,7 +936,7 @@ public static class Checks
     List<Slide> offered = presentation.Offered.Where(slide => slide.Error is null).ToList();
     findings.AddRange(offered.SelectMany(slide => Moved(presentation, slide)));
     findings.AddRange(Sizes(presentation, slides, scenes));
-    findings.AddRange(RepeatedOneOffs(presentation, slides));
+    findings.AddRange(RepeatedOneOffs(slides));
     findings.AddRange(offered.SelectMany(slide => Totals(presentation, slide, scenes)));
     return findings;
   }
@@ -1120,7 +1119,7 @@ public static class Checks
 
   /// <summary>The same one-off formatting on several slides, which wants to be a style. Only what a style can hold
   /// counts.</summary>
-  private static IEnumerable<Finding> RepeatedOneOffs(Presentation presentation, List<Slide> slides)
+  private static IEnumerable<Finding> RepeatedOneOffs(List<Slide> slides)
   {
     var seen = new List<OneOff>();
     void Add(TextProperties properties, string[] keys, Slide slide, string id, Element? box = null)

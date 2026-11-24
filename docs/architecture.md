@@ -124,8 +124,8 @@ The default slide is 960 × 540, PowerPoint's 16:9 (13.333 × 7.5 inches).
 
 ### Shapes
 
-Sixteen shapes cover what professional slides draw: rectangles, rounded rectangles, ellipses, triangles, diamonds, parallelograms, trapezoids, pentagons, hexagons, chevrons, home plates, block arrows, braces, brackets, and callouts.
-The rest of OOXML's 186 presets (the smiley face, the lightning bolt, the moon) stay out.
+Sixteen shapes cover what professional slides draw: rectangles, rounded rectangles, ellipses, triangles, right triangles, diamonds, parallelograms, trapezoids, pentagons, hexagons, chevrons, home plates, block arrows, braces, brackets, and callouts.
+The rest of OOXML's 187 presets (the smiley face, the lightning bolt, the moon) stay out.
 
 The shapes are designed for the page, and the exporter adapts them.
 A directional shape takes `direction`, and the exporter picks a preset or a rotation.
@@ -192,7 +192,7 @@ A theme can ship font files in `fonts/`, which the page registers under the fami
 | EMU | Replaced by points |
 | Chart data in an embedded workbook plus a cache | Replaced by CSV or a Libreta book; the exporter writes both |
 | Autofit scale stored as a stale computed value | Computed at export |
-| Speaker notes and comments | Dropped |
+| PowerPoint's speaker notes and comments | Dropped |
 | Application defaults inside PowerPoint.exe | Dropped: every default is in a theme file |
 
 ## Loading and provenance
@@ -205,7 +205,7 @@ That answers "why is this 16pt" in one step, the question the blog post shows ta
 
 The format is much larger than Libreta's, so its documentation is disclosed a topic at a time rather than printed whole.
 
-- `pintura --docs` prints an index, one line per topic: presentations, themes, layouts, slides, text, shapes, charts, tables, checks.
+- `pintura --docs` prints an index, one line per topic: presentations, themes, layouts, slides, text, styles, colors, shapes, charts, tables, books, checks, comments, picks.
 - `pintura --docs charts` prints one topic: its keys, one complete example, and the usual mistakes.
 - Errors name their topic: `unknown key legend_position in charts/revenue-by-segment.yaml:6; see pintura --docs charts`.
 - The default theme and the example presentation are the long-form documentation, as Libreta's sample book is.
@@ -366,9 +366,11 @@ A re-export starts from the last one and rewrites only the slides whose model ch
 
 What the export can't write, which it reports rather than approximates:
 
-- Picture crop.
+- Picture crop, alt text, and opacity.
 - Sections, on editide before 1.0.7, which has no `edit_sections`.
-- Callout tails, which come out normalized.
+- Callout tails (which come out normalized), right-triangle direction, brace and bracket curl, and opacity with no fill.
+- Text columns, `${slide}` inside a slide's own text, and hidden layout elements.
+- Reversed chart axes, plot insets, `negative_style`, unknown number formats or scales, and waterfall label styles.
 - Font embedding, needed before a brand font survives on a machine without it.
 
 The chart types editide's tools write natively (column, bar, and line in all three groupings, pie, doughnut) set Pintura's first chart vocabulary, and the waterfall followed when the tools could write it.
@@ -386,12 +388,14 @@ Everything mirrors Libreta: .NET 10, ASP.NET minimal API, YamlDotNet, and vanill
 
 ```text
 pintura/
-  src/Pintura/              CLI, server, loader, model, checks, patcher
-    wwwroot/                index.html, app.js, app.css, fonts/
-  src/Pintura.Tests/
-  themes/default/
-  presentations/example/    a board update for Acme, a made-up company
-  docs/                     format.md, running.md
+  src/Pintura/              CLI, server, loader, model, checks, patcher, exporter, importer
+    Resources/              blank.pptx
+    wwwroot/                index.html, headless.html, slide.css, app.css, scripts, fonts/
+  src/Pintura.Tests/        C# tests, node page tests, fixtures/
+  themes/                   default/, acme/, meridian/
+  presentations/            example/, board-update/, default-theme/, balance-sheet/
+  scripts/                  install and build helpers
+  docs/                     architecture.md, principles.md, running.md, topics/
 ```
 
 ## Open questions

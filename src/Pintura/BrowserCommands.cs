@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
@@ -11,7 +10,7 @@ namespace Pintura;
 public static class BrowserCommands
 {
   // Long enough for the first run to fetch Chromium.
-  public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
+  internal static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
 
   public static async Task<int> Run(string root, CommandLineOptions options, InstanceRegistry registry,
     TextWriter output)
@@ -197,7 +196,7 @@ public static class BrowserCommands
     }
   }
 
-  public static async Task<Measurement> Measure(HttpClient client, string query)
+  internal static async Task<Measurement> Measure(HttpClient client, string query)
   {
     HttpResponseMessage response = await Get(client, $"api/measure{query}");
     return (await response.Content.ReadFromJsonAsync<Measurement>(PayloadJson.Options))!;
