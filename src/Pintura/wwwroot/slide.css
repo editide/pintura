@@ -21,6 +21,11 @@ html {
   text-size-adjust: 100%;
 }
 
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
 /* A stage is the slide at its own size, one CSS pixel to the point, scaled into its frame. Its lines are 1.2 times
    their size, as PowerPoint's single spacing is in every font, rather than the font's own line height. */
 .stage {
