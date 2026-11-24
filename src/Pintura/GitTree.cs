@@ -201,6 +201,7 @@ public sealed class GitObjects
   public static void Close(string folder)
   {
     folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+    Revisions.Forget(folder);
     StringComparison comparison = OperatingSystem.IsLinux()
       ? StringComparison.Ordinal
       : StringComparison.OrdinalIgnoreCase;
@@ -235,6 +236,15 @@ public sealed class GitObjects
 
   public byte[] Read(string blob)
   {
+    return TryRead(blob, out _, out byte[] content)
+      ? content
+      : throw new InvalidDataException($"git couldn't read the object {blob}");
+  }
+
+  /// <summary>Reads a blob by hash or <c>commit:path</c> specifier through the shared <c>cat-file --batch</c> process,
+  /// returning false when it is absent or not a blob.</summary>
+  public bool TryRead(string spec, out string hash, out byte[] content)
+  {
     lock (gate)
     {
       if (process is null || process.HasExited)
@@ -245,19 +255,38 @@ public sealed class GitObjects
         start.RedirectStandardError = false;
         process = Process.Start(start)!;
       }
-      process.StandardInput.Write($"{blob}\n");
+      process.StandardInput.Write($"{spec}\n");
       process.StandardInput.Flush();
       Stream output = process.StandardOutput.BaseStream;
       string[] header = Line(output).Split(' ');
-      if (header is not [_, "blob", string size])
+      if (header is [string sha, string type, string sizeText] &&
+        int.TryParse(sizeText, CultureInfo.InvariantCulture, out int size))
       {
-        throw new InvalidDataException($"git couldn't read the object {blob}");
+        byte[] bytes = new byte[size];
+        output.ReadExactly(bytes);
+        output.ReadExactly(new byte[1]);
+        if (type == "blob")
+        {
+          hash = sha;
+          content = bytes;
+          return true;
+        }
       }
-      byte[] content = new byte[int.Parse(size, CultureInfo.InvariantCulture)];
-      output.ReadExactly(content);
-      output.ReadExactly(new byte[1]);
-      return content;
+      hash = "";
+      content = [];
+      return false;
     }
+  }
+
+  /// <summary>Reads a UTF-8 text blob by hash or <c>commit:path</c> specifier, or null when absent.</summary>
+  public string? TryReadText(string spec)
+  {
+    if (!TryRead(spec, out _, out byte[] content))
+    {
+      return null;
+    }
+    using var reader = new StreamReader(new MemoryStream(content), Encoding.UTF8);
+    return reader.ReadToEnd();
   }
 
   private static string Line(Stream stream)

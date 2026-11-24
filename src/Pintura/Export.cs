@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Pintura;
 
 /// <summary>The presentation as the exporter reads it: the theme and each layout defined once, and each slide with
@@ -133,9 +135,12 @@ public class ExportBuilder
     ExportItem? title = layout.TitleRemoved || layout.Title is null
       ? null
       : Placeholder(layout.Id, "title", "title", [theme.Title, layout.Title]);
-    List<ExportItem> placeholders = theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct()
-      .Select(name => Placeholder(layout.Id, name, "placeholder",
-        [theme.Placeholders.GetValueOrDefault(name), layout.Placeholders.GetValueOrDefault(name)]))
+    List<ExportItem> placeholders = theme.PlaceholderNames(layout)
+      .Select(name =>
+      {
+        (Placeholder? themeLevel, Placeholder? layoutLevel) = theme.PlaceholderLevels(layout, name);
+        return Placeholder(layout.Id, name, "placeholder", [themeLevel, layoutLevel]);
+      })
       .ToList();
     return new ExportLayout(
       layout.Id,
@@ -145,8 +150,7 @@ public class ExportBuilder
       title,
       placeholders,
       layout.Elements.Select(element => Element(layout.Id, element, "layout")).ToList(),
-      theme.Areas.Concat(layout.Areas).GroupBy(pair => pair.Key)
-        .ToDictionary(group => group.Key, group => group.Last().Value.Rect));
+      theme.AreasOf(layout).ToDictionary(entry => entry.Name, entry => entry.Area.Rect));
   }
 
   private ExportSlide Slide(Slide slide)
@@ -299,6 +303,303 @@ public class ExportBuilder
     return color.Named is not null
       ? Color(theme.NamedColors[color.Named])
       : new ExportColor(color.Theme, color.Hex, color.Lighter, color.Darker, color.None);
+  }
+
+
+}
+
+/// <summary>What PowerPoint or editide's tools can't reproduce, shared between <c>--check --export</c> and the
+/// exporter so both report the same gaps.</summary>
+public static class ExportGaps
+{
+  private static readonly HashSet<string> SupportedShapes =
+  [
+    "rectangle", "ellipse", "diamond", "pentagon", "hexagon", "rounded_rectangle", "parallelogram", "trapezoid",
+    "triangle", "right_triangle", "chevron", "home_plate", "arrow", "brace", "bracket", "callout"
+  ];
+
+  public const string WaterfallPointLabel =
+    "a waterfall point's label in a color or boldness of its own exports in its series', as editide can't yet style " +
+    "one waterfall label";
+
+  public const string SlideNumberOnSlide =
+    "${slide} in a slide's own text exports as plain text, or not at all when it is the only text";
+
+  public static IEnumerable<string> Picture(bool cover, bool crop, bool alt, bool link, bool opacity)
+  {
+    if (cover)
+    {
+      yield return "fit: cover needs a crop, which isn't exported";
+    }
+    if (crop)
+    {
+      yield return "picture crop isn't exported";
+    }
+    if (alt)
+    {
+      yield return "picture alt text isn't exported";
+    }
+    if (link)
+    {
+      yield return "picture links aren't exported";
+    }
+    if (opacity)
+    {
+      yield return "picture opacity isn't exported";
+    }
+  }
+
+  public static IEnumerable<string> Shape(string? shape, string? direction)
+  {
+    if (shape == "right_triangle" && direction != "up")
+    {
+      yield return $"a right triangle facing {direction} exports facing right, as PowerPoint has no such shape and a " +
+        "turn moves its right angle";
+    }
+    else if (shape is "brace" or "bracket")
+    {
+      yield return $"a {shape} exports with PowerPoint's curl rather than a quarter of its thickness";
+    }
+    else if (shape == "callout")
+    {
+      yield return "a callout's tail isn't exported, so it points elsewhere";
+    }
+    else if (shape is null || !SupportedShapes.Contains(shape))
+    {
+      yield return $"a {shape} shape isn't exported";
+    }
+  }
+
+  public static IEnumerable<string> OpacityWithoutFill(bool hasFill, bool hasOpacity)
+  {
+    if (!hasFill && hasOpacity)
+    {
+      yield return "opacity on an element with no fill isn't exported";
+    }
+  }
+
+  public static IEnumerable<string> TextColumns(double columns)
+  {
+    if (columns > 1)
+    {
+      yield return "text columns aren't exported";
+    }
+  }
+
+  public static IEnumerable<string> PlotInsets(bool hasInsets)
+  {
+    if (hasInsets)
+    {
+      yield return "a chart's plot insets aren't exported, so PowerPoint places its plot itself";
+    }
+  }
+
+  public static IEnumerable<string> ReversedAxis(string axisName, bool reversed)
+  {
+    if (reversed)
+    {
+      yield return $"a reversed {(axisName == "value_axis" ? "value" : "secondary")} axis isn't exported, " +
+        "so it runs bottom up in PowerPoint";
+    }
+  }
+
+  public static IEnumerable<string> Format(double? scale, string? suffix, bool hasNegativeColor, string? date)
+  {
+    if (!string.IsNullOrEmpty(date))
+    {
+      yield break;
+    }
+    double remaining = scale ?? 1;
+    if (suffix == "%" && Math.Abs(remaining - 100) < 1e-9)
+    {
+      remaining = 1;
+    }
+    int commas = 0;
+    while (remaining < 1 - 1e-9 && commas < 3)
+    {
+      remaining *= 1000;
+      commas++;
+    }
+    if (Math.Abs(remaining - 1) > 1e-9)
+    {
+      yield return $"a chart's format scale of {scale?.ToString(CultureInfo.InvariantCulture)} " +
+        "isn't exported, as PowerPoint scales only by thousands, or by a hundred as a percent";
+    }
+    if (hasNegativeColor)
+    {
+      yield return "a chart's negative_style isn't exported, as PowerPoint colors negatives only from a fixed palette";
+    }
+  }
+
+  public static string UnknownFormat(string name)
+  {
+    return $"a chart's format {name} isn't in the theme, so its numbers export unformatted";
+  }
+
+  public static string HiddenLayoutElement(string slideId, string elementId)
+  {
+    return $"slide {slideId} hides {elementId}, which PowerPoint shows, as a slide can't leave out one of its " +
+      "layout's shapes";
+  }
+
+  /// <summary>Every static export gap on a resolved scene item.</summary>
+  public static IEnumerable<string> ForItem(SceneItem item, Theme theme)
+  {
+    Element? element = item.Element;
+    bool hasOpacity = item.Properties.ContainsKey("opacity");
+    bool hasFill = item.HasFill;
+    switch (item.Kind)
+    {
+      case "picture":
+        bool cover = item.Properties.TryGetValue("fit", out Resolved? fit) && (string)fit.Value == "cover";
+        foreach (string gap in Picture(cover, element?.Crop is not null, element?.Alt is not null,
+          element?.Link is not null, element?.Opacity is not null || hasOpacity))
+        {
+          yield return gap;
+        }
+        break;
+      case "shape":
+        string? shape = item.Properties.TryGetValue("shape", out Resolved? shapeProp)
+          ? shapeProp.Value as string : element?.Shape;
+        string? direction = item.Properties.TryGetValue("direction", out Resolved? dirProp)
+          ? dirProp.Value as string : element?.Direction;
+        foreach (string gap in Shape(shape, direction))
+        {
+          yield return gap;
+        }
+        foreach (string gap in OpacityWithoutFill(hasFill, hasOpacity))
+        {
+          yield return gap;
+        }
+        break;
+      case "text":
+        foreach (string gap in OpacityWithoutFill(hasFill, hasOpacity))
+        {
+          yield return gap;
+        }
+        break;
+      case "chart":
+        foreach (string gap in PlotInsets(item.Properties.ContainsKey("plot.insets")))
+        {
+          yield return gap;
+        }
+        foreach (string axis in new[] { "value_axis", "secondary_axis" })
+        {
+          bool reversed = item.Properties.TryGetValue($"{axis}.reverse", out Resolved? rev) && rev.Value is true;
+          foreach (string gap in ReversedAxis(axis, reversed))
+          {
+            yield return gap;
+          }
+        }
+        foreach (string gap in ChartFormats(item, theme))
+        {
+          yield return gap;
+        }
+        if (item.Chart?.Type == "waterfall" && WaterfallPointLabelStyled(item))
+        {
+          yield return WaterfallPointLabel;
+        }
+        break;
+    }
+    if (item.Properties.TryGetValue("columns", out Resolved? columns) && Convert.ToDouble(columns.Value) is double count)
+    {
+      foreach (string gap in TextColumns(count))
+      {
+        yield return gap;
+      }
+    }
+    // A layout's page number becomes PowerPoint's slide-number placeholder; a slide's own field has no such home.
+    bool slideNumber = (item.Paragraphs ?? []).Any(paragraph => paragraph.Runs.Any(run => run.Field == "slide"));
+    if (slideNumber && item.Owner == "slide" && item.Role is null)
+    {
+      yield return SlideNumberOnSlide;
+    }
+  }
+
+  /// <summary>Slide-level static export gaps: hiding a layout's non-page-number shape.</summary>
+  public static IEnumerable<string> ForSlide(Slide slide, Layout layout)
+  {
+    foreach (string id in slide.Hide)
+    {
+      Element? target = layout.Elements.FirstOrDefault(element => element.Id == id);
+      if (target is not null && !IsPageNumber(target))
+      {
+        yield return HiddenLayoutElement(slide.Id, id);
+      }
+    }
+  }
+
+  private static bool IsPageNumber(Element element)
+  {
+    return element.Kind == "text" && element.Text is [Paragraph paragraph] &&
+      paragraph.Runs is [Run { Field: "slide" }];
+  }
+
+  private static IEnumerable<string> ChartFormats(SceneItem item, Theme theme)
+  {
+    bool percentStacked = item.Chart?.Type.StartsWith("percent_stacked", StringComparison.Ordinal) == true;
+    var seen = new HashSet<string>(StringComparer.Ordinal);
+    foreach ((string key, Resolved resolved) in item.Properties)
+    {
+      bool formatKey = (key == "value_axis.format" && !percentStacked)
+        || key == "secondary_axis.format"
+        || ((key == "data_labels.format" || key.EndsWith(".data_labels.format", StringComparison.Ordinal))
+          && item.Properties.GetValueOrDefault(key[..^"format".Length] + "show")?.Value as string == "value");
+      if (formatKey && resolved.Value is string { Length: > 0 } name && seen.Add(name))
+      {
+        if (!theme.Styles.Formats.TryGetValue(name, out NumberFormat? format))
+        {
+          yield return UnknownFormat(name);
+          continue;
+        }
+        bool hasNegativeColor = format.NegativeStyle is not null &&
+          theme.Styles.Styles.TryGetValue(format.NegativeStyle, out TextProperties? style) && style.Color is not null;
+        foreach (string gap in Format(format.Scale, format.Suffix, hasNegativeColor, format.Date))
+        {
+          yield return gap;
+        }
+      }
+    }
+  }
+
+  private static bool WaterfallPointLabelStyled(SceneItem item)
+  {
+    var points = new HashSet<string>(StringComparer.Ordinal);
+    foreach (string key in item.Properties.Keys)
+    {
+      int at = key.IndexOf(".data_labels.", StringComparison.Ordinal);
+      if (at > 0 && key.Contains(".points.", StringComparison.Ordinal))
+      {
+        points.Add(key[..(at + 1)]);
+      }
+    }
+    foreach (string pointPrefix in points)
+    {
+      string? pointShow = item.Properties.GetValueOrDefault($"{pointPrefix}data_labels.show")?.Value as string;
+      if (pointShow is not ("value" or "percent"))
+      {
+        continue;
+      }
+      int split = pointPrefix.IndexOf(".points.", StringComparison.Ordinal);
+      string seriesPrefix = pointPrefix[..(split + 1)];
+      string? seriesShow = item.Properties.GetValueOrDefault($"{seriesPrefix}data_labels.show")?.Value as string
+        ?? item.Properties.GetValueOrDefault("data_labels.show")?.Value as string;
+      if (seriesShow is not ("value" or "percent"))
+      {
+        return true;
+      }
+      object? pointColor = item.Properties.GetValueOrDefault($"{pointPrefix}data_labels.color")?.Value;
+      object? seriesColor = item.Properties.GetValueOrDefault($"{seriesPrefix}data_labels.color")?.Value
+        ?? item.Properties.GetValueOrDefault("data_labels.color")?.Value;
+      bool pointBold = item.Properties.GetValueOrDefault($"{pointPrefix}data_labels.bold")?.Value is true;
+      bool seriesBold = (item.Properties.GetValueOrDefault($"{seriesPrefix}data_labels.bold")?.Value
+        ?? item.Properties.GetValueOrDefault("data_labels.bold")?.Value) is true;
+      if (!Equals(pointColor, seriesColor) || pointBold != seriesBold)
+      {
+        return true;
+      }
+    }
+    return false;
   }
 
 

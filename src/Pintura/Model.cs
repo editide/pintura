@@ -24,6 +24,12 @@ public class Presentation
   [JsonIgnore] public List<Comment> Comments { get; init; } = new List<Comment>();
   /// <summary>The picks waiting on the reviewer, from <c>picks.yaml</c>, in file order.</summary>
   [JsonIgnore] public List<Pick> Picks { get; init; } = new List<Pick>();
+  private List<Pick>? resolvedPicks;
+  [JsonIgnore] public List<Pick> ResolvedPicks
+  {
+    get => resolvedPicks ??= PickFile.LoadResolved(Root, Root, Files);
+    init => resolvedPicks = value;
+  }
   /// <summary>Each placed pick's variants after its first, which <see cref="Slides"/> draws in the pick's place.
   /// </summary>
   [JsonIgnore] public List<Slide> Variants { get; init; } = new List<Slide>();
@@ -37,7 +43,7 @@ public class Presentation
   [JsonIgnore] public IEnumerable<Slide> Offered => WithVariants(Slides);
 
   /// <summary>The slides with every variant offered in their place.</summary>
-  public IEnumerable<Slide> WithVariants(IEnumerable<Slide> slides)
+  private IEnumerable<Slide> WithVariants(IEnumerable<Slide> slides)
   {
     return slides.SelectMany(slide => Variants.Where(variant => slide.Pick is not null && variant.Pick == slide.Pick)
       .Prepend(slide));
@@ -117,6 +123,55 @@ public class Theme
   /// </summary>
   [JsonIgnore] public string Display { get; init; } = "";
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
+
+  /// <summary>Effective areas on <paramref name="layout"/>: the theme's with the layout's over them, each with the
+  /// level that owns it.</summary>
+  public IEnumerable<(string Name, Area Area, string Owner)> AreasOf(Layout layout)
+  {
+    foreach (string name in Areas.Keys.Concat(layout.Areas.Keys).Distinct())
+    {
+      yield return layout.Areas.TryGetValue(name, out Area? own)
+        ? (name, own, "layout")
+        : (name, Areas[name], "theme");
+    }
+  }
+
+  /// <summary>Effective placeholder names on <paramref name="layout"/>: the theme's followed by the layout's own.
+  /// </summary>
+  public IEnumerable<string> PlaceholderNames(Layout layout)
+  {
+    return Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct();
+  }
+
+  /// <summary>Whether <paramref name="layout"/> has a title (neither removed nor absent from both levels).</summary>
+  public bool HasTitle(Layout layout)
+  {
+    return !layout.TitleRemoved && (layout.Title ?? Title) is not null;
+  }
+
+  /// <summary>The theme and layout levels of the title or a named placeholder on <paramref name="layout"/>.</summary>
+  public (Placeholder? Theme, Placeholder? Layout) PlaceholderLevels(Layout layout, string name)
+  {
+    return name == "title"
+      ? (Title, layout.Title)
+      : (Placeholders.GetValueOrDefault(name), layout.Placeholders.GetValueOrDefault(name));
+  }
+
+  /// <summary>The effective frame and owning level of the title or a named placeholder, optionally including a slide's
+  /// own override.</summary>
+  public (Frame? Frame, string Owner) PlaceholderFrame(Layout layout, string name, Placeholder? own = null)
+  {
+    if (own?.Frame is Frame slideFrame)
+    {
+      return (slideFrame, "slide");
+    }
+    (Placeholder? themeLevel, Placeholder? layoutLevel) = PlaceholderLevels(layout, name);
+    return layoutLevel?.Frame is Frame layoutFrame
+      ? (layoutFrame, "layout")
+      : (themeLevel?.Frame, "theme");
+  }
+
+
 }
 
 /// <summary>Thresholds <c>--check</c> reads from the theme; a missing one leaves its check off.</summary>
@@ -200,6 +255,18 @@ public class Placeholder
 
 public class Element
 {
+  public static readonly string[] Shapes =
+  [
+    "rectangle", "rounded_rectangle", "ellipse", "triangle", "right_triangle", "diamond", "parallelogram",
+    "trapezoid", "pentagon", "hexagon", "chevron", "home_plate", "arrow", "brace", "bracket", "callout"
+  ];
+
+  public static readonly string[] DirectionalShapes =
+    ["triangle", "right_triangle", "chevron", "home_plate", "arrow", "brace", "bracket"];
+
+  public static readonly string[] Markers = ["arrow", "triangle", "stealth", "diamond", "oval"];
+  public static readonly string[] MarkerShapes = ["circle", "square", "diamond", "triangle", "none"];
+
   public string Id { get; init; } = "";
   public string Kind { get; init; } = "";
   public Frame? Frame { get; init; }
@@ -260,9 +327,34 @@ public class Shadow
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
 }
 
-/// <summary>Text properties set at one level. Each set property remembers where it was written, so the cascade can
-/// report the file and line behind every effective value.</summary>
-public class TextProperties
+/// <summary>A layer of keyed properties with provenance, merged in order by <see cref="PropertyLayers.Cascade"/>.
+/// </summary>
+public interface IPropertyLayer
+{
+  object? Get(string key);
+  Dictionary<string, Origin> Origins { get; }
+}
+
+/// <summary>Resolves a key across ordered property layers, returning the last non-null value and its origin.</summary>
+public static class PropertyLayers
+{
+  public static (object Value, Origin Origin)? Cascade(IEnumerable<IPropertyLayer?> layers, string key)
+  {
+    (object Value, Origin Origin)? found = null;
+    foreach (IPropertyLayer? layer in layers)
+    {
+      if (layer?.Get(key) is object value)
+      {
+        found = (value, layer.Origins[key]);
+      }
+    }
+    return found;
+  }
+
+
+}
+
+public class TextProperties : IPropertyLayer
 {
   public static readonly string[] Character = ["font", "size", "color", "bold", "italic", "underline"];
   public static readonly string[] Paragraph = ["align", "space_before", "space_after", "line_spacing"];
@@ -465,7 +557,7 @@ public class TableFormatting
 {
   public static readonly string[] Text = [.. TextProperties.Style, "insets"];
 
-  public string? Style { get; init; }
+  public string? Style { get; set; }
   public string? Format { get; init; }
   public Color? Fill { get; init; }
   public Stroke? BorderTop { get; init; }
@@ -557,6 +649,44 @@ public class Chart
     "clustered_column", "stacked_column", "percent_stacked_column", "clustered_bar", "stacked_bar",
     "percent_stacked_bar", "line", "stacked_line", "percent_stacked_line", "pie", "doughnut", "waterfall"
   ];
+
+  public static readonly Dictionary<string, string[]> LabelPositions = new Dictionary<string, string[]>
+  {
+    ["clustered"] = ["center", "inside", "inside_base", "outside"],
+    ["stacked"] = ["center", "inside", "inside_base"],
+    ["line"] = ["above", "below", "left", "right", "center"],
+    ["pie"] = ["center", "inside", "outside"],
+    ["doughnut"] = []
+  };
+
+  /// <summary>Where labels sit in a <paramref name="group"/> that names no position, or null for a doughnut, which
+  /// places them nowhere else.</summary>
+  public static string? DefaultLabelPosition(string group)
+  {
+    return group switch
+    {
+      "clustered" => "outside",
+      "line" => "above",
+      "pie" => "inside",
+      "doughnut" => null,
+      _ => "center"
+    };
+  }
+
+  /// <summary>Where a chart of <paramref name="type"/>, or a line series in one, can place its labels.</summary>
+  public static string[] LabelPositionsFor(string type)
+  {
+    return LabelPositions[LabelPositionGroup(type)];
+  }
+
+  public static string LabelPositionGroup(string type)
+  {
+    string family = FamilyOf(type);
+    return type == "doughnut" ? "doughnut"
+      : family is "pie" or "line" ? family
+      : GroupingOf(type) == "clustered" ? "clustered"
+      : "stacked";
+  }
 
   public string Id { get; init; } = "";
   public string Type { get; init; } = "";
@@ -659,8 +789,16 @@ public class ChartSeriesOptions
 
 /// <summary>Chart keys set at one level: the theme's <c>chart</c> base, a named chart style, or a chart file. Maps
 /// merge key by key, so each nested key remembers where it was written under its dotted path.</summary>
-public class ChartProperties
+public class ChartProperties : IPropertyLayer
 {
+  /// <summary>The theme's <c>chart</c> base, the chart's named style (if any), and the chart's own properties, in
+  /// cascade order.</summary>
+  public static ChartProperties[] Levels(StyleSheet styles, Chart chart)
+  {
+    return chart.Style is null
+      ? [styles.Chart, chart.Properties]
+      : [styles.Chart, styles.Charts[chart.Style], chart.Properties];
+  }
   public static readonly string[] Keys =
   [
     "title", "legend", "data_labels.show", "data_labels.format", "data_labels.position", "data_labels.color",

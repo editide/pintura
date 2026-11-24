@@ -88,6 +88,28 @@ public class PayloadTests
   }
 
   [Fact]
+  public void The_inspector_formats_color_lists_containing_none_without_failing()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    Theme theme = deck.Load().Theme;
+    List<Color> colors = [new Color { None = true }, new Color { Theme = "accent1" }, new Color { Hex = "#123456" }];
+
+    // Act
+    PropertyEntry entry = HeadlessRunner.Property("series_colors", new Resolved(colors, null), theme);
+    PropertyEntry allNone = HeadlessRunner.Property("series_colors",
+      new Resolved(new List<Color> { new Color { None = true } }, null), theme);
+
+    // Assert
+    entry.Display.ShouldBe("none, accent1 (#4472C4), #123456");
+    entry.Shown!.Text.ShouldBe("None, Accent 1, #123456");
+    entry.Shown.Colors.ShouldBe(["#4472C4", "#123456"]);
+    allNone.Display.ShouldBe("none");
+    allNone.Shown!.Text.ShouldBe("None");
+    allNone.Shown.Colors.ShouldBeNull();
+  }
+
+  [Fact]
   public void A_layout_element_refuses_the_mouse_on_a_slide_and_names_the_file_that_owns_it()
   {
     // Arrange

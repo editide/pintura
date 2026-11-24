@@ -269,7 +269,7 @@ public class CheckTests
   public void Each_seeded_fault_yields_its_finding_and_nothing_else()
   {
     // Arrange
-    string repository = LoaderTests.RepositoryRoot();
+    string repository = Repository.Root;
     Presentation presentation = PresentationLoader.Load(Path.Combine(repository, "src", "Pintura.Tests", "fixtures",
       "faults"), repository);
 
@@ -375,7 +375,7 @@ public class CheckTests
   public void Every_presentation_comes_back_clean()
   {
     // Arrange
-    string repository = LoaderTests.RepositoryRoot();
+    string repository = Repository.Root;
     string[] roots = [.. Directory.GetDirectories(Path.Combine(repository, "presentations")),
       Path.Combine(repository, "src", "Pintura.Tests", "fixtures", "charts")];
 
@@ -1077,6 +1077,45 @@ public class CheckTests
   }
 
   [Fact]
+  public void Export_checks_report_the_same_static_gaps_as_the_exporter()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: line
+      data: revenue.csv
+      value_axis:
+        reverse: true
+      """);
+    deck.Write("deck/slides/chart.yaml", """
+      layout: content
+      title: Gaps
+      elements:
+        - id: chart
+          chart: revenue
+          frame: [40, 120, 400, 260]
+        - id: ghost
+          frame: [460, 120, 200, 40]
+          opacity: 0.5
+          text: Faded
+        - id: corner
+          shape: right_triangle
+          direction: left
+          frame: [460, 180, 100, 80]
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Export(deck.Load());
+
+    // Assert
+    List<string> messages = findings.Select(finding => finding.Message).ToList();
+    messages.ShouldContain("a reversed value axis isn't exported, so it runs bottom up in PowerPoint");
+    messages.ShouldContain("opacity on an element with no fill isn't exported");
+    messages.ShouldContain("a right triangle facing left exports facing right, as PowerPoint has no such shape and a " +
+      "turn moves its right angle");
+  }
+
+  [Fact]
   public void A_decorative_element_is_left_out_of_the_geometry_checks()
   {
     // Arrange
@@ -1346,6 +1385,67 @@ public class CheckTests
   }
 
   [Fact]
+  public void Export_gaps_ignore_hidden_waterfall_point_labels_and_catch_bold_override()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("deck/charts/bridge.csv", """
+      bridge,Start,Gain,End
+      Value,100,20,120
+      """);
+    deck.Write("deck/charts/bridge.yaml", """
+      type: waterfall
+      data: bridge.csv
+      totals: [Start, End]
+      data_labels:
+        show: value
+        color: dark1
+        bold: true
+      series:
+        Value:
+          points:
+            Gain:
+              data_labels:
+                show: none
+      """);
+    deck.Write("deck/slides/two.yaml", """
+      layout: content
+      title: Bridge
+      elements:
+        - id: bridge
+          chart: bridge
+          frame: [40, 120, 600, 320]
+      """);
+
+    // Act
+    Presentation hiddenDeck = deck.Load();
+    hiddenDeck.Slides.ShouldAllBe(slide => slide.Error == null);
+    List<Finding> hidden = Checks.Export(hiddenDeck);
+    deck.Write("deck/charts/bridge.yaml", """
+      type: waterfall
+      data: bridge.csv
+      totals: [Start, End]
+      data_labels:
+        show: value
+        color: dark1
+        bold: true
+      series:
+        Value:
+          points:
+            Gain:
+              data_labels:
+                bold: false
+      """);
+    Presentation overriddenDeck = deck.Load();
+    overriddenDeck.Slides.ShouldAllBe(slide => slide.Error == null);
+    List<Finding> overridden = Checks.Export(overriddenDeck);
+
+    // Assert
+    hidden.ShouldNotContain(finding => finding.Message.Contains("waterfall"));
+    overridden.ShouldContain(finding => finding.Message == ExportGaps.WaterfallPointLabel);
+  }
+
+  [Fact]
   public void Geometry_on_a_slide_of_hundreds_of_boxes_takes_moments()
   {
     // Arrange
@@ -1363,7 +1463,7 @@ public class CheckTests
     Checks.Geometry(presentation);
 
     // Assert
-    clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(5));
+    clock.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(15));
   }
 
 

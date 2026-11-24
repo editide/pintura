@@ -1,9 +1,10 @@
-using System.Diagnostics;
 using Shouldly;
 using Xunit;
+using static Pintura.Tests.GitHelper;
 
 namespace Pintura.Tests;
 
+[Trait("Needs", "git")]
 public class RevisionTests
 {
   [Fact]
@@ -11,9 +12,7 @@ public class RevisionTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed");
 
     // Act
@@ -21,7 +20,7 @@ public class RevisionTests
 
     // Assert
     Slide two = committed.Slides.Single(slide => slide.Id == "two");
-    PayloadBuilder.Title(committed, two).ShouldBe("Results in Results");
+    SceneBuilder.Title(committed, two).ShouldBe("Results in Results");
     two.Title!.Origin.File.ShouldBe("deck/slides/two.yaml");
     committed.Theme.Display.ShouldBe("theme");
   }
@@ -45,9 +44,7 @@ public class RevisionTests
       elements:
         - { id: logo, picture: ../../assets/logo.svg, frame: [880, 500, 60, 20] }
       """);
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
 
     // Act
     Presentation committed = Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root);
@@ -69,9 +66,7 @@ public class RevisionTests
       elements:
         - { id: logo, picture: ../../assets/old/logo.svg, frame: [880, 500, 60, 20], crop: [1, 1, 1, 1] }
       """);
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     Directory.Delete(deck.Folder.PathTo("assets/old"), true);
 
     // Act
@@ -87,9 +82,7 @@ public class RevisionTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     // As macOS reaches its temporary folder through /var, a symlink to /private/var.
     string link = $"{deck.Folder.Root}-link";
     Directory.CreateSymbolicLink(link, deck.Folder.Root);
@@ -129,9 +122,7 @@ public class RevisionTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
 
     // Act
     InvalidDataException error = Should.Throw<InvalidDataException>(() =>
@@ -175,9 +166,7 @@ public class RevisionTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     deck.Write("deck/comments.yaml", "- { id: a1, slide: two, at: [0, 0], text: Hi }");
     Git(deck.Folder.Root, "add", ".");
     Git(deck.Folder.Root, "commit", "-q", "-m", "reviewed");
@@ -208,9 +197,7 @@ public class RevisionTests
     // Arrange
     using var deck = new DeckFixture();
     deck.Write("deck/slides/two.yaml", Body("Results"));
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string first = Revisions.Commit(deck.Folder.Root, "HEAD");
     Rename(deck, "two", "results", "Results, retitled");
     Rename(deck, "results", "outcome");
@@ -230,9 +217,7 @@ public class RevisionTests
     // Arrange
     using var deck = new DeckFixture();
     deck.Write("deck/slides/two.yaml", Body("Results"));
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string first = Revisions.Commit(deck.Folder.Root, "HEAD");
     Rename(deck, "two", "results");
     Rename(deck, "results", "two");
@@ -242,56 +227,6 @@ public class RevisionTests
 
     // Assert
     since.ShouldBeEmpty();
-  }
-
-  /// <summary>A slide long enough that git still takes it for the same file once it's retitled and renamed.</summary>
-  public static string Body(string title)
-  {
-    return $"""
-      layout: content
-      title: {title}
-      elements:
-        - id: note
-          text: A note that stays as it was
-          frame: [40, 400, 300, 40]
-        - id: source
-          text: A source that stays as it was
-          frame: [40, 460, 300, 20]
-      """;
-  }
-
-  /// <summary>Commits a slide's file moved to another name, as <see cref="Body"/> with a title when given one.
-  /// </summary>
-  public static void Rename(DeckFixture deck, string from, string to, string? title = null)
-  {
-    Git(deck.Folder.Root, "mv", $"deck/slides/{from}.yaml", $"deck/slides/{to}.yaml");
-    string manifest = deck.Folder.PathTo("deck/presentation.yaml");
-    File.WriteAllText(manifest, File.ReadAllText(manifest).Replace($"- {from}\n", $"- {to}\n"));
-    if (title is not null)
-    {
-      deck.Write($"deck/slides/{to}.yaml", Body(title));
-    }
-    Git(deck.Folder.Root, "commit", "-q", "-am", $"renamed {from} to {to}");
-  }
-
-  public static void Git(string folder, params string[] arguments)
-  {
-    var start = new ProcessStartInfo("git") { WorkingDirectory = folder, RedirectStandardError = true };
-    foreach (string argument in new[] { "-c", "user.name=Test", "-c", "user.email=test@example.com" }
-      .Concat(arguments))
-    {
-      start.ArgumentList.Add(argument);
-    }
-    using Process process = Process.Start(start)!;
-    // Read while git runs, or a full pipe of warnings, such as Windows' line ending ones, stalls both.
-    string error = process.StandardError.ReadToEnd();
-    process.WaitForExit();
-    process.ExitCode.ShouldBe(0, error);
-    // A machine's autocrlf would otherwise decide the line endings a revision comes back with.
-    if (arguments[0] == "init")
-    {
-      Git(folder, "config", "core.autocrlf", "false");
-    }
   }
 
 

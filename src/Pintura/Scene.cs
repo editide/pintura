@@ -31,6 +31,52 @@ public class SceneItem
   public Element? Element { get; init; }
   public Chart? Chart { get; init; }
   public SceneTable? Table { get; init; }
+
+  public Frame? Frame => Properties.TryGetValue("frame", out Resolved? value) ? (Frame)value.Value : null;
+  public double[]? From => Properties.TryGetValue("from", out Resolved? value) ? (double[])value.Value : null;
+  public double[]? To => Properties.TryGetValue("to", out Resolved? value) ? (double[])value.Value : null;
+  public double[]? Arc => Kind == "arc" && Properties.TryGetValue("arc.from", out Resolved? from) &&
+    Properties.TryGetValue("arc.to", out Resolved? to)
+    ? [Convert.ToDouble(from.Value), Convert.ToDouble(to.Value)]
+    : null;
+  public double Rotate => Properties.TryGetValue("rotate", out Resolved? value) ? Convert.ToDouble(value.Value) : 0;
+  public Color? Fill => Properties.TryGetValue("fill", out Resolved? value) ? (Color)value.Value : null;
+  public bool HasFill => Fill is { IsNone: false };
+  public bool HasStroke => Properties.ContainsKey("stroke.color") && Properties.ContainsKey("stroke.width");
+  public string Valign => Properties.TryGetValue("valign", out Resolved? value) ? (string)value.Value : "top";
+  public string Fit => Properties.TryGetValue("fit", out Resolved? value) ? (string)value.Value : "none";
+  public double[] Insets => Properties.TryGetValue("insets", out Resolved? value) ? (double[])value.Value : [0, 0, 0, 0];
+  public bool Wrap => !Properties.TryGetValue("wrap", out Resolved? value) || (bool)value.Value;
+  public int Columns => Properties.TryGetValue("columns", out Resolved? value) ? (int)value.Value : 1;
+
+  /// <summary>The effective <c>data_labels.show</c> for a series (and optional category point).</summary>
+  public string? SeriesLabelShow(string series, string? category = null)
+  {
+    if (category is not null && Properties.TryGetValue($"series.{series}.points.{category}.data_labels.show", out Resolved? point))
+    {
+      return point.Value as string;
+    }
+    return Properties.GetValueOrDefault($"series.{series}.data_labels.show")?.Value as string
+      ?? Properties.GetValueOrDefault("data_labels.show")?.Value as string;
+  }
+
+  /// <summary>The effective number format name for a series' (and optional category point's) values, falling back
+  /// through the series, chart labels, and optionally its axis.</summary>
+  public string? SeriesLabelFormat(string series, string? category = null, bool axisFallback = false)
+  {
+    string? Named(string key) => Properties.GetValueOrDefault(key)?.Value as string;
+    string? format = (category is not null ? Named($"series.{series}.points.{category}.data_labels.format") : null)
+      ?? Named($"series.{series}.data_labels.format")
+      ?? Named("data_labels.format");
+    if (format is not null || !axisFallback)
+    {
+      return format;
+    }
+    string axis = Named($"series.{series}.axis") == "secondary" ? "secondary_axis" : "value_axis";
+    return Named($"{axis}.format");
+  }
+
+
 }
 
 /// <summary>A table as drawn: each column's width, each row's minimum height, and the cells a merge leaves showing,
@@ -54,6 +100,10 @@ public class SceneCell
   public TracePayload? Trace { get; init; }
   public Dictionary<string, Resolved> Properties { get; init; } = new Dictionary<string, Resolved>();
   public List<SceneParagraph> Paragraphs { get; init; } = new List<SceneParagraph>();
+
+  public Color? Fill => Properties.TryGetValue("fill", out Resolved? value) ? (Color)value.Value : null;
+
+
 }
 
 public class SceneParagraph
@@ -72,6 +122,11 @@ public class SceneParagraph
   public Origin Origin { get; init; } = new Origin("", 0, 0);
   public Dictionary<string, Resolved> Properties { get; init; } = new Dictionary<string, Resolved>();
   public List<SceneRun> Runs { get; init; } = new List<SceneRun>();
+
+  public string Align => Properties.TryGetValue("align", out Resolved? value) ? (string)value.Value : "left";
+  public string PlainText => string.Concat(Runs.Select(run => run.Text));
+
+
 }
 
 public class SceneRun
@@ -88,6 +143,7 @@ public class SceneRun
 /// one-offs, then paragraph and run styles. Nothing is stored; every call recomputes from the model.</summary>
 public class SceneBuilder
 {
+  public const double DefaultMarkerSize = 5.0;
   private static readonly string[] ParagraphKeys = [.. TextProperties.Character, .. TextProperties.Paragraph];
 
   private readonly Presentation presentation;
@@ -133,6 +189,12 @@ public class SceneBuilder
     return string.Concat(runs.Select(run => run.Field is null ? run.Text : builder.FieldValue(run.Field).Text));
   }
 
+  /// <summary>The slide's title as plain text with fields filled in, or empty when the slide has none.</summary>
+  public static string Title(Presentation presentation, Slide slide)
+  {
+    return slide.Title?.Text is List<Run> runs ? Text(presentation, slide, runs) : "";
+  }
+
   private SlideScene Build()
   {
     Theme theme = presentation.Theme;
@@ -144,14 +206,10 @@ public class SceneBuilder
     {
       words.Add(Placeholder("title", "title", [theme.Title, layout.Title, slide.Title]));
     }
-    IEnumerable<string> names = theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct();
-    foreach (string name in names.Where(slide.Placeholders.ContainsKey))
+    foreach (string name in theme.PlaceholderNames(layout).Where(slide.Placeholders.ContainsKey))
     {
-      words.Add(Placeholder(name, "placeholder", [
-        theme.Placeholders.GetValueOrDefault(name),
-        layout.Placeholders.GetValueOrDefault(name),
-        slide.Placeholders[name]
-      ]));
+      (Placeholder? themeLevel, Placeholder? layoutLevel) = theme.PlaceholderLevels(layout, name);
+      words.Add(Placeholder(name, "placeholder", [themeLevel, layoutLevel, slide.Placeholders[name]]));
     }
     items.AddRange(words.Where(item => !slide.Stacked.Any(entry => entry.Id == item.Id)));
     for (int index = 0; index <= slide.Elements.Count; index++)
@@ -237,7 +295,7 @@ public class SceneBuilder
     {
       case "shape":
         Set("shape", element.Shape);
-        if (PresentationLoader.DirectionalShapes.Contains(element.Shape))
+        if (Pintura.Element.DirectionalShapes.Contains(element.Shape))
         {
           properties["direction"] = element.Direction is not null
             ? new Resolved(element.Direction, element.Origins["direction"])
@@ -263,14 +321,14 @@ public class SceneBuilder
         Set("to", element.To);
         Set("start", element.Start);
         Set("end", element.End);
-        Strokes(properties, styles.LineStroke, element.Stroke);
+        Strokes(properties, "stroke", styles.LineStroke, element.Stroke);
         break;
       case "arc":
         Set("arc.from", element.Arc![0]);
         Set("arc.to", element.Arc[1]);
         Set("start", element.Start);
         Set("end", element.End);
-        Strokes(properties, styles.LineStroke, element.Stroke);
+        Strokes(properties, "stroke", styles.LineStroke, element.Stroke);
         break;
       case "picture":
         Set("picture", element.Picture);
@@ -529,9 +587,7 @@ public class SceneBuilder
     properties["text.font"] = new Resolved(styles.Text.Font!, styles.Text.Origins["font"]);
     properties["text.size"] = new Resolved(styles.Text.Size!, styles.Text.Origins["size"]);
     properties["text.color"] = new Resolved(styles.Text.Color!, styles.Text.Origins["color"]);
-    ChartProperties?[] levels = [styles.Chart, chart.Style is null ? null : styles.Charts[chart.Style],
-      chart.Properties];
-    foreach (ChartProperties level in levels.OfType<ChartProperties>())
+    foreach (ChartProperties level in Pintura.ChartProperties.Levels(styles, chart))
     {
       foreach (string key in Pintura.ChartProperties.Keys)
       {
@@ -834,13 +890,13 @@ public class SceneBuilder
     }
     else
     {
-      properties.TryAdd($"{prefix}markers.size", new Resolved(5.0, null));
+      properties.TryAdd($"{prefix}markers.size", new Resolved(DefaultMarkerSize, null));
     }
   }
 
   private static string DefaultLabelPosition(Chart chart)
   {
-    return PresentationLoader.DefaultLabelPosition(PresentationLoader.LabelPositionGroup(chart)) ?? "center";
+    return Chart.DefaultLabelPosition(Chart.LabelPositionGroup(chart.Type)) ?? "center";
   }
 
   /// <summary>The text layers of a box: the base, <c>shape_text</c> in a shape, the bullet level when there is one,
@@ -1042,11 +1098,6 @@ public class SceneBuilder
 
   /// <summary>Merges a stroke key by key over the base, so <c>stroke: { color: accent1 }</c> keeps the base width.
   /// </summary>
-  private static void Strokes(Dictionary<string, Resolved> properties, Stroke? fallback, Stroke? own)
-  {
-    Strokes(properties, "stroke", fallback, own);
-  }
-
   private static void Strokes(Dictionary<string, Resolved> properties, string key, params Stroke?[] layers)
   {
     foreach (Stroke? stroke in layers)

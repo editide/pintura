@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
@@ -29,46 +28,20 @@ public record ExportBilling(int Slides, int Layouts, int Masters);
 /// a gap.</summary>
 public partial class Exporter
 {
-  // The tools' scheme names for Pintura's theme colors; edit_theme spells the last one folHlink.
-  private static readonly Dictionary<string, string> Scheme = new Dictionary<string, string>(StringComparer.Ordinal)
-  {
-    ["dark1"] = "dk1", ["light1"] = "lt1", ["dark2"] = "dk2", ["light2"] = "lt2", ["accent1"] = "accent1",
-    ["accent2"] = "accent2", ["accent3"] = "accent3", ["accent4"] = "accent4", ["accent5"] = "accent5",
-    ["accent6"] = "accent6", ["hyperlink"] = "hlink", ["followed_hyperlink"] = "fol_hlink"
-  };
-
-  private static readonly HashSet<string> Markers = ["arrow", "triangle", "stealth", "diamond", "oval"];
-
-  private static readonly Dictionary<string, string> Autofit = new Dictionary<string, string>(StringComparer.Ordinal)
-  {
-    ["none"] = "none", ["grow"] = "resize", ["shrink"] = "shrink"
-  };
-
-  private static readonly Dictionary<string, int> Turn = new Dictionary<string, int>(StringComparer.Ordinal)
-  {
-    ["right"] = 0, ["down"] = 90, ["left"] = 180, ["up"] = 270
-  };
-
-  private static readonly Dictionary<string, string> Dock = new Dictionary<string, string>(StringComparer.Ordinal)
-  {
-    ["center"] = "center", ["inside"] = "inside_end", ["inside_base"] = "inside_base", ["outside"] = "outside_end",
-    ["above"] = "above", ["below"] = "below", ["left"] = "left", ["right"] = "right"
-  };
-
-  private static readonly Dictionary<string, string> DateCodes = new Dictionary<string, string>(StringComparer.Ordinal)
-  {
-    ["YYYY"] = "yyyy", ["YY"] = "yy", ["MMMM"] = "mmmm", ["MMM"] = "mmm", ["MM"] = "mm", ["M"] = "m", ["DD"] = "dd",
-    ["D"] = "d"
-  };
+  private static readonly Dictionary<string, string> Scheme = PowerPointVocabulary.ModelToToolScheme;
+  private static readonly HashSet<string> Markers = PowerPointVocabulary.ArrowMarkers;
+  private static readonly Dictionary<string, string> Autofit = PowerPointVocabulary.ModelToAutofit;
+  private static readonly Dictionary<string, int> Turn = PowerPointVocabulary.Turn;
+  private static readonly Dictionary<string, string> Dock = PowerPointVocabulary.ModelToDock;
+  private static readonly Dictionary<string, string> DateCodes = PowerPointVocabulary.PatternToExcelDate;
 
   private static readonly (string Key, string Name, Func<JsonNode, JsonNode?> Convert, bool Flag)[] Character =
   [
     ("font", "font_family", Font, false),
     ("size", "font_size", node => node.DeepClone(), true),
     ("color", "font_color", node => Color(node), false),
-    ("bold", "is_bold", node => node.DeepClone(), true),
-    ("italic", "is_italic", node => node.DeepClone(), true),
-    ("underline", "is_underlined", node => node.DeepClone(), true)
+    .. PowerPointVocabulary.CharacterFlags.Select(pair =>
+      (pair.Model, pair.Tool, (Func<JsonNode, JsonNode?>)(node => node.DeepClone()), true))
   ];
 
   /// <summary>What PowerPoint names the slides before the first section, and so what a presentation's are named.
@@ -81,7 +54,7 @@ public partial class Exporter
   private int written;
   private int layoutsWritten;
   private int mastersWritten;
-  private readonly SortedSet<string> notes = new SortedSet<string>(StringComparer.Ordinal);
+  private readonly Workarounds notes = new Workarounds();
   private readonly Dictionary<int, JsonArray> tableFixes = new Dictionary<int, JsonArray>();
   private JsonObject deck = new JsonObject();
 
@@ -100,7 +73,7 @@ public partial class Exporter
 
   /// <summary>How the exporter works around editide's tools where the deck still comes out right, for whoever drops
   /// each workaround once the tools no longer need it.</summary>
-  public IReadOnlyCollection<string> Workarounds => notes;
+  public IReadOnlyCollection<string> Workarounds => notes.Notes;
 
   /// <summary>A release compiles each call out, its text included, since the notes are for development.</summary>
   [Conditional("DEBUG")]
@@ -112,6 +85,22 @@ public partial class Exporter
   /// <summary>The gaps the theme and layouts raise, kept so a later export that leaves them alone reports them.
   /// </summary>
   public IReadOnlyList<string> DesignGaps { get; private set; } = [];
+
+  /// <summary>Whether the deck's theme and layouts are complete, so finished slides can be saved to resume from.
+  /// </summary>
+  public bool DesignReady { get; private set; }
+
+  private List<ExportedSlide> deckSlides = new List<ExportedSlide>();
+
+  /// <summary>Each slide currently in the session, in order; blank or half-written slides carry an empty hash so the
+  /// next incremental run deletes them while reusing the rest.</summary>
+  public IReadOnlyList<ExportedSlide> DeckState => deckSlides;
+
+  /// <summary>Where a failed export saves completed slides so the next run resumes incrementally.</summary>
+  public static string ResumePath(string file)
+  {
+    return $"{file}.partial.pptx";
+  }
 
   /// <summary>Each written or reused slide's gaps, by id.</summary>
   public Dictionary<string, IReadOnlyList<string>> SlideGaps { get; } =
@@ -136,14 +125,20 @@ public partial class Exporter
   /// <paramref name="only"/> writes just the slides it names: into a deck an earlier export wrote, alongside its
   /// other slides, left as they were, and refusing one it would have to replace.</summary>
   public static ExportReport Write(Presentation presentation, string output, IToolHost tools,
-    Action<double>? progress = null, bool fresh = false, SlideSelection? only = null)
+    Action<double>? progress = null, bool fresh = false, SlideSelection? only = null,
+    Func<IReadOnlyList<(byte[] Svg, int Width, int Height)>, List<byte[]>>? rasterize = null)
   {
     Stopwatch watch = Stopwatch.StartNew();
     string file = Path.GetFullPath(output);
     Directory.CreateDirectory(Path.GetDirectoryName(file)!);
     JsonObject deck = Model(presentation);
-    ExportManifest? previous = fresh ? null : ExportManifest.Read(file);
-    HashSet<string> kept = only is null ? [] : Narrow(deck, file, only, previous, presentation.Root);
+    string design = ExportManifest.DesignHash(deck, presentation.Root);
+    (ExportManifest? previous, bool edited) = ExportManifest.Inspect(file);
+    if (fresh)
+    {
+      previous = null;
+    }
+    HashSet<string> kept = only is null ? [] : Narrow(deck, file, only, previous, edited, design);
     if (deck["slides"]!.AsArray().Count == 0)
     {
       throw new InvalidOperationException("the presentation has no slides to export");
@@ -157,7 +152,14 @@ public partial class Exporter
       throw new InvalidOperationException($"{string.Join("; ", broken)}; fix {(broken.Count == 1 ? "it" : "them")} " +
         "and export again");
     }
-    string design = ExportManifest.DesignHash(deck, presentation.Root);
+    string resume = ResumePath(file);
+    ExportManifest? resumed = !fresh && only is null ? ExportManifest.Read(resume) : null;
+    bool fromResume = resumed?.Design == design;
+    if (fromResume)
+    {
+      previous = resumed;
+    }
+    string baseDeck = fromResume ? resume : file;
     // Hashed before anything is uploaded, so a picture replaced during the export is exported again next time.
     Dictionary<string, string> hashes = Items(deck["slides"]).OfType<JsonNode>().ToDictionary(
       slide => Text(Get(slide, "id"))!, slide => ExportManifest.SlideHash(slide, presentation.Root),
@@ -167,7 +169,7 @@ public partial class Exporter
       hashes[slide.Id] = slide.Hash;
     }
     bool incremental = previous?.Design == design;
-    if (incremental && Unchanged(deck, previous!, hashes))
+    if (incremental && !fromResume && Unchanged(deck, previous!, hashes))
     {
       return new ExportReport(file, deck["slides"]!.AsArray().Count, 0, watch.Elapsed,
         previous!.DesignGaps.Concat(previous.Slides.SelectMany(slide => slide.Gaps)).ToHashSet(StringComparer.Ordinal),
@@ -186,14 +188,14 @@ public partial class Exporter
     List<List<string>> passes = Passes(deck, incremental ? previous!.Slides : null, hashes, presentation.Root,
       tools.MostPictures);
     Writable(file);
-    bool edited = ExportManifest.Edited(file);
     DirectoryInfo scratch = Directory.CreateTempSubdirectory("pintura-export-");
     try
     {
+      var workarounds = new Workarounds();
       string start = Path.Combine(scratch.FullName, Path.GetFileName(file));
       if (incremental)
       {
-        File.Copy(file, start);
+        File.Copy(baseDeck, start);
       }
       else
       {
@@ -203,9 +205,11 @@ public partial class Exporter
           source.CopyTo(target);
         }
         Resize(start, Items(deck["size"]).Select(side => Number(side) ?? 0).ToArray());
+        workarounds.Add("slide size: editide's tools can't set slide size, so ppt/presentation.xml is patched directly");
       }
       Describe(start, presentation.Name);
-      Dictionary<string, string> drawn = DrawSvgs(deck, presentation.Root);
+      workarounds.Add("deck metadata: editide's tools can't set title or dates, so docProps/core.xml is patched directly");
+      Dictionary<string, string> drawn = DrawSvgs(deck, presentation.Root, rasterize);
       foreach ((string picture, string source, string key) in pictures)
       {
         if (new FileInfo(drawn.GetValueOrDefault(key, source)).Length > MostPictureBytes)
@@ -219,7 +223,6 @@ public partial class Exporter
       HashSet<string> pending = [.. passes.SelectMany(pass => pass)];
       IReadOnlyList<ExportedSlide>? held = incremental ? previous!.Slides : null;
       IReadOnlyList<string> designGaps = previous?.DesignGaps ?? [];
-      var workarounds = new SortedSet<string>(StringComparer.Ordinal);
       var billed = new ExportBilling(0, 0, 0);
       int calls = 0;
       int reused = 0;
@@ -255,26 +258,39 @@ public partial class Exporter
         {
           Root = presentation.Root
         };
-        if (held is null)
+        try
         {
-          exporter.Translate(part);
+          if (held is null)
+          {
+            exporter.Translate(part);
+          }
+          else
+          {
+            exporter.Update(part, held, designGaps, kept, hashes);
+          }
+          if (index == 0)
+          {
+            reused = exporter.Reused;
+          }
+          calls += counting.Calls;
+          workarounds.AddRange(exporter.Workarounds);
+          billed = new ExportBilling(billed.Slides + exporter.Billed.Slides, billed.Layouts + exporter.Billed.Layouts,
+            billed.Masters + exporter.Billed.Masters);
+          // Saved beside the scratch copy first, so a failed download leaves the last export and its manifest whole.
+          string next = Path.Combine(scratch.FullName, $"pass {index + 1}", Path.GetFileName(file));
+          Directory.CreateDirectory(Path.GetDirectoryName(next)!);
+          session.Save(next);
+          saved = next;
         }
-        else
+        catch (Exception exception)
         {
-          exporter.Update(part, held, designGaps, kept);
+          if (SavePartial(session, exporter, index > 0 ? saved : null, held, designGaps, design, resume, scratch))
+          {
+            throw new InvalidOperationException($"{exception.Message} (partial export saved; re-run to resume)",
+              exception);
+          }
+          throw;
         }
-        if (index == 0)
-        {
-          reused = exporter.Reused;
-        }
-        calls += counting.Calls;
-        workarounds.UnionWith(exporter.Workarounds);
-        billed = new ExportBilling(billed.Slides + exporter.Billed.Slides, billed.Layouts + exporter.Billed.Layouts,
-          billed.Masters + exporter.Billed.Masters);
-        // Saved beside the scratch copy first, so a failed download leaves the last export and its manifest whole.
-        saved = Path.Combine(scratch.FullName, $"pass {index + 1}", Path.GetFileName(file));
-        Directory.CreateDirectory(Path.GetDirectoryName(saved)!);
-        session.Save(saved);
         held = Items(part["slides"]).OfType<JsonNode>()
           .Select(slide => Text(Get(slide, "id"))!)
           .Where(exporter.SlideGaps.ContainsKey)
@@ -285,8 +301,9 @@ public partial class Exporter
       new ExportManifest("", design, designGaps, held!).Write(saved);
       string? aside = edited ? Free(file, "edited in PowerPoint") : null;
       Place(saved, file, aside);
+      ClearResume(resume);
       return new ExportReport(file, deck["slides"]!.AsArray().Count, calls, watch.Elapsed, exporter.Gaps, reused,
-        workarounds)
+        workarounds.Notes)
       {
         Edited = aside,
         Billed = billed
@@ -368,6 +385,9 @@ public partial class Exporter
   /// <paramref name="aside"/>. A deck that can't go there is kept beside it, as it has been billed.</summary>
   private static void Place(string saved, string file, string? aside)
   {
+    string manifest = ExportManifest.PathFor(file);
+    string pendingManifest = $"{manifest}.tmp";
+    File.Copy(ExportManifest.PathFor(saved), pendingManifest, true);
     try
     {
       if (aside is not null)
@@ -380,10 +400,88 @@ public partial class Exporter
     {
       string kept = Free(file, "exported");
       File.Move(saved, kept);
+      try
+      {
+        File.Move(pendingManifest, ExportManifest.PathFor(kept), true);
+      }
+      catch (Exception)
+      {
+        TryDelete(pendingManifest);
+      }
       throw new InvalidOperationException($"can't write {file} ({exception.Message}); the exported deck is at " +
         $"{kept}", exception);
     }
-    File.Move(ExportManifest.PathFor(saved), ExportManifest.PathFor(file), true);
+    try
+    {
+      File.Move(pendingManifest, manifest, true);
+    }
+    catch (Exception)
+    {
+      // Avoid leaving the old manifest beside the new deck, which would mark it as edited in PowerPoint.
+      TryDelete(manifest);
+      TryDelete(pendingManifest);
+      throw;
+    }
+  }
+
+  /// <summary>Best-effort save of whatever slides finished before an error, so the next export resumes incrementally.
+  /// </summary>
+  private static bool SavePartial(IToolSession session, Exporter exporter, string? previousPass,
+    IReadOnlyList<ExportedSlide>? previousSlides, IReadOnlyList<string> previousDesignGaps, string design,
+    string resume, DirectoryInfo scratch)
+  {
+    string staged = Path.Combine(scratch.FullName, "partial.pptx");
+    if (exporter.DesignReady && exporter.DeckState.Any(slide => slide.Hash.Length > 0))
+    {
+      try
+      {
+        session.Save(staged);
+        new ExportManifest("", design, exporter.DesignGaps, exporter.DeckState).Write(staged);
+        Place(staged, resume, null);
+        return true;
+      }
+      catch (Exception)
+      {
+        TryDelete(staged);
+        TryDelete(ExportManifest.PathFor(staged));
+      }
+    }
+    if (previousPass is not null && previousSlides is not null && File.Exists(previousPass))
+    {
+      try
+      {
+        File.Copy(previousPass, staged, true);
+        new ExportManifest("", design, previousDesignGaps, previousSlides).Write(staged);
+        Place(staged, resume, null);
+        return true;
+      }
+      catch (Exception)
+      {
+        TryDelete(staged);
+        TryDelete(ExportManifest.PathFor(staged));
+      }
+    }
+    return false;
+  }
+
+  private static void ClearResume(string resume)
+  {
+    TryDelete(resume);
+    TryDelete(ExportManifest.PathFor(resume));
+  }
+
+  private static void TryDelete(string path)
+  {
+    try
+    {
+      if (File.Exists(path))
+      {
+        File.Delete(path);
+      }
+    }
+    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+    {
+    }
   }
 
   /// <summary>A name beside <paramref name="file"/> no file has yet, labelled, and numbered past the first.</summary>
@@ -416,7 +514,7 @@ public partial class Exporter
   /// were. Refuses a deck it would have to replace: one edited since, one on a design that changed, or one Pintura
   /// didn't export.</summary>
   private static HashSet<string> Narrow(JsonObject deck, string file, SlideSelection only, ExportManifest? previous,
-    string root)
+    bool edited, string design)
   {
     HashSet<string> named = [.. only.Pick(Items(deck["slides"]), slide => Text(Get(slide, "id"))).Select(slide =>
       Text(Get(slide, "id"))!)];
@@ -424,7 +522,7 @@ public partial class Exporter
     if (File.Exists(file))
     {
       string name = Path.GetFileName(file);
-      if (ExportManifest.Edited(file))
+      if (edited)
       {
         throw new InvalidOperationException($"{name} was edited in PowerPoint since its export, which --slides would " +
           "lose; export to a new file, or bring the edits in first, as --diff lists them");
@@ -434,7 +532,7 @@ public partial class Exporter
         throw new InvalidOperationException($"Pintura didn't export {name}, so --slides would replace it; export to " +
           "a new file");
       }
-      if (previous.Design != ExportManifest.DesignHash(deck, root))
+      if (previous.Design != design)
       {
         throw new InvalidOperationException($"the theme or layouts changed since {name}'s export, so its other " +
           "slides can't stay as they were; export every slide, or to a new file");
@@ -469,7 +567,7 @@ public partial class Exporter
 
   /// <summary>Titles the deck as the presentation and dates it now, keeping when an earlier export created it, with no
   /// author, since the deck is the customer's.</summary>
-  public static void Describe(string deck, string title)
+  private static void Describe(string deck, string title)
   {
     XNamespace cp = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
     XNamespace dc = "http://purl.org/dc/elements/1.1/";
@@ -516,7 +614,7 @@ public partial class Exporter
     return tools.Call(tool, Clean(input).AsObject());
   }
 
-  private static JsonNode Clean(JsonNode node)
+  private JsonNode Clean(JsonNode node)
   {
     if (node is JsonObject map)
     {
@@ -525,16 +623,21 @@ public partial class Exporter
       {
         if (value is not null)
         {
-          clean[key] = Clean(value.DeepClone());
+          clean[key] = Clean(value);
+        }
+        else
+        {
+          Workaround("null keys: editide's tools read a missing key rather than null, so nulls are stripped before " +
+            "each call");
         }
       }
       return clean;
     }
     if (node is JsonArray array)
     {
-      return Array(array.Select(item => item is null ? null : Clean(item.DeepClone())));
+      return Array(array.Select(item => item is null ? null : Clean(item)));
     }
-    return node;
+    return node.DeepClone();
   }
 
   #region Values
@@ -710,7 +813,8 @@ public partial class Exporter
     return style;
   }
 
-  // A paragraph or a theme level: its bullet or number, in its own color and size when it sets them.
+  // A paragraph or a theme level: its bullet or number, in its own color when it sets one. The size is always stated,
+  // since the tools build a new paragraph from the one before it and an unstated size keeps that one's.
   public static JsonObject Bullet(JsonNode? paragraph)
   {
     string? character = Text(Get(paragraph, "bullet"));
@@ -718,18 +822,15 @@ public partial class Exporter
     {
       return new JsonObject { ["type"] = "none" };
     }
-    JsonObject result = Numbered().IsMatch(character)
+    JsonObject result = PowerPointVocabulary.Numbered().IsMatch(character)
       ? new JsonObject { ["type"] = "numbered", ["numbering_scheme"] = "arabic_period" }
       : new JsonObject { ["type"] = "character", ["character"] = character };
     if (Truthy(Get(paragraph, "bulletColor")))
     {
       result["color"] = Color(Get(paragraph, "bulletColor"));
     }
-    if (Number(Get(paragraph, "bulletSize")) is double size and not 0)
-    {
-      result["font_size"] = Round(size * 100);
-      result["font_size_is_percentage"] = true;
-    }
+    result["font_size"] = Number(Get(paragraph, "bulletSize")) is double size and not 0 ? Round(size * 100) : 100;
+    result["font_size_is_percentage"] = true;
     return result;
   }
 
@@ -839,9 +940,9 @@ public partial class Exporter
     {
       style["fill"] = Color(Get(properties, "fill"), opacity);
     }
-    else if (opacity is not null)
+    else
     {
-      gaps.Add("opacity on an element with no fill isn't exported");
+      gaps.UnionWith(ExportGaps.OpacityWithoutFill(false, opacity is not null));
     }
     Border(style, properties);
     Effects(style, properties);
@@ -929,15 +1030,13 @@ public partial class Exporter
       case "parallelogram":
         if (Adjust("slant") is double slant)
         {
-          adjustments["adjustment"] = Math.Min(1, slant / width);
-          Workaround("parallelogram slant: the tools' handle name unconfirmed");
+          adjustments["slant"] = Math.Min(1, slant / width);
         }
         break;
       case "trapezoid":
         if (Adjust("slant") is double trapezoidSlant)
         {
-          adjustments["adjustment"] = Math.Min(1, trapezoidSlant / (width / 2));
-          Workaround("trapezoid slant: the tools' handle name unconfirmed");
+          adjustments["slant"] = Math.Min(1, trapezoidSlant / (width / 2));
         }
         break;
       case "triangle":
@@ -951,11 +1050,6 @@ public partial class Exporter
         }
         break;
       case "right_triangle":
-        if (direction != "up")
-        {
-          gaps.Add($"a right triangle facing {direction} exports facing right, as PowerPoint has no such shape and a " +
-            "turn moves its right angle");
-        }
         break;
       case "chevron":
       case "home_plate":
@@ -992,17 +1086,15 @@ public partial class Exporter
         {
           Turned($"right_{shape}", "width");
         }
-        gaps.Add($"a {shape} exports with PowerPoint's curl rather than a quarter of its thickness");
         break;
       case "callout":
         type = "wedge_rectangle_callout";
         // The tools normalize the unbounded tail_x/tail_y handles to ±2147483647.
-        gaps.Add("a callout's tail isn't exported, so it points elsewhere");
         break;
       default:
-        gaps.Add($"a {shape} shape isn't exported");
         break;
     }
+    gaps.UnionWith(ExportGaps.Shape(shape, direction));
     return new Geometry(type, rotation, adjustments, flipVertical);
   }
 
@@ -1135,7 +1227,7 @@ public partial class Exporter
         continue;
       }
       double[] frame = Items(Get(properties, "frame")).Select(side => Number(side) ?? 0).ToArray();
-      double[] own = Intrinsic(file) ?? [frame[2], frame[3]];
+      double[] own = Pictures.Intrinsic(file) ?? [frame[2], frame[3]];
       double scale = SvgPixelsAPoint * Math.Max(frame[2] / own[0], frame[3] / own[1]);
       scale = Math.Min(scale, MostSvgPixels / Math.Max(own[0], own[1]));
       (int Width, int Height) size = ((int)Math.Round(own[0] * scale), (int)Math.Round(own[1] * scale));
@@ -1196,7 +1288,8 @@ public partial class Exporter
   /// <summary>Each SVG picture in each of its fills, keyed by <see cref="Drawing"/>, with a PNG of it, drawn by the
   /// headless browser, since an SVG can carry script and the tools take none. PNGs are kept under the temp folder by
   /// the SVG's hash, fill, and size, so only a new or changed SVG starts the browser.</summary>
-  private static Dictionary<string, string> DrawSvgs(JsonObject deck, string root)
+  private static Dictionary<string, string> DrawSvgs(JsonObject deck, string root,
+    Func<IReadOnlyList<(byte[] Svg, int Width, int Height)>, List<byte[]>>? rasterize = null)
   {
     string cache = Temporary.Folder("pictures");
     var drawn = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -1223,8 +1316,11 @@ public partial class Exporter
     }
     if (missing.Count > 0)
     {
-      List<byte[]> pngs = HeadlessBrowser.Rasterize(missing.Select(picture => (picture.Svg, picture.Width,
-        picture.Height)).ToList()).GetAwaiter().GetResult();
+      List<(byte[] Svg, int Width, int Height)> requests = missing
+        .Select(picture => (picture.Svg, picture.Width, picture.Height)).ToList();
+      List<byte[]> pngs = rasterize is not null
+        ? rasterize(requests)
+        : HeadlessBrowser.Rasterize(requests).GetAwaiter().GetResult();
       Directory.CreateDirectory(cache);
       foreach (((string png, _, _, _), byte[] bytes) in missing.Zip(pngs))
       {
@@ -1232,74 +1328,6 @@ public partial class Exporter
       }
     }
     return drawn;
-  }
-
-  // The picture's own size, for fitting it inside its frame as the preview does.
-  public static double[]? Intrinsic(string file, IFiles? files = null)
-  {
-    byte[] bytes = (files ?? DiskFiles.Instance).ReadAllBytes(file);
-    if (file.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
-    {
-      string text = System.Text.Encoding.UTF8.GetString(bytes);
-      Match box = ViewBox().Match(text);
-      if (box.Success)
-      {
-        return [Parse(box.Groups[1].Value), Parse(box.Groups[2].Value)];
-      }
-      Match width = SvgWidth().Match(text);
-      Match height = SvgHeight().Match(text);
-      return width.Success && height.Success ? [Parse(width.Groups[1].Value), Parse(height.Groups[1].Value)] : null;
-    }
-    if (bytes.Length >= 24 && BinaryPrimitives.ReadUInt32BigEndian(bytes) == 0x89504e47)
-    {
-      return [BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(16)), BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(20))];
-    }
-    if (bytes.Length >= 10 && bytes.AsSpan(0, 3).SequenceEqual("GIF"u8))
-    {
-      return [BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(6)), BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(8))];
-    }
-    if (bytes.Length >= 30 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8))
-    {
-      return WebPSize(bytes);
-    }
-    return bytes.Length >= 4 && bytes[0] == 0xff && bytes[1] == 0xd8 ? JpegSize(bytes) : null;
-  }
-
-  private static double[]? WebPSize(byte[] bytes)
-  {
-    ReadOnlySpan<byte> chunk = bytes.AsSpan(12, 4);
-    if (chunk.SequenceEqual("VP8 "u8))
-    {
-      return [BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(26)) & 0x3fff,
-        BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(28)) & 0x3fff];
-    }
-    if (chunk.SequenceEqual("VP8L"u8))
-    {
-      uint packed = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(21));
-      return [(packed & 0x3fff) + 1, (packed >> 14 & 0x3fff) + 1];
-    }
-    if (chunk.SequenceEqual("VP8X"u8))
-    {
-      return [(bytes[24] | bytes[25] << 8 | bytes[26] << 16) + 1, (bytes[27] | bytes[28] << 8 | bytes[29] << 16) + 1];
-    }
-    return null;
-  }
-
-  /// <summary>A JPEG's size, from the first start-of-frame segment; markers C4, C8, and CC share the range but
-  /// aren't frames.</summary>
-  private static double[]? JpegSize(byte[] bytes)
-  {
-    int at = 2;
-    while (at + 9 <= bytes.Length && bytes[at] == 0xff)
-    {
-      byte marker = bytes[at + 1];
-      if (marker is >= 0xc0 and <= 0xcf and not 0xc4 and not 0xc8 and not 0xcc)
-      {
-        return [BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(at + 7)), BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(at + 5))];
-      }
-      at += 2 + BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(at + 2));
-    }
-    return null;
   }
 
   private static double Parse(string text)
@@ -1333,39 +1361,21 @@ public partial class Exporter
     (string name, string source) = media(Text(Get(properties, "picture"))!, fill);
     double[] frame = Items(Get(properties, "frame")).Select(side => Number(side) ?? 0).ToArray();
     string? fit = Text(Get(properties, "fit"));
+    double[]? intrinsic = Pictures.Intrinsic(source);
     if (fit == "contain")
     {
-      frame = Contain(frame, Intrinsic(source));
+      frame = Contain(frame, intrinsic);
     }
-    else if (fit == "cover")
-    {
-      // The tools write no a:srcRect.
-      gaps.Add("fit: cover needs a crop, which isn't exported");
-    }
-    if (Truthy(Get(properties, "crop")))
-    {
-      gaps.Add("picture crop isn't exported");
-    }
-    if (Truthy(Get(properties, "alt")))
-    {
-      gaps.Add("picture alt text isn't exported");
-    }
-    if (Truthy(Get(properties, "link")))
-    {
-      gaps.Add("picture links aren't exported");
-    }
+    gaps.UnionWith(ExportGaps.Picture(fit == "cover", Truthy(Get(properties, "crop")), Truthy(Get(properties, "alt")),
+      Truthy(Get(properties, "link")), Get(properties, "opacity") is not null));
     JsonObject placed = Box(frame);
     var element = new JsonObject
     {
       ["uri"] = name,
       ["position"] = placed["position"]!.DeepClone(),
       ["size"] = placed["size"]!.DeepClone(),
-      ["lock_aspect_ratio"] = LocksAspect(frame, Intrinsic(source))
+      ["lock_aspect_ratio"] = LocksAspect(frame, intrinsic)
     };
-    if (Get(properties, "opacity") is not null)
-    {
-      gaps.Add("picture opacity isn't exported");
-    }
     var style = new JsonObject();
     Border(style, properties);
     Effects(style, properties);
@@ -1408,21 +1418,14 @@ public partial class Exporter
       scale *= 1000;
       commas += ",";
     }
-    if (Math.Abs(scale - 1) > 1e-9)
-    {
-      gaps.Add($"a chart's format scale of {Number(Get(format, "scale"))?.ToString(CultureInfo.InvariantCulture)} " +
-        "isn't exported, as PowerPoint scales only by thousands, or by a hundred as a percent");
-    }
+    gaps.UnionWith(ExportGaps.Format(Number(Get(format, "scale")), Text(Get(format, "suffix")),
+      Truthy(Get(format, "negativeColor")), null));
     static string Quote(string? text) => string.IsNullOrEmpty(text) ? "" : $"\"{text.Replace("\"", "")}\"";
     int decimals = (int)(Number(Get(format, "decimals")) ?? 0);
     bool separator = Get(format, "separator") is not JsonNode flag || Truthy(flag);
     string digits = (separator ? "#,##0" : "0") + (decimals != 0 ? $".{new string('0', decimals)}" : "");
     string positive = $"{Quote(Text(Get(format, "prefix")))}{digits}{commas}" +
       (percent.Length > 0 ? percent : Quote(Text(Get(format, "suffix"))));
-    if (Truthy(Get(format, "negativeColor")))
-    {
-      gaps.Add("a chart's negative_style isn't exported, as PowerPoint colors negatives only from a fixed palette");
-    }
     return (Text(Get(format, "negative")) ?? "parentheses") == "parentheses" ? $"{positive};({positive})" : positive;
   }
 
@@ -1452,7 +1455,7 @@ public partial class Exporter
     }
     if (Get(Formats, name) is not JsonNode format)
     {
-      gaps.Add($"a chart's format {name} isn't in the theme, so its numbers export unformatted");
+      gaps.Add(ExportGaps.UnknownFormat(name));
       return null;
     }
     return NumberFormat(format);
@@ -1531,6 +1534,8 @@ public partial class Exporter
     List<JsonNode?> categories = Items(Get(properties, "categories"));
     if (bar)
     {
+      Workaround("bar chart order: editide's tools have no reversed category axis (c:orientation maxMin), so bar " +
+        "categories and clustered series are reversed");
       categories.Reverse();
     }
     List<Series> series = Items(Get(properties, "series")).Select((entry, index) =>
@@ -1779,8 +1784,7 @@ public partial class Exporter
             string runs = "default_text_style_for_all_runs";
             if (seriesLabels is null || !JsonNode.DeepEquals(own[runs], seriesLabels[runs]))
             {
-              gaps.Add("a waterfall point's label in a color or boldness of its own exports in its series', as " +
-                "editide can't yet style one waterfall label");
+              gaps.Add(ExportGaps.WaterfallPointLabel);
             }
             byIndex.Add(label);
             continue;
@@ -1814,13 +1818,14 @@ public partial class Exporter
       {
         if (point < series[index].Values.Count && series[index].Values[point] is JsonNode number)
         {
-          values[$"{index}:{Label(Get(series[index].Entry, "name"))}"] = number.DeepClone();
+          values[PowerPointVocabulary.ChartDataKey(index, Label(Get(series[index].Entry, "name")))] = number.DeepClone();
         }
       }
-      data[$"{point}:{Label(categories[point])}"] = values;
+      data[PowerPointVocabulary.ChartDataKey(point, Label(categories[point]))] = values;
     }
 
     JsonObject element = Box(Get(properties, "frame"));
+    gaps.UnionWith(ExportGaps.PlotInsets(Get(properties, "plot.insets") is not null));
     element["series_list"] = seriesList;
     element["chart_data"] = data;
     if (waterfall)
@@ -1881,12 +1886,7 @@ public partial class Exporter
       JsonObject Axis(string name, bool percent)
       {
         var result = new JsonObject { ["labels_text_style"] = text.DeepClone() };
-        if (Truthy(Get(properties, $"{name}.reverse")))
-        {
-          // No field for a reversed value axis (c:orientation maxMin).
-          gaps.Add($"a reversed {(name == "value_axis" ? "value" : "secondary")} axis isn't exported, " +
-            "so it runs bottom up in PowerPoint");
-        }
+        gaps.UnionWith(ExportGaps.ReversedAxis(name, Truthy(Get(properties, $"{name}.reverse"))));
         if (IsFalse(Get(properties, $"{name}.visible")))
         {
           result["is_deleted"] = true;
@@ -2107,7 +2107,7 @@ public partial class Exporter
   #region Slides
 
   // Elements for one edit, in the order Pintura draws them, each at its slot when given one.
-  private JsonObject Elements(IEnumerable<JsonNode> items, int start, Func<int, int>? slot = null)
+  private JsonObject Elements(IEnumerable<JsonNode> items, int start, Func<int, int>? slot = null, bool onSlide = false)
   {
     var edit = new JsonObject();
     int z = start;
@@ -2143,9 +2143,11 @@ public partial class Exporter
         {
           element["wrap_text"] = false;
         }
-        if ((Number(Get(properties, "columns")) is double columns and not 0 ? columns : 1) > 1)
+        gaps.UnionWith(ExportGaps.TextColumns(Number(Get(properties, "columns")) is double columns and not 0 ? columns : 1));
+        if (onSlide && Text(Get(item, "role")) is null && Items(Get(item, "paragraphs")).Any(paragraph =>
+          Items(Get(paragraph, "runs")).Any(run => Text(Get(run, "field")) == "slide")))
         {
-          gaps.Add("text columns aren't exported");
+          gaps.Add(ExportGaps.SlideNumberOnSlide);
         }
       }
       else if (kind == "shape")
@@ -2200,7 +2202,7 @@ public partial class Exporter
   // to 3 are PowerPoint's 2 to 4.
   public static JsonObject MasterStyles(JsonNode theme)
   {
-    JsonNode? title = Get(Items(Get(Get(theme, "title"), "paragraphs"))[0], "properties");
+    JsonNode? title = Get(Items(Get(Get(theme, "title"), "paragraphs")).FirstOrDefault(), "properties");
     JsonObject Flush(JsonObject style)
     {
       style["margin_left"] = 0;
@@ -2269,7 +2271,7 @@ public partial class Exporter
   private static JsonObject Placeholder(JsonNode item, string role, JsonNode? masterBase, string prompt)
   {
     JsonNode? properties = Get(item, "properties");
-    JsonNode? paragraph = Get(Items(Get(item, "paragraphs"))[0], "properties");
+    JsonNode? paragraph = Get(Items(Get(item, "paragraphs")).FirstOrDefault(), "properties");
     JsonObject entry = Box(Get(properties, "frame"));
     var placeholder = new JsonObject
     {
@@ -2307,8 +2309,9 @@ public partial class Exporter
   }
 
   // The tools build each new paragraph by cloning the one before it, runs and all, and refuses runs_to_delete in the
-  // same add, so the clones' leftover runs come off in a second edit.
-  private void Unclone(JsonObject address, JsonObject edit)
+  // same add, so the clones' leftover runs come off in a second edit. Tables are found again by their z-index, the only
+  // thing an add lets the replay choose, and take the row settings an add ignores in the same edit.
+  private void FixUp(JsonObject address, JsonObject edit)
   {
     var extras = new Dictionary<int, JsonArray>();
     foreach (JsonNode? element in Items(edit["text_elements_to_add"]))
@@ -2333,50 +2336,46 @@ public partial class Exporter
         extras[(int)element["position"]!["z_index"]!] = deletes;
       }
     }
-    if (extras.Count == 0)
+    Dictionary<int, JsonArray> tables = new Dictionary<int, JsonArray>(tableFixes);
+    tableFixes.Clear();
+    if (extras.Count == 0 && tables.Count == 0)
     {
       return;
     }
-    Workaround("new paragraphs clone the previous paragraph's runs, and runs_to_delete in the same add drops the " +
-      "element, so leftover runs take a second edit");
+    if (extras.Count > 0)
+    {
+      Workaround("new paragraphs clone the previous paragraph's runs, and runs_to_delete in the same add drops the " +
+        "element, so leftover runs take a second edit");
+    }
     JsonNode? read = Call("read_slide", address.DeepClone().AsObject());
-    JsonArray fixes = Array(Items(Get(read, "text_elements"))
-      .Where(element => Get(element, "id") is not null &&
-        extras.ContainsKey((int)(Number(Get(Get(element, "position"), "z_index")) ?? -1)))
+    int Z(JsonNode? element) => (int)(Number(Get(Get(element, "position"), "z_index")) ?? -1);
+    JsonArray texts = Array(Items(Get(read, "text_elements"))
+      .Where(element => Get(element, "id") is not null && extras.ContainsKey(Z(element)))
       .Select(element => (JsonNode?)new JsonObject
       {
         ["id"] = element!["id"]!.DeepClone(),
-        ["text_component"] = new JsonObject
-        {
-          ["paragraph_list"] = extras[(int)Number(element["position"]!["z_index"])!].DeepClone()
-        }
+        ["text_component"] = new JsonObject { ["paragraph_list"] = extras[Z(element)].DeepClone() }
       }));
-    if (fixes.Count > 0)
-    {
-      Call("edit_slide", With(address, "slide", new JsonObject { ["text_elements"] = fixes }));
-    }
-  }
-
-  // Tables are found again by their z-index, the only thing an add lets the replay choose.
-  private void FixTables(JsonObject address)
-  {
-    if (tableFixes.Count == 0)
-    {
-      return;
-    }
-    JsonNode? read = Call("read_slide", address.DeepClone().AsObject());
-    JsonArray fixes = Array(Items(Get(read, "table_elements"))
-      .Where(element => tableFixes.ContainsKey((int)(Number(Get(Get(element, "position"), "z_index")) ?? -1)))
+    JsonArray grids = Array(Items(Get(read, "table_elements"))
+      .Where(element => tables.ContainsKey(Z(element)))
       .Select(element => (JsonNode?)new JsonObject
       {
         ["id"] = element!["id"]?.DeepClone(),
         ["side_effect_handling"] = "lazy",
-        ["rows"] = tableFixes[(int)Number(element["position"]!["z_index"])!].DeepClone()
+        ["rows"] = tables[Z(element)].DeepClone()
       }));
-    tableFixes.Clear();
+    var fixes = new JsonObject();
+    if (texts.Count > 0)
+    {
+      fixes["text_elements"] = texts;
+    }
+    if (grids.Count > 0)
+    {
+      fixes["table_elements"] = grids;
+    }
     if (fixes.Count > 0)
     {
-      Call("edit_slide", With(address, "slide", new JsonObject { ["table_elements"] = fixes }));
+      Call("edit_slide", With(address, "slide", fixes));
     }
   }
 
@@ -2387,7 +2386,7 @@ public partial class Exporter
     var fill = new JsonObject
     {
       ["id"] = id.DeepClone(),
-      ["text_component"] = TextComponent(item, Get(Items(Get(placeholder, "paragraphs"))[0], "properties"))
+      ["text_component"] = TextComponent(item, Get(Items(Get(placeholder, "paragraphs")).FirstOrDefault(), "properties"))
     };
     JsonNode? frame = Get(Get(item, "properties"), "frame");
     if (frame is not null && !Same(frame, Get(Get(placeholder, "properties"), "frame")))
@@ -2400,10 +2399,19 @@ public partial class Exporter
     return fill;
   }
 
-  private static bool Near(JsonNode? position, JsonNode? frame)
+  private static bool Near(JsonNode? position, JsonNode? size, JsonNode? frame)
   {
-    return Math.Abs((Number(Get(position, "left")) ?? 0) - (Number(frame?[0]) ?? 0)) < 0.5 &&
-      Math.Abs((Number(Get(position, "top")) ?? 0) - (Number(frame?[1]) ?? 0)) < 0.5;
+    if (Math.Abs((Number(Get(position, "left")) ?? 0) - (Number(frame?[0]) ?? 0)) >= 0.5 ||
+      Math.Abs((Number(Get(position, "top")) ?? 0) - (Number(frame?[1]) ?? 0)) >= 0.5)
+    {
+      return false;
+    }
+    if (size is not null && frame is JsonArray array && array.Count >= 4)
+    {
+      return Math.Abs((Number(Get(size, "width")) ?? 0) - (Number(array[2]) ?? 0)) < 0.5 &&
+        Math.Abs((Number(Get(size, "height")) ?? 0) - (Number(array[3]) ?? 0)) < 0.5;
+    }
+    return true;
   }
 
   private static JsonNode WithSection(JsonNode item, JsonNode slide)
@@ -2451,23 +2459,15 @@ public partial class Exporter
     mastersWritten = 1;
     layoutsWritten = design.Layouts.Count;
     JsonNode theme = deck["theme"]!;
-    string themeName = Text(Call("list_slide_layouts", new JsonObject())![0]!["theme_name"])!;
-    // Office's layouts would collide with Pintura's names, so all but the first slide's go before any are made.
-    List<JsonNode?> office = Items(Call("list_slide_layouts", new JsonObject())![0]!["layouts"]);
-    string kept = Text(office.First(layout => Items(Get(layout, "slides")).Count > 0)!["name"])!;
-    foreach (JsonNode? layout in office.Where(candidate => Text(Get(candidate, "name")) != kept))
-    {
-      Call("delete_layout", new JsonObject
-      {
-        ["layout_name"] = Get(layout, "name")!.DeepClone(),
-        ["theme_name"] = themeName
-      });
-    }
+    // The blank deck holds one master and the one layout its one slide uses, which go once Pintura's are made.
+    JsonNode office = Call("list_slide_layouts", new JsonObject())![0]!;
+    string themeName = Text(office["theme_name"])!;
+    string kept = Text(Items(office["layouts"]).Single()!["name"])!;
 
     var colors = new JsonObject();
     foreach ((string name, JsonNode? hex) in Get(theme, "colors") as JsonObject ?? new JsonObject())
     {
-      colors[name == "followed_hyperlink" ? "folHlink" : Scheme.GetValueOrDefault(name, name)] = hex?.DeepClone();
+      colors[PowerPointVocabulary.ToThemeColorSlot(name)] = hex?.DeepClone();
     }
     Call("edit_theme", new JsonObject
     {
@@ -2541,6 +2541,8 @@ public partial class Exporter
       }
       if (pages.Count > 0)
       {
+        Workaround("slide number: editide's tools write a slide-number field only into placeholders, so a ${slide}-only " +
+          "box becomes a slide_number placeholder");
         edit["header_footer"] = new JsonObject { ["slide_number"] = true };
       }
       foreach ((string key, JsonNode? value) in Elements(drawn.Where(item => !IsPageNumber(item)), adds.Count)
@@ -2550,12 +2552,13 @@ public partial class Exporter
       }
       var address = new JsonObject { ["layout_name"] = name, ["target"] = "layout" };
       Call("edit_slide", With(address, "slide", edit));
-      Unclone(address, edit);
-      FixTables(address);
+      FixUp(address, edit);
     }
     DesignGaps = gaps.ToList();
+    DesignReady = true;
 
-    int count = Call("list_slides", new JsonObject()) is JsonArray existing ? existing.Count : 1;
+    int count = 1;
+    deckSlides = Enumerable.Range(0, count).Select(_ => new ExportedSlide("", "", [])).ToList();
     foreach (JsonNode? slide in Items(deck["slides"]))
     {
       if (Loaded(slide!))
@@ -2566,6 +2569,10 @@ public partial class Exporter
     }
 
     Call("delete_slides", new JsonObject { ["slide_indices"] = new JsonArray(1) });
+    if (deckSlides.Count > 0)
+    {
+      deckSlides.RemoveAt(0);
+    }
     Call("delete_layout", new JsonObject { ["layout_name"] = kept, ["theme_name"] = themeName });
     Sections(deck, false);
   }
@@ -2576,17 +2583,24 @@ public partial class Exporter
   /// <paramref name="kept"/> names those to leave as they were, whatever their hash.
   /// </summary>
   public void Update(JsonObject deck, IReadOnlyList<ExportedSlide> previous, IReadOnlyList<string> designGaps,
-    IReadOnlySet<string>? kept = null)
+    IReadOnlySet<string>? kept = null, IReadOnlyDictionary<string, string>? precomputedHashes = null)
   {
     Design design = Prepare(deck);
     gaps.UnionWith(designGaps);
     DesignGaps = gaps.ToList();
+    DesignReady = true;
+    deckSlides = previous.ToList();
     List<JsonNode> slides = Items(deck["slides"]).OfType<JsonNode>().Where(Loaded).ToList();
-    Dictionary<string, string> hashes = slides.ToDictionary(slide => Text(Get(slide, "id"))!,
-      slide => ExportManifest.SlideHash(slide, Root), StringComparer.Ordinal);
-    foreach (ExportedSlide slide in previous.Where(slide => kept?.Contains(slide.Id) == true))
+    Dictionary<string, string> hashes = precomputedHashes is not null
+      ? new Dictionary<string, string>(precomputedHashes, StringComparer.Ordinal)
+      : slides.ToDictionary(slide => Text(Get(slide, "id"))!,
+          slide => ExportManifest.SlideHash(slide, Root), StringComparer.Ordinal);
+    if (precomputedHashes is null)
     {
-      hashes[slide.Id] = slide.Hash;
+      foreach (ExportedSlide slide in previous.Where(slide => kept?.Contains(slide.Id) == true))
+      {
+        hashes[slide.Id] = slide.Hash;
+      }
     }
     // The deck's slides as they stand, by id, with a null for one that changed or went.
     List<string?> current = previous
@@ -2600,7 +2614,14 @@ public partial class Exporter
         ["slide_indices"] = Array(current.Select((id, index) => (id, index)).Where(slide => slide.id is null)
           .Select(slide => (JsonNode?)(slide.index + 1)))
       });
-      current.RemoveAll(id => id is null);
+      for (int remove = current.Count - 1; remove >= 0; remove--)
+      {
+        if (current[remove] is null)
+        {
+          current.RemoveAt(remove);
+          deckSlides.RemoveAt(remove);
+        }
+      }
     }
     for (int position = 0; position < slides.Count; position++)
     {
@@ -2621,6 +2642,9 @@ public partial class Exporter
         Call("move_slide", new JsonObject { ["from_index"] = at + 1, ["to_index"] = position + 1 });
         current.RemoveAt(at);
         current.Insert(position, id);
+        ExportedSlide moved = deckSlides[at];
+        deckSlides.RemoveAt(at);
+        deckSlides.Insert(position, moved);
       }
     }
     if (current.Count > slides.Count)
@@ -2630,6 +2654,22 @@ public partial class Exporter
         ["slide_indices"] = Array(Enumerable.Range(slides.Count + 1, current.Count - slides.Count)
           .Select(index => (JsonNode?)index))
       });
+      deckSlides.RemoveRange(slides.Count, current.Count - slides.Count);
+    }
+    if (previous.Any(slide => slide.Id.Length == 0))
+    {
+      // Resuming a partial Translate leaves blank.pptx's initial layout until its placeholder slide is gone.
+      JsonNode? office = Call("list_slide_layouts", new JsonObject())?[0];
+      if (office is not null && Text(office["theme_name"]) is string themeName)
+      {
+        foreach (JsonNode? layout in Items(office["layouts"]))
+        {
+          if (Text(layout?["name"]) is string name && !design.Defined.ContainsKey(name))
+          {
+            Call("delete_layout", new JsonObject { ["layout_name"] = name, ["theme_name"] = themeName });
+          }
+        }
+      }
     }
     Sections(deck, true);
   }
@@ -2656,18 +2696,7 @@ public partial class Exporter
         sections.Add(new JsonObject { ["name"] = names[index] ?? DefaultSection, ["first_slide"] = index + 1 });
       }
     }
-    try
-    {
-      Call("edit_sections", new JsonObject { ["sections"] = sections });
-    }
-    catch (InvalidOperationException error) when (error.Message.Contains("Unknown tool"))
-    {
-      Workaround("sections: editide before 1.0.7 has no edit_sections");
-      if (named)
-      {
-        gaps.Add("sections aren't exported, as this editide has no edit_sections");
-      }
-    }
+    Call("edit_sections", new JsonObject { ["sections"] = sections });
   }
 
   /// <summary>Whether a slide loaded, keeping why not as a gap when it didn't.</summary>
@@ -2697,6 +2726,8 @@ public partial class Exporter
         add["slide_index"] = index;
       }
       Call("add_slide", add);
+      int slot = Math.Min(index - 1, deckSlides.Count);
+      deckSlides.Insert(slot, new ExportedSlide("", "", []));
       JsonNode? read = Call("read_slide", new JsonObject { ["slide_index"] = index });
       List<JsonNode?> holders = Items(Get(read, "text_elements"))
         .Where(element => Truthy(Get(element, "is_placeholder"))).ToList();
@@ -2721,7 +2752,9 @@ public partial class Exporter
         JsonNode? target = holders.FirstOrDefault(element => !used.Contains(Get(element, "id")!.ToJsonString()) &&
           (role == "title"
             ? Text(Get(Get(element, "placeholder"), "role")) == "title"
-            : Near(Get(element, "position"), frame)));
+            : Near(Get(element, "position"), Get(element, "size"), frame)))
+          ?? (role == "title" ? null : holders.FirstOrDefault(element =>
+            !used.Contains(Get(element, "id")!.ToJsonString()) && Near(Get(element, "position"), null, frame)));
         if (target is null)
         {
           gaps.Add($"slide {Text(Get(slide, "id"))}: no placeholder on the slide for {Text(Get(item, "id"))}");
@@ -2758,8 +2791,7 @@ public partial class Exporter
       foreach (string id in Items(Get(slide, "hide")).Select(Text).OfType<string>()
         .Where(id => drawnByLayout.Any(item => Text(Get(item, "id")) == id && !IsPageNumber(item))))
       {
-        gaps.Add($"slide {Text(Get(slide, "id"))} hides {id}, which PowerPoint shows, as a slide can't leave out one " +
-          "of its layout's shapes");
+        gaps.Add(ExportGaps.HiddenLayoutElement(Text(Get(slide, "id")) ?? "", id));
       }
       if (unused.Count > 0)
       {
@@ -2784,18 +2816,20 @@ public partial class Exporter
         int element = index - sections.Count;
         return start + element + raised.Count(entry => entry.Over <= element);
       }
-      foreach ((string key, JsonNode? value) in Elements(sections.Concat(own), used.Count, Slot).ToList())
+      foreach ((string key, JsonNode? value) in Elements(sections.Concat(own), used.Count, Slot, onSlide: true).ToList())
       {
         edit[key] = value?.DeepClone();
       }
       var address = new JsonObject { ["slide_index"] = index };
       Call("edit_slide", With(address, "slide", edit));
-      Unclone(address, edit);
-      FixTables(address);
+      FixUp(address, edit);
+      string slideId = Text(Get(slide, "id"))!;
+      List<string> ownGaps = gaps.ToList();
+      SlideGaps[slideId] = ownGaps;
+      deckSlides[slot] = new ExportedSlide(slideId, ExportManifest.SlideHash(slide, Root), ownGaps);
     }
     finally
     {
-      SlideGaps[Text(Get(slide, "id"))!] = gaps.ToList();
       deckGaps.UnionWith(gaps);
       gaps = deckGaps;
     }
@@ -2840,20 +2874,8 @@ public partial class Exporter
 
   }
 
-  [GeneratedRegex(@"^\d+\.$")]
-  private static partial Regex Numbered();
-
   [GeneratedRegex(@"Y+|M+|D+|[^YMD]")]
   private static partial Regex DateTokens();
-
-  [GeneratedRegex(@"viewBox=""\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)")]
-  private static partial Regex ViewBox();
-
-  [GeneratedRegex(@"\bwidth=""([\d.]+)")]
-  private static partial Regex SvgWidth();
-
-  [GeneratedRegex(@"\bheight=""([\d.]+)")]
-  private static partial Regex SvgHeight();
 
 
 }

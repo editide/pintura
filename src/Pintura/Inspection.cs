@@ -22,7 +22,23 @@ public record ElementEntry(
   string? Text,
   string Origin);
 
-public record PropertyEntry(string Key, object Value, string Display, string? Origin);
+/// <summary>Structured provenance of a value, so the page doesn't have to parse <see cref="Origin.ToString"/> back
+/// out.</summary>
+public record OriginInfo(string File, int? Line, string? Key)
+{
+  public static OriginInfo From(Origin origin)
+  {
+    return new OriginInfo(origin.File, origin.Line > 0 ? origin.Line : null,
+      origin.Path.Length > 0 ? origin.Path : null);
+  }
+}
+
+/// <summary>Pre-formatted display of a property value for the inspector, with swatch hexes and an optional note.
+/// </summary>
+public record DisplayInfo(string Text, List<string>? Colors = null, string? Note = null);
+
+public record PropertyEntry(string Key, object Value, string Display, string? Origin, OriginInfo? Source = null,
+  DisplayInfo? Shown = null);
 
 public record ParagraphEntry(
   int Number,
@@ -46,7 +62,8 @@ public record ElementDetail(
   string Origin,
   List<PropertyEntry> Properties,
   List<ParagraphEntry>? Paragraphs,
-  List<CellEntry>? Cells = null);
+  List<CellEntry>? Cells = null,
+  OriginInfo? Source = null);
 
 /// <summary>A table cell, or a merge from its first cell, with what differs from the table's base text.</summary>
 public record CellEntry(
@@ -81,7 +98,7 @@ public static class HeadlessRunner
       HeadlessCommand.Outline => Outline.Write(presentation, json, output, only),
       HeadlessCommand.Slide => Slide(presentation, slide!, json, output),
       HeadlessCommand.Element => Element(presentation, slide!, element!, json, output),
-      HeadlessCommand.Export => Export(presentation, output),
+      HeadlessCommand.ExportJson => Export(presentation, output),
       HeadlessCommand.Comments => CommentList.Write(presentation, json, output, only),
       HeadlessCommand.Resolve => Resolve(presentation, ids!, output),
       HeadlessCommand.Picks => PickList.Write(presentation, json, output),
@@ -121,7 +138,7 @@ public static class HeadlessRunner
   {
     return presentation.Offered
       .Select(slide => new SlideEntry(slide.Number, slide.Id, slide.Error is null ? slide.Layout : null,
-        slide.Error is null ? PayloadBuilder.Title(presentation, slide) : null, slide.Section, slide.Error?.Message,
+        slide.Error is null ? SceneBuilder.Title(presentation, slide) : null, slide.Section, slide.Error?.Message,
         slide.Pick))
       .ToList();
   }
@@ -314,12 +331,12 @@ public static class HeadlessRunner
       : Paragraphs(item.Paragraphs, item.Properties, theme);
     List<CellEntry>? cells = item.Table?.Cells
       .Select(cell => new CellEntry(cell.Row, cell.Column, cell.Rows, cell.Columns,
-        string.Join(" / ", cell.Paragraphs.Select(paragraph => string.Concat(paragraph.Runs.Select(run => run.Text)))),
+        string.Join(" / ", cell.Paragraphs.Select(paragraph => paragraph.PlainText)),
         Differences(cell.Properties, item.Properties, theme), Paragraphs(cell.Paragraphs, cell.Properties, theme),
         cell.Trace))
       .ToList();
     return new ElementDetail(slide.Id, item.Id, item.Owner, item.Kind, item.Role, item.Origin.ToString(), box,
-      paragraphs, cells);
+      paragraphs, cells, OriginInfo.From(item.Origin));
   }
 
   /// <summary>Each paragraph with what differs from its box, and its runs with what differs from the paragraph.
@@ -346,7 +363,7 @@ public static class HeadlessRunner
           Differences(run.Properties, paragraph.Properties, theme)))
         .Where(run => run.Properties.Count > 0 || run.Field is not null || paragraph.Runs.Count > 1)
         .ToList();
-      paragraphs.Add(new ParagraphEntry(index + 1, string.Concat(paragraph.Runs.Select(run => run.Text)),
+      paragraphs.Add(new ParagraphEntry(index + 1, paragraph.PlainText,
         paragraph.Level, paragraph.Style, own, runs));
     }
     return paragraphs;
@@ -382,7 +399,80 @@ public static class HeadlessRunner
       List<Color> colors => colors.Select(color => color.ToString()).ToList(),
       _ => resolved.Value
     };
-    return new PropertyEntry(key, value, Display(key, resolved.Value, theme), resolved.Origin?.ToString());
+    return new PropertyEntry(key, value, Display(key, resolved.Value, theme), resolved.Origin?.ToString(),
+      resolved.Origin is Origin origin ? OriginInfo.From(origin) : null, Shown(key, resolved.Value, theme));
+  }
+
+  private static DisplayInfo? Shown(string key, object value, Theme theme)
+  {
+    switch (value)
+    {
+      case Color { IsNone: true }:
+        return new DisplayInfo("None");
+      case Color color:
+        string hex = color.Hex ?? ColorMath.Resolve(color, theme);
+        return new DisplayInfo(ColorLabel(color.ToString()), [hex]);
+      case List<Color> colors:
+      {
+        var hexes = new List<string>(colors.Count);
+        var names = new List<string>(colors.Count);
+        foreach (Color entry in colors)
+        {
+          if (entry.IsNone)
+          {
+            names.Add("None");
+          }
+          else
+          {
+            hexes.Add(entry.Hex ?? ColorMath.Resolve(entry, theme));
+            names.Add(ColorLabel(entry.ToString()));
+          }
+        }
+        return new DisplayInfo(string.Join(", ", names), hexes.Count > 0 ? hexes : null);
+      }
+      case Frame frame when key == "frame" && frame.Rect.Length == 4:
+        return new DisplayInfo(
+          $"{Number(frame.Rect[0])}, {Number(frame.Rect[1])} · {Number(frame.Rect[2])} × {Number(frame.Rect[3])} pt",
+          Note: frame.Area is null ? null : $"{Words(frame.Area)} area");
+      case double[] numbers when key is "insets" or "plot.insets" && numbers.Length == 4:
+      {
+        string left = Number(numbers[0]);
+        string top = Number(numbers[1]);
+        string right = Number(numbers[2]);
+        string bottom = Number(numbers[3]);
+        string text = left == right && top == bottom
+          ? (left == top ? $"{left} pt" : $"{left} pt sides, {top} pt top and bottom")
+          : $"Left {left}, top {top}, right {right}, bottom {bottom} pt";
+        return new DisplayInfo(text);
+      }
+      case double[] numbers when key is "from" or "to" && numbers.Length == 2:
+        return new DisplayInfo($"{Number(numbers[0])}, {Number(numbers[1])} pt");
+      case string font when key == "font" && theme.Fonts.TryGetValue(font, out string? family):
+        return new DisplayInfo(family, Note: $"{Words(font)} font");
+      case bool flag:
+        return new DisplayInfo(flag ? "Yes" : "No");
+      default:
+        return null;
+    }
+  }
+
+  private static string Words(string text)
+  {
+    string spaced = text.Replace('_', ' ');
+    return spaced.Length == 0 ? spaced : char.ToUpperInvariant(spaced[0]) + spaced[1..];
+  }
+
+  private static string ColorLabel(string name)
+  {
+    if (name.StartsWith('#'))
+    {
+      return name;
+    }
+    int space = name.IndexOf(' ');
+    string baseName = space < 0 ? name : name[..space];
+    string suffix = space < 0 ? "" : name[space..];
+    string label = Regex.Replace(baseName.Replace('_', ' '), @"([a-z])(\d)", "$1 $2");
+    return (label.Length == 0 ? label : char.ToUpperInvariant(label[0]) + label[1..]) + suffix;
   }
 
   private static string Display(string key, object value, Theme theme)
@@ -450,7 +540,7 @@ public static class HeadlessRunner
 
   private static string PlainText(List<SceneParagraph> paragraphs)
   {
-    return string.Join(" / ", paragraphs.Select(paragraph => string.Concat(paragraph.Runs.Select(run => run.Text)))
+    return string.Join(" / ", paragraphs.Select(paragraph => paragraph.PlainText)
       .Where(text => text.Length > 0));
   }
 

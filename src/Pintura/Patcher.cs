@@ -62,44 +62,29 @@ public static partial class Patcher
   /// </summary>
   public const char FieldMark = '￼';
 
-  private static readonly byte[] ByteOrderMark = [0xEF, 0xBB, 0xBF];
-  private static readonly object FileGate = new object();
-
-  public static List<ValueEdit> ApplyToFile(string path, IReadOnlyList<ValueEdit> edits, MarkupContext context)
+  public static List<ValueEdit> ApplyToFile(string path, IReadOnlyList<ValueEdit> edits, MarkupContext context,
+    FileTransaction? transaction = null)
   {
-    return Rewrite(path, text =>
+    return Rewrite(path, transaction, text =>
     {
       Patched patched = Apply(text, edits, context);
       return (patched.Text, patched.Undo);
     });
   }
 
-  public static SlideMove? MoveInFile(string path, SlideMove move)
+  public static SlideMove? MoveInFile(string path, SlideMove move, FileTransaction? transaction = null)
   {
-    return Rewrite(path, text => Move(text, move));
+    return Rewrite(path, transaction, text => Move(text, move));
   }
 
-  private static T Rewrite<T>(string path, Func<string, (string Text, T Undo)> patch)
+  private static T Rewrite<T>(string path, FileTransaction? transaction, Func<string, (string Text, T Undo)> patch)
   {
-    lock (FileGate)
+    lock (Files.Gate)
     {
-      byte[] bytes = File.ReadAllBytes(path);
-      bool marked = bytes.AsSpan().StartsWith(ByteOrderMark);
-      string text = Encoding.UTF8.GetString(marked ? bytes[3..] : bytes);
+      FileTransaction files = transaction ?? new FileTransaction();
+      string text = files.Read(path) ?? throw new FileNotFoundException($"Could not find file '{path}'.", path);
       (string patched, T undo) = patch(text);
-      patched = KeepLineEndings(text, patched);
-      if (patched == text)
-      {
-        return undo;
-      }
-      // An agent's save can land between the read and the write; refusing then loses nothing, where writing would
-      // overwrite it.
-      if (!File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes))
-      {
-        throw new PatchException($"{Path.GetFileName(path)} changed while the edit was written", true);
-      }
-      byte[] body = Encoding.UTF8.GetBytes(patched);
-      Files.Replace(path, marked ? [.. ByteOrderMark, .. body] : body);
+      files.Write(path, patched, "the edit");
       return undo;
     }
   }
@@ -223,7 +208,8 @@ public static partial class Patcher
   {
     double[] numbers = edit.Numbers!.Select(Round).ToArray();
     string value = $"[{string.Join(", ", numbers.Select(number => number.ToString(CultureInfo.InvariantCulture)))}]";
-    (YamlNode? node, YamlNode? parent, string key) = Locate(Parse(text), edit.Path);
+    YamlNode root = Parse(text);
+    (YamlNode? node, _, _) = Locate(root, edit.Path);
 
     bool Written(string candidate)
     {
@@ -242,39 +228,7 @@ public static partial class Patcher
       }
       return First(edit, Written, Splice(text, node, value));
     }
-    if (edit.Source is not null)
-    {
-      throw Conflict(edit);
-    }
-    string entry = $"{key}: {value}";
-    switch (parent)
-    {
-      case YamlMappingNode { Style: MappingStyle.Flow } map:
-        (int mapStart, int mapEnd) = Node.Extent(text, map);
-        int at = mapEnd - 1;
-        while (at > 0 && text[at - 1] == ' ')
-        {
-          at--;
-        }
-        return First(edit, Written, map.Children.Count == 0
-          ? Splice(text, mapStart, mapEnd, $"{{ {entry} }}")
-          : Splice(text, at, at, $", {entry}"));
-      case YamlMappingNode map:
-        YamlNode first = map.Children.First().Key;
-        return First(edit, Written,
-          Splice(text, (int)first.Start.Index, (int)first.Start.Index, $"{entry}\n{Indent(first)}"));
-      case YamlScalarNode scalar when OneLine(scalar):
-        // The shorthand title: Revenue becomes the map it stands for, text first as the docs write it.
-        string source = Node.Span(text, scalar);
-        return First(edit, candidate => Written(candidate) && TextAt(candidate, $"{Parent(edit.Path)}.text") ==
-            scalar.Value,
-          Splice(text, scalar, $"{{ text: {source}, {entry} }}"),
-          Splice(text, scalar, $"{{ text: {DoubleQuoted(scalar.Value ?? "")}, {entry} }}"));
-      case YamlScalarNode:
-        throw new PatchException($"{Parent(edit.Path)} is written across lines; give it a {key} in the file");
-      default:
-        throw Conflict(edit);
-    }
+    return AddMissing(text, root, edit, [value], Written);
   }
 
   private static double Round(double value)
@@ -317,6 +271,14 @@ public static partial class Patcher
       }
       return First(edit, Written, Splice(text, node, value), Splice(text, node, DoubleQuoted(value)));
     }
+    return AddMissing(text, root, edit, [value, DoubleQuoted(value)], Written);
+  }
+
+  /// <summary>Adds a missing key to its nearest existing ancestor, placing it in documented key order in block maps,
+  /// appending in flow maps, and expanding a shorthand title, placeholder, or <c>none</c> where needed.</summary>
+  private static string AddMissing(string text, YamlNode root, ValueEdit edit, string[] rendered,
+    Func<string, bool> written)
+  {
     if (edit.Source is not null)
     {
       throw Conflict(edit);
@@ -325,9 +287,9 @@ public static partial class Patcher
     YamlNode parent = Locate(root, holder).Node!;
     string[] missing = edit.Path[(holder.Length + 1)..].Split('.');
 
-    string Entry(string written)
+    string Entry(string value)
     {
-      string nested = written;
+      string nested = value;
       for (int index = missing.Length - 1; index > 0; index--)
       {
         nested = $"{{ {missing[index]}: {nested} }}";
@@ -337,7 +299,7 @@ public static partial class Patcher
 
     string[] Candidates(Func<string, string> place)
     {
-      return [place(Entry(value)), place(Entry(DoubleQuoted(value)))];
+      return rendered.Select(value => place(Entry(value))).ToArray();
     }
 
     bool words = holder == "title" || (holder.StartsWith("placeholders.", StringComparison.Ordinal) &&
@@ -346,13 +308,13 @@ public static partial class Patcher
     {
       case YamlScalarNode scalar when words && OneLine(scalar):
         string source = Node.Span(text, scalar);
-        return First(edit, candidate => Written(candidate) && TextAt(candidate, $"{holder}.text") == scalar.Value,
+        return First(edit, candidate => written(candidate) && TextAt(candidate, $"{holder}.text") == scalar.Value,
           [.. Candidates(entry => Splice(text, scalar, $"{{ text: {source}, {entry} }}")),
             .. Candidates(entry => Splice(text, scalar, $"{{ text: {DoubleQuoted(scalar.Value ?? "")}, {entry} }}"))]);
       case YamlScalarNode when words:
         throw new PatchException($"{holder} is written across lines; give it a {missing[0]} in the file");
       case YamlScalarNode { Value: "none" } none when OneLine(none):
-        return First(edit, Written, Candidates(entry => Splice(text, none, $"{{ {entry} }}")));
+        return First(edit, written, Candidates(entry => Splice(text, none, $"{{ {entry} }}")));
       case YamlMappingNode { Style: MappingStyle.Flow } map:
         (int mapStart, int mapEnd) = Node.Extent(text, map);
         int at = mapEnd - 1;
@@ -360,20 +322,30 @@ public static partial class Patcher
         {
           at--;
         }
-        return First(edit, Written, Candidates(entry => map.Children.Count == 0
+        return First(edit, written, Candidates(entry => map.Children.Count == 0
           ? Splice(text, mapStart, mapEnd, $"{{ {entry} }}")
           : Splice(text, at, at, $", {entry}")));
       case YamlMappingNode map:
-        (YamlNode key, int end) = KeyBefore(text, map, missing[0]);
-        return First(edit, Written, Candidates(entry => Splice(text, end, end, $"\n{Indent(key)}{entry}")));
+        if (KeyBefore(text, map, missing[0]) is (YamlNode key, int end))
+        {
+          return First(edit, written, Candidates(entry => Splice(text, end, end, $"\n{Indent(key)}{entry}")));
+        }
+        if (map.Children.Count > 0)
+        {
+          YamlNode first = map.Children.First().Key;
+          int start = Node.Extent(text, first).Start;
+          return First(edit, written, Candidates(entry => Splice(text, start, start, $"{entry}\n{Indent(first)}")));
+        }
+        throw new PatchException($"there's no line to write {missing[0]} after; add it in the file");
       default:
         throw new PatchException($"{holder} isn't a map; give it a {missing[0]} in the file");
     }
   }
 
   /// <summary>The key of the one-line entry a new <paramref name="key"/> goes after, and where that entry's line
-  /// ends: the last entry the docs write before it, or else the first.</summary>
-  private static (YamlNode Key, int End) KeyBefore(string text, YamlMappingNode map, string key)
+  /// ends: the last entry the docs write before it, or else the first, or null when the map has no one-line entry.
+  /// </summary>
+  private static (YamlNode Key, int End)? KeyBefore(string text, YamlMappingNode map, string key)
   {
     int rank = Array.IndexOf(KeyOrder, key);
     KeyValuePair<YamlNode, YamlNode>[] entries = map.Children
@@ -387,7 +359,7 @@ public static partial class Patcher
     }
     if (after.Key is null)
     {
-      throw new PatchException($"there's no line to write {key} after; add it in the file");
+      return null;
     }
     int end = Node.Extent(text, after.Value).End;
     while (end < text.Length && text[end] is not ('\n' or '\r'))
@@ -742,16 +714,16 @@ public static partial class Patcher
   /// <summary>Writes the slide kept from a pick in place of the pick's entry in <c>slides</c>.</summary>
   public static string Settle(string text, string pick, string slide)
   {
-    return Replace(text, new ListEntry(Pick: pick), YamlWriter.Text(slide));
+    return Replace(text, new ListEntry(Pick: pick), YamlWriter.Text(slide), new ListEntry(slide));
   }
 
   /// <summary>Writes a pick's entry back in place of the slide kept from it.</summary>
   public static string Unsettle(string text, string slide, string pick)
   {
-    return Replace(text, new ListEntry(slide), $"pick: {YamlWriter.Text(pick)}");
+    return Replace(text, new ListEntry(slide), $"pick: {YamlWriter.Text(pick)}", new ListEntry(Pick: pick));
   }
 
-  private static string Replace(string text, ListEntry entry, string line)
+  private static string Replace(string text, ListEntry entry, string line, ListEntry expected)
   {
     YamlSequenceNode list = Parse(text) is YamlMappingNode map && Value(map, "slides") is YamlSequenceNode found
       ? found
@@ -770,7 +742,13 @@ public static partial class Patcher
     string indent = text[start..text.IndexOf('-', start)];
     string newline = text[start..end].EndsWith("\r\n", StringComparison.Ordinal) ? "\r\n"
       : text[start..end].EndsWith('\n') ? "\n" : "";
-    return string.Concat(text[..start], indent, "- ", line, newline, text[end..]);
+    string written = string.Concat(text[..start], indent, "- ", line, newline, text[end..]);
+    if (Parse(written) is not YamlMappingNode after || Value(after, "slides") is not YamlSequenceNode afterList ||
+      afterList.Children.Count != list.Children.Count || Entry(afterList.Children[index]) != expected)
+    {
+      throw new PatchException($"couldn't rewrite {named} cleanly; change it in presentation.yaml");
+    }
+    return written;
   }
 
   private static YamlSequenceNode SlideList(YamlNode root, SlideMove move)

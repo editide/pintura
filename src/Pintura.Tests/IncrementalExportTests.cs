@@ -588,35 +588,41 @@ public class IncrementalExportTests
   }
 
   [Fact]
-  public void Tools_without_edit_sections_leave_the_deck_whole_and_report_the_sections_as_a_gap()
-  {
-    // Arrange
-    using var fixture = new DeckFixture();
-    var tools = new BlandTools { Missing = "edit_sections" };
-
-    // Act
-    ExportReport report = Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
-
-    // Assert
-    report.Gaps.ShouldContain(gap => gap.StartsWith("sections aren't exported"));
-    File.Exists(fixture.Folder.PathTo("out/deck.pptx")).ShouldBeTrue();
-  }
-
-  [Fact]
-  public void Tools_without_edit_sections_raise_no_gap_for_a_presentation_without_sections()
+  public void A_failure_partway_through_saves_finished_slides_so_the_next_export_resumes_incrementally()
   {
     // Arrange
     using var fixture = new DeckFixture();
     string output = fixture.Folder.PathTo("out/deck.pptx");
-    Exporter.Write(fixture.Load(), output, new BlandTools());
-    Slides(fixture, "one", "two");
-    var tools = new BlandTools { Missing = "edit_sections" };
+    string resume = Exporter.ResumePath(output);
+    int added = 0;
+    var failing = new BlandTools
+    {
+      Calling = (tool, _) =>
+      {
+        if (tool == "add_slide" && ++added == 2)
+        {
+          throw new InvalidOperationException("editide answered 500");
+        }
+      }
+    };
+    var resumed = new BlandTools();
 
     // Act
-    ExportReport report = Exporter.Write(fixture.Load(), output, tools);
+    InvalidOperationException error = Should.Throw<InvalidOperationException>(() =>
+      Exporter.Write(fixture.Load(), output, failing));
+    bool savedPartial = File.Exists(resume) && File.Exists(ExportManifest.PathFor(resume));
+    ExportReport report = Exporter.Write(fixture.Load(), output, resumed);
 
     // Assert
-    report.Gaps.ShouldNotContain(gap => gap.StartsWith("sections"));
+    error.Message.ShouldContain("partial export saved");
+    savedPartial.ShouldBeTrue();
+    File.Exists(resume).ShouldBeFalse();
+    File.Exists(ExportManifest.PathFor(resume)).ShouldBeFalse();
+    report.Reused.ShouldBe(1);
+    report.Billed.ShouldBe(new ExportBilling(1, 0, 0));
+    resumed.Calls.ShouldNotContain("edit_theme");
+    resumed.Calls.ShouldContain("delete_layout");
+    resumed.Calls.Count(call => call == "add_slide").ShouldBe(1);
   }
 
 

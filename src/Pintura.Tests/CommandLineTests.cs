@@ -162,6 +162,8 @@ public class CommandLineTests
   [InlineData("--screenshot")]
   [InlineData("--screenshot cover --json")]
   [InlineData("--check --output out.png")]
+  [InlineData("--export-html deck.html --output other.html")]
+  [InlineData("--export deck.pptx --output other.pptx")]
   [InlineData("--check --port 5000")]
   [InlineData("--list --slide cover")]
   [InlineData("--element cover")]
@@ -267,7 +269,7 @@ public class CommandLineTests
   public void Element_prints_each_property_beside_the_line_that_set_it()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example");
+    string root = Path.Combine(Repository.Root, "presentations", "example");
     var output = new StringWriter();
 
     // Act

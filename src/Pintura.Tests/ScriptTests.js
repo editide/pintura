@@ -25,8 +25,9 @@ function pageScripts(page) {
 
 function exportScripts() {
   const source = fs.readFileSync(path.join(__dirname, '..', 'Pintura', 'HtmlExport.cs'), 'utf8');
-  const list = source.match(/Scripts = \[([^\]]+)\]/)[1];
-  return [...list.matchAll(/"([^"]+)"/g)].map(([, script]) => script);
+  const match = source.match(/Scripts\s*=\s*\[([^\]]+)\]/);
+  assert.ok(match, 'Could not find HtmlExport.Scripts list in HtmlExport.cs');
+  return [...match[1].matchAll(/"([^"]+)"/g)].map(([, script]) => script);
 }
 
 test('no two scripts on the page define the same top-level name', () => {

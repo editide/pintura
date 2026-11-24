@@ -66,7 +66,7 @@ function seriesType(chart, series) {
 // null.
 function stackSeries(chart) {
   if (chart.type === 'waterfall') {
-    return chart.series.map((series) => waterfallBars(chart, series));
+    return chart.series.map((series) => series.bars ?? waterfallBars(chart, series));
   }
   const percent = chart.grouping === 'percent_stacked';
   const stacks = chart.series.map((series) =>
@@ -264,9 +264,9 @@ function labelColor(labels, value) {
 // A bar's label, where `from` and `to` are the bar's base and end along the value direction, in points, and `across`
 // is its middle the other way. Outside runs past the end, so a negative bar's label sits below or to its left, past
 // the plot and over any axis labels there, as PowerPoint draws it.
-function barLabel(labels, context, raw, across, from, to, horizontal, trace = (primitive) => primitive) {
+function barLabel(labels, context, raw, across, from, to, horizontal, trace = (primitive) => primitive, spelled = null) {
   const { size, measure, out } = context;
-  const text = formatNumber(raw, labels.format);
+  const text = spelled ?? formatNumber(raw, labels.format);
   const lineHeight = size * 1.2;
   const gap = size * 0.3;
   const forward = Math.sign(to - from) || (horizontal ? 1 : -1);
@@ -465,13 +465,13 @@ function layoutPlot(chart, box, context) {
     plot = { x: box.x + categoryWidth, y: box.y, width: box.width - categoryWidth, height: box.height - valueHeight };
     categoryLines = dates ? [] : chart.categories.map((category) => wrap(category, categoryWidth - gap, measure));
   } else {
-    const tickWidth = (axis, format) =>
-      Math.max(...axis.ticks.map((tick) => measure(formatNumber(tick, format)))) + gap;
+    const tickWidth = (axis, payload, format) =>
+      Math.max(...axis.ticks.map((tick, index) => measure(payload?.tickLabels?.[index] ?? formatNumber(tick, format)))) + gap;
     let categoryHeight = showCategoryLabels ? lineHeight + gap : 0;
     for (let pass = 0; pass < 2; pass++) {
       const height = box.height - categoryHeight;
-      const valueWidth = showValues ? tickWidth(scale, valueFormat) : 0;
-      const secondaryWidth = showSecondary ? tickWidth(secondaryScale, secondaryAxis.format) : 0;
+      const valueWidth = showValues ? tickWidth(scale, valueAxis, valueFormat) : 0;
+      const secondaryWidth = showSecondary ? tickWidth(secondaryScale, secondaryAxis, secondaryAxis.format) : 0;
       plot = { x: box.x + valueWidth, y: box.y, width: box.width - valueWidth - secondaryWidth, height };
       categoryLines = dates ? []
         : chart.categories.map((category) => wrap(category, plot.width / count - gap, measure));
@@ -545,7 +545,7 @@ function layoutPlot(chart, box, context) {
       const labels = labelsAt(series, point);
       if (labels) {
         barLabel(labels, labelContext, series.values[point], start + thickness / 2, from, to, horizontal,
-          (primitive) => traced(primitive, series, index, point));
+          (primitive) => traced(primitive, series, index, point), series.spelledLabels?.[point]);
       }
     });
   });
@@ -557,7 +557,7 @@ function layoutPlot(chart, box, context) {
         if (extent && labels) {
           const across = slotStart(point) + slot / 2;
           barLabel(labels, labelContext, series.values[point], across, baseline, position(extent[1]),
-            horizontal, (primitive) => traced(primitive, series, index, point));
+            horizontal, (primitive) => traced(primitive, series, index, point), series.spelledLabels?.[point]);
         }
       });
     }
@@ -580,7 +580,7 @@ function layoutPlot(chart, box, context) {
       const labels = labelsAt(series, point);
       if (labels) {
         lineLabel(labels, labelContext, series.values[point], x, y,
-          (primitive) => traced(primitive, series, index, point));
+          (primitive) => traced(primitive, series, index, point), series.spelledLabels?.[point]);
       }
     });
     const color = colorAt(chart, index);
@@ -621,19 +621,19 @@ function layoutPlot(chart, box, context) {
     });
   }
   if (showValues) {
-    for (const tick of scale.ticks) {
-      const text = formatNumber(tick, valueFormat);
+    scale.ticks.forEach((tick, index) => {
+      const text = valueAxis.tickLabels?.[index] ?? formatNumber(tick, valueFormat);
       out.push(horizontal
         ? { kind: 'text', part: 'value_axis', x: position(tick), y: plot.y + plot.height + gap + lineHeight / 2, text,
           anchor: 'middle' }
         : { kind: 'text', part: 'value_axis', x: plot.x - gap, y: position(tick), text, anchor: 'end' });
-    }
+    });
   }
   if (showSecondary) {
-    for (const tick of secondaryScale.ticks) {
+    secondaryScale.ticks.forEach((tick, index) => {
       out.push({ kind: 'text', part: 'secondary_axis', x: plot.x + plot.width + gap, y: position(tick, true),
-        text: formatNumber(tick, secondaryAxis.format), anchor: 'start' });
-    }
+        text: secondaryAxis.tickLabels?.[index] ?? formatNumber(tick, secondaryAxis.format), anchor: 'start' });
+    });
   }
   out.push(...labels);
   return { plot, scale, secondaryScale };
@@ -651,9 +651,9 @@ function pointMarker(markers, color, x, y) {
   return { kind: 'path', d, fill: markers.fill || color, stroke: color, width: LINE_WIDTH, join: 'miter' };
 }
 
-function lineLabel(labels, context, raw, x, y, trace) {
+function lineLabel(labels, context, raw, x, y, trace, spelled = null) {
   const { size, out } = context;
-  const text = formatNumber(raw, labels.format);
+  const text = spelled ?? formatNumber(raw, labels.format);
   const gap = size * 0.4;
   const offset = gap + size * 0.6 + (lineCount(text) - 1) * size * 1.2 / 2;
   const along = { above: y - offset, below: y + offset }[labels.position] ?? y;
@@ -936,7 +936,10 @@ function renderChart(item, parent) {
   node.draw();
   // Text is measured to place axes and labels, so the chart is laid out again once its font has loaded.
   const { font, size } = item.chart.text;
-  node.loaded = document.fonts.load(`${size}px ${fontFamily(font)}`).then(() => node.draw()).catch(() => {});
+  const spec = `${size}px ${fontFamily(font)}`;
+  node.loaded = document.fonts.check(spec)
+    ? Promise.resolve()
+    : document.fonts.load(spec).then(() => node.draw()).catch(() => {});
   return node;
 }
 

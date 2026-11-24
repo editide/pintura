@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -9,10 +11,11 @@ namespace Pintura;
 
 /// <summary>A running server. A headless one serves only <c>--screenshot</c> and <c>--check</c>. Either is borrowed
 /// to draw only by the build that started it, since it loads slides with that build's code.</summary>
-public record ServerInstance(int ProcessId, string Root, int Port, bool Headless = false, string? Build = null)
+public record ServerInstance(int ProcessId, string Root, int Port, bool Headless = false, string? Build = null,
+  long? Started = null)
 {
   [JsonIgnore]
-  public string Url => $"http://localhost:{Port}";
+  public string Url => Headless ? $"http://127.0.0.1:{Port}" : $"http://localhost:{Port}";
 
   public static string CurrentBuild => typeof(ServerInstance).Assembly.ManifestModule.ModuleVersionId.ToString("N");
 }
@@ -22,7 +25,7 @@ public record ServerInstance(int ProcessId, string Root, int Port, bool Headless
 /// </summary>
 public class InstanceRegistry
 {
-  private static readonly TimeSpan ConnectTimeout = TimeSpan.FromMilliseconds(500);
+  private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(2);
   private readonly string folder;
 
   public InstanceRegistry(string folder)
@@ -45,7 +48,17 @@ public class InstanceRegistry
 
   public void Unregister(ServerInstance instance)
   {
-    File.Delete(RecordPath(instance));
+    TryDelete(RecordPath(instance));
+  }
+
+  /// <summary>Lock file path serializing headless server startup for <paramref name="root"/>.</summary>
+  public string LockPath(string root)
+  {
+    Directory.CreateDirectory(folder);
+    string normalized = Normalize(root);
+    string key = OperatingSystem.IsLinux() ? normalized : normalized.ToLowerInvariant();
+    string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..16].ToLowerInvariant();
+    return Path.Combine(folder, $"lock-{hash}.lock");
   }
 
   public ServerInstance? Find(string root, bool headless = false)
@@ -119,7 +132,7 @@ public class InstanceRegistry
         return false;
       }
     }
-    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or Win32Exception)
     {
       return false;
     }
@@ -155,14 +168,17 @@ public class Viewers : IDisposable
 {
   private readonly object gate = new object();
   private readonly TimeSpan grace;
+  private readonly Action stop;
   private readonly Timer timer;
   private int count;
+  private bool retired;
   private bool disposed;
 
   public Viewers(TimeSpan grace, Action stop)
   {
     this.grace = grace;
-    timer = new Timer(_ => Expire(stop), null, Timeout.Infinite, Timeout.Infinite);
+    this.stop = stop;
+    timer = new Timer(_ => Expire(), null, Timeout.Infinite, Timeout.Infinite);
   }
 
   /// <summary>Counts down now rather than from a first page, for a server whose caller opens the page itself and
@@ -175,6 +191,25 @@ public class Viewers : IDisposable
       {
         timer.Change(grace, Timeout.InfiniteTimeSpan);
       }
+    }
+  }
+
+  /// <summary>Stops immediately when idle, or as soon as the last active connection finishes.</summary>
+  public void Retire()
+  {
+    bool now = false;
+    lock (gate)
+    {
+      retired = true;
+      if (count == 0 && !disposed)
+      {
+        timer.Change(Timeout.Infinite, Timeout.Infinite);
+        now = true;
+      }
+    }
+    if (now)
+    {
+      stop();
     }
   }
 
@@ -203,17 +238,29 @@ public class Viewers : IDisposable
 
   private void Disconnect()
   {
+    bool now = false;
     lock (gate)
     {
       count--;
       if (count == 0 && !disposed)
       {
-        timer.Change(grace, Timeout.InfiniteTimeSpan);
+        if (retired)
+        {
+          now = true;
+        }
+        else
+        {
+          timer.Change(grace, Timeout.InfiniteTimeSpan);
+        }
       }
+    }
+    if (now)
+    {
+      stop();
     }
   }
 
-  private void Expire(Action stop)
+  private void Expire()
   {
     lock (gate)
     {
@@ -268,17 +315,23 @@ public static class Browser
   }
 
   // WSL's own xdg-open usually has no browser to hand the page to, so the Windows side opens it.
-  private static IEnumerable<string> Openers()
+  internal static IEnumerable<string> Openers()
   {
-    if (OperatingSystem.IsWindows())
+    return Openers(OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(),
+      Environment.GetEnvironmentVariable("WSL_DISTRO_NAME"));
+  }
+
+  internal static IEnumerable<string> Openers(bool isWindows, bool isMacOs, string? wslDistro)
+  {
+    if (isWindows)
     {
       return ["explorer.exe"];
     }
-    if (OperatingSystem.IsMacOS())
+    if (isMacOs)
     {
       return ["open"];
     }
-    if (Environment.GetEnvironmentVariable("WSL_DISTRO_NAME") is not null)
+    if (wslDistro is not null)
     {
       return ["wslview", "explorer.exe"];
     }

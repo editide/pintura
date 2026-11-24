@@ -65,7 +65,6 @@ public record StylePayload
 
 public record StyleSamplePayload(string Text, string Slide);
 
-/// <summary>A layout drawn on its own, its title and placeholders holding their names.</summary>
 /// <summary>A layout drawn with specimen words: <paramref name="Slide"/> as a slide on it looks, and
 /// <paramref name="Stage"/> with the theme's and layout's files for the mouse to write.</summary>
 public record LayoutPayload(string Id, string Name, string File, SlidePayload Slide, SlidePayload Stage,
@@ -98,11 +97,12 @@ public static class ThemeView
     [("lighter 80", 80, null), ("lighter 60", 60, null), ("lighter 40", 40, null), ("darker 25", null, 25),
       ("darker 50", null, 50)];
 
-  public static ThemeViewPayload Build(Presentation presentation, PictureUrl pictureUrl)
+  public static ThemeViewPayload Build(Presentation presentation, PictureUrl pictureUrl,
+    Dictionary<string, SlideScene>? scenes = null)
   {
     Theme theme = presentation.Theme;
     StyleSheet styles = theme.Styles;
-    Usage usage = Usage.Count(presentation);
+    Usage usage = Usage.Count(presentation, scenes);
     List<StylePayload> stylePayloads = styles.Styles
       .Select(pair => Style(pair.Key, pair.Value, theme, usage.Of($"style:{pair.Key}")) with
       {
@@ -151,11 +151,8 @@ public static class ThemeView
 
   private static StylePayload Style(string name, TextProperties style, Theme theme, UsesPayload uses)
   {
-    TextProperties text = theme.Styles.Text;
-    object? Get(string key)
-    {
-      return style.Get(key) ?? text.Get(key);
-    }
+    TextProperties[] layers = [theme.Styles.Text, style];
+    object? Get(string key) => PropertyLayers.Cascade(layers, key)?.Value;
     var color = (Color)Get("color")!;
     string font = (string)Get("font")!;
     return new StylePayload
@@ -192,23 +189,23 @@ public static class ThemeView
   private static LayoutPayload Layout(Presentation presentation, Layout layout, PictureUrl pictureUrl)
   {
     Slide specimen = Specimen(presentation.Theme, layout);
+    SlideScene scene = SceneBuilder.Build(presentation, specimen);
     return new LayoutPayload(layout.Id, layout.Name, $"{presentation.Theme.Display}/layouts/{layout.Id}.yaml",
-      PayloadBuilder.Slide(presentation, specimen, pictureUrl),
-      PayloadBuilder.Slide(presentation, specimen, pictureUrl, layout),
+      PayloadBuilder.Slide(presentation, specimen, pictureUrl, built: scene),
+      PayloadBuilder.Slide(presentation, specimen, pictureUrl, layout, built: scene),
       presentation.Slides.Where(slide => slide.Layout == layout.Id).Select(slide => slide.Id).ToList());
   }
 
   /// <summary>A slide on the layout naming each of its placeholders in its words.</summary>
   public static Slide Specimen(Theme theme, Layout layout)
   {
-    IEnumerable<string> placeholders = theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct();
     return new Slide
     {
       Id = layout.Id,
       Layout = layout.Id,
       Section = "Section",
-      Title = layout.TitleRemoved ? null : Words("Title"),
-      Placeholders = placeholders.ToDictionary(name => name, Words)
+      Title = theme.HasTitle(layout) ? Words("Title") : null,
+      Placeholders = theme.PlaceholderNames(layout).ToDictionary(name => name, Words)
     };
   }
 
@@ -231,10 +228,7 @@ public static class ThemeView
       {
         layers.Add(formatting.Properties);
       }
-      object? Get(string key)
-      {
-        return layers.Select(layer => layer.Get(key)).LastOrDefault(value => value is not null);
-      }
+      object? Get(string key) => PropertyLayers.Cascade(layers, key)?.Value;
       string font = (string)Get("font")!;
       var text = new RunPayload
       {
@@ -261,11 +255,11 @@ public static class ThemeView
 
   private static StrokePayload? Stroke(Stroke? stroke, Theme theme)
   {
-    if (stroke is null || stroke.None == true || stroke.Color is null)
+    if (stroke is null || stroke.None == true || stroke.Color is null || stroke.Width is not double width)
     {
       return null;
     }
-    return new StrokePayload(ColorMath.Resolve(stroke.Color, theme), stroke.Width ?? 1, stroke.Dash ?? "solid");
+    return new StrokePayload(ColorMath.Resolve(stroke.Color, theme), width, stroke.Dash ?? "solid");
   }
 
   private static ChartStylesPayload Charts(Theme theme, Usage usage)
@@ -324,7 +318,7 @@ public static class ThemeView
       stylesFile = $"{theme.Display}/styles.yaml";
     }
 
-    public static Usage Count(Presentation presentation)
+    public static Usage Count(Presentation presentation, Dictionary<string, SlideScene>? scenes = null)
     {
       var usage = new Usage(presentation);
       foreach (Slide slide in presentation.Slides.Where(slide => slide.Error is null))
@@ -332,7 +326,18 @@ public static class ThemeView
         SlideScene scene;
         try
         {
-          scene = SceneBuilder.Build(presentation, slide);
+          if (scenes is null || !scenes.TryGetValue(slide.Id, out SlideScene? cached))
+          {
+            scene = SceneBuilder.Build(presentation, slide);
+            if (scenes is not null)
+            {
+              scenes[slide.Id] = scene;
+            }
+          }
+          else
+          {
+            scene = cached;
+          }
         }
         catch (LoadException)
         {
@@ -403,7 +408,7 @@ public static class ThemeView
 
     private static string Text(SceneParagraph paragraph)
     {
-      return string.Concat(paragraph.Runs.Select(run => run.Text));
+      return paragraph.PlainText;
     }
 
     private void Item(string slide, SceneItem item)

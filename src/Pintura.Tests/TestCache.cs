@@ -10,7 +10,12 @@ internal static class TestCache
   internal static void Use()
   {
     string folder = Path.Combine(Path.GetTempPath(), "pintura-tests", $"cache-{Environment.ProcessId}");
+    Directory.CreateDirectory(folder);
+    string gitConfig = Path.Combine(folder, "gitconfig");
+    File.WriteAllText(gitConfig, "");
     Environment.SetEnvironmentVariable("PINTURA_CACHE", folder);
+    Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", gitConfig);
+    Environment.SetEnvironmentVariable("GIT_CONFIG_NOSYSTEM", "1");
     AppDomain.CurrentDomain.ProcessExit += (_, _) =>
     {
       try

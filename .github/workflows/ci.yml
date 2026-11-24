@@ -34,11 +34,22 @@ jobs:
           path: src/Pintura.Tests/TestResults
           retention-days: 7
       - run: node --test src/Pintura.Tests/*.js
-      - name: Build a Release
+      # Linux runners lack Arial, which the Meridian and Default fixture themes use.
+      - if: runner.os == 'Linux'
+        run: |
+          echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | sudo debconf-set-selections
+          sudo apt-get update -q && sudo apt-get install -y -q ttf-mscorefonts-installer
+      - name: Publish and smoke-test trimmed Linux release
         if: runner.os == 'Linux'
-        run: dotnet build src/Pintura --configuration Release
-      - name: Load every presentation
+        run: |
+          dotnet publish src/Pintura --configuration Release --runtime linux-x64 --self-contained -p:DebugType=none -p:PublishTrimmed=true --output out/pintura
+          out/pintura/Pintura --version
+          smoke="$(mktemp -d)"
+          out/pintura/Pintura --new "$smoke/deck"
+          out/pintura/Pintura "$smoke/deck" --list
+          out/pintura/Pintura "$smoke/deck" --check
+      - name: Check every presentation
         run: |
           for presentation in presentations/*/; do
-            dotnet run --project src/Pintura -- "$presentation" --list
+            dotnet run --project src/Pintura -- "$presentation" --check
           done

@@ -145,7 +145,7 @@ public class PatcherTests
     string patched = Apply(slide, new ValueEdit("title.frame", null, [40, 30, 800, 44]));
 
     // Assert
-    patched.ShouldBe("layout: content\ntitle:\n  frame: [40, 30, 800, 44]\n  text: Revenue\n  size: 30\n");
+    patched.ShouldBe("layout: content\ntitle:\n  text: Revenue\n  frame: [40, 30, 800, 44]\n  size: 30\n");
   }
 
   [Fact]
@@ -288,7 +288,7 @@ public class PatcherTests
       Paragraphs: [""]));
 
     // Assert
-    Patcher.SourceAt(patched, "elements.note.text").ShouldNotContain("lead");
+    Patcher.SourceAt(patched, "elements.note.text").ShouldNotBeNull().ShouldNotContain("lead");
   }
 
   [Fact]
@@ -1682,6 +1682,32 @@ public class PatcherTests
 
     // Assert
     undone.ShouldBe(Slide);
+  }
+
+  [Fact]
+  public void Adding_a_frame_to_a_block_map_with_only_multiline_entries_inserts_before_the_first_key()
+  {
+    // Arrange
+    const string text = """
+      layout: content
+      title:
+        text: |
+          First line
+          Second line
+      """;
+
+    // Act
+    string patched = Apply(text, new ValueEdit("title.frame", null, Numbers: [40, 20, 600, 60]));
+
+    // Assert
+    patched.ShouldBe("""
+      layout: content
+      title:
+        frame: [40, 20, 600, 60]
+        text: |
+          First line
+          Second line
+      """);
   }
 
   #endregion

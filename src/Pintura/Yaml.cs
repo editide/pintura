@@ -70,12 +70,14 @@ public record SourceFile(string FullPath, string Display)
     return new SourceFile(fullPath, shown.Replace('\\', '/')) { Files = files ?? DiskFiles.Instance };
   }
 
-  public string Folder => System.IO.Path.GetDirectoryName(FullPath)!;
-
   public Node Load(string topic)
   {
+    return LoadText(ReadText(topic), topic);
+  }
+
+  public Node LoadText(string text, string topic)
+  {
     var stream = new YamlStream();
-    string text = ReadText(topic);
     try
     {
       using var reader = new StringReader(text);
@@ -378,6 +380,50 @@ public class MapNode
   private Node Child(string key, YamlNode value)
   {
     return new Node(value, node.File, node.Path.Length == 0 ? key : $"{node.Path}.{key}", node.Topic);
+  }
+
+
+}
+
+/// <summary>Text surgery on top-level YAML sequence files such as <c>comments.yaml</c> and <c>picks.yaml</c>.</summary>
+internal static class EntryList
+{
+  public static string Stamp(DateTime now)
+  {
+    return now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+  }
+
+  public static int LineStart(string text, int index)
+  {
+    return text.LastIndexOf('\n', Math.Max(index - 1, 0)) + 1;
+  }
+
+  public static string Append(string text, int count, string lines)
+  {
+    return count == 0 ? lines + "\n" : $"{text.TrimEnd()}\n\n{lines}\n";
+  }
+
+  public static string Insert(string text, IReadOnlyList<int> starts, int index, string lines)
+  {
+    if (starts.Count == 0)
+    {
+      return lines + "\n";
+    }
+    return index < starts.Count
+      ? text.Insert(starts[index], lines + "\n\n")
+      : $"{text.TrimEnd()}\n\n{lines}\n";
+  }
+
+  /// <summary>The text without an entry and the blank lines after it, or null when it was the only one.</summary>
+  public static string? Without(string text, IReadOnlyList<int> starts, int index)
+  {
+    if (starts.Count == 1)
+    {
+      return null;
+    }
+    return index + 1 < starts.Count
+      ? text.Remove(starts[index], starts[index + 1] - starts[index])
+      : text[..starts[index]].TrimEnd() + "\n";
   }
 
 

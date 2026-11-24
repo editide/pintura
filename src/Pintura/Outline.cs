@@ -87,7 +87,7 @@ public static class Outline
     List<OutlineElement> elements = [.. ReadingOrder(scene.Items.Where(Read).ToList())
       .Select(item => Element(presentation, item))
       .OfType<OutlineElement>()];
-    string title = PayloadBuilder.Title(presentation, slide).ReplaceLineEndings(" ");
+    string title = SceneBuilder.Title(presentation, slide).ReplaceLineEndings(" ");
     return new OutlineSlide(slide.Number, slide.Id, slide.Section, title.Length == 0 ? null : title, elements,
       slide.Pick, intent, slide.Rejected);
   }
@@ -145,7 +145,7 @@ public static class Outline
     }
     List<OutlineParagraph> paragraphs = [.. (item.Paragraphs ?? [])
       .Select(paragraph => new OutlineParagraph(paragraph.Level,
-        string.Concat(paragraph.Runs.Select(run => run.Text)).ReplaceLineEndings(" ")))
+        paragraph.PlainText.ReplaceLineEndings(" ")))
       .Where(paragraph => paragraph.Text.Trim().Length > 0)];
     return paragraphs.Count == 0 ? null : new OutlineElement(item.Id, kind, paragraphs);
   }
@@ -173,9 +173,7 @@ public static class Outline
     string? Named(string key) => item.Properties.GetValueOrDefault(key)?.Value as string;
     string Spell(string series, double value)
     {
-      string axis = Named($"series.{series}.axis") == "secondary" ? "secondary_axis" : "value_axis";
-      string? name = Named($"series.{series}.data_labels.format") ?? Named("data_labels.format") ??
-        Named($"{axis}.format");
+      string? name = item.SeriesLabelFormat(series, axisFallback: true);
       return name is not null && presentation.Theme.Styles.Formats.GetValueOrDefault(name) is { Date: null } format
         ? format.Spell(value)
         : value.ToString("0.###", CultureInfo.InvariantCulture);
@@ -187,7 +185,7 @@ public static class Outline
 
   private static string Text(List<SceneParagraph> paragraphs)
   {
-    return string.Join(" / ", paragraphs.Select(paragraph => string.Concat(paragraph.Runs.Select(run => run.Text)))
+    return string.Join(" / ", paragraphs.Select(paragraph => paragraph.PlainText)
       .Where(text => text.Length > 0));
   }
 

@@ -12,8 +12,8 @@ public class EditideTests
   /// <summary>editide's API as a list of answers, keyed by method and path, with every request it saw.</summary>
   private sealed class FakeEditide : HttpMessageHandler
   {
-    private readonly Dictionary<string, Queue<(HttpStatusCode Status, string Body, TimeSpan? RetryAfter)>> answers =
-      new Dictionary<string, Queue<(HttpStatusCode Status, string Body, TimeSpan? RetryAfter)>>(StringComparer.Ordinal);
+    private readonly Dictionary<string, Queue<(HttpStatusCode Status, string Body, TimeSpan? RetryAfter, Exception? Error)>> answers =
+      new Dictionary<string, Queue<(HttpStatusCode Status, string Body, TimeSpan? RetryAfter, Exception? Error)>>(StringComparer.Ordinal);
 
     public List<(string Route, string? Key, string Body)> Requests { get; } = new List<(string, string?, string)>();
 
@@ -21,13 +21,24 @@ public class EditideTests
 
     public FakeEditide Answer(string route, HttpStatusCode status, string body, TimeSpan? retryAfter = null)
     {
-      if (!answers.TryGetValue(route, out Queue<(HttpStatusCode, string, TimeSpan?)>? queue))
+      Queue(route).Enqueue((status, body, retryAfter, null));
+      return this;
+    }
+
+    public FakeEditide Throw(string route, Exception error)
+    {
+      Queue(route).Enqueue((HttpStatusCode.InternalServerError, "", null, error));
+      return this;
+    }
+
+    private Queue<(HttpStatusCode Status, string Body, TimeSpan? RetryAfter, Exception? Error)> Queue(string route)
+    {
+      if (!answers.TryGetValue(route, out Queue<(HttpStatusCode, string, TimeSpan?, Exception?)>? queue))
       {
-        queue = new Queue<(HttpStatusCode, string, TimeSpan?)>();
+        queue = new Queue<(HttpStatusCode, string, TimeSpan?, Exception?)>();
         answers[route] = queue;
       }
-      queue.Enqueue((status, body, retryAfter));
-      return this;
+      return queue;
     }
 
     protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -38,12 +49,17 @@ public class EditideTests
       Requests.Add((route, request.Headers.TryGetValues("X-Api-Key", out IEnumerable<string>? keys)
         ? keys.Single()
         : null, body));
-      if (!answers.TryGetValue(route, out Queue<(HttpStatusCode Status, string Body, TimeSpan? RetryAfter)>? queue)
+      if (!answers.TryGetValue(route, out Queue<(HttpStatusCode Status, string Body, TimeSpan? RetryAfter, Exception? Error)>? queue)
         || queue.Count == 0)
       {
         return new HttpResponseMessage(HttpStatusCode.NotFound);
       }
-      (HttpStatusCode status, string answer, TimeSpan? retryAfter) = queue.Count == 1 ? queue.Peek() : queue.Dequeue();
+      (HttpStatusCode status, string answer, TimeSpan? retryAfter, Exception? error) =
+        queue.Count == 1 ? queue.Peek() : queue.Dequeue();
+      if (error is not null)
+      {
+        throw error;
+      }
       var response = new HttpResponseMessage(status)
       {
         Content = new StringContent(answer, Encoding.UTF8, "application/json")
@@ -73,7 +89,7 @@ public class EditideTests
   private static FakeEditide Uploaded()
   {
     return new FakeEditide()
-      .Answer("GET /version", HttpStatusCode.OK, """{ "version": "1.0.6" }""")
+      .Answer("GET /version", HttpStatusCode.OK, """{ "version": "1.0.7" }""")
       .Answer("POST /api/presentations", HttpStatusCode.OK, """{ "file_id": "deck-1", "filename": "deck.pptx" }""");
   }
 
@@ -198,7 +214,7 @@ public class EditideTests
     // Arrange
     using var folder = new TempFolder();
     FakeEditide editide = new FakeEditide()
-      .Answer("GET /version", HttpStatusCode.OK, """{ "version": "1.0.6" }""")
+      .Answer("GET /version", HttpStatusCode.OK, """{ "version": "1.0.7" }""")
       .Answer("POST /api/presentations", HttpStatusCode.Unauthorized, """{ "error": "Invalid API key" }""");
 
     // Act
@@ -347,6 +363,50 @@ public class EditideTests
     {
       Should.Throw<InvalidOperationException>(address).Message.ShouldContain("isn't an https address");
     }
+  }
+
+  [Fact]
+  public void Idempotent_reads_and_safe_calls_retry_on_5xx_and_network_errors()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    var waits = new List<TimeSpan>();
+    FakeEditide editide = Uploaded()
+      .Answer("POST /api/tools/read_slide", HttpStatusCode.ServiceUnavailable, """{ "error": "Busy" }""")
+      .Throw("POST /api/tools/read_slide", new HttpRequestException("connection reset"))
+      .Answer("POST /api/tools/read_slide", HttpStatusCode.OK, """{ "success": true, "data": { "ok": true } }""");
+    string deck = Path.Combine(folder.Root, "deck.pptx");
+    File.WriteAllText(deck, "pptx");
+    using IToolSession session = Tools(editide, waits).Open(deck);
+
+    // Act
+    JsonNode? answer = session.Call("read_slide", new JsonObject { ["slide_index"] = 1 });
+
+    // Assert
+    answer!["ok"]!.GetValue<bool>().ShouldBeTrue();
+    editide.Requests.Count(r => r.Route == "POST /api/tools/read_slide").ShouldBe(3);
+    waits.ShouldBe([TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)]);
+  }
+
+  [Fact]
+  public void Non_idempotent_mutations_do_not_retry_on_5xx()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    var waits = new List<TimeSpan>();
+    FakeEditide editide = Uploaded()
+      .Answer("POST /api/tools/add_slide", HttpStatusCode.InternalServerError, """{ "error": "Boom" }""")
+      .Answer("POST /api/tools/add_slide", HttpStatusCode.OK, """{ "success": true, "data": { "index": 2 } }""");
+    string deck = Path.Combine(folder.Root, "deck.pptx");
+    File.WriteAllText(deck, "pptx");
+    using IToolSession session = Tools(editide, waits).Open(deck);
+
+    // Act
+    Should.Throw<InvalidOperationException>(() => session.Call("add_slide", new JsonObject()));
+
+    // Assert
+    editide.Requests.Count(r => r.Route == "POST /api/tools/add_slide").ShouldBe(1);
+    waits.ShouldBeEmpty();
   }
 
 

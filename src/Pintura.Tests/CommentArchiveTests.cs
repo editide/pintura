@@ -241,6 +241,7 @@ public class CommentArchiveTests
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void The_check_warns_when_comments_go_uncommitted_in_a_repository()
   {
     // Arrange
@@ -248,13 +249,11 @@ public class CommentArchiveTests
     deck.Write("deck/comments.yaml", Open);
     deck.Write("deck/comments-resolved.yaml", Done + "\n  resolved: { outcome: accepted }");
     string root = deck.Folder.PathTo("");
-    RevisionTests.Git(root, "init", "-q");
-    RevisionTests.Git(root, "add", "deck/presentation.yaml", "deck/slides", "theme");
-    RevisionTests.Git(root, "commit", "-q", "-m", "First");
+    GitHelper.Commit(root, "First", "deck/presentation.yaml", "deck/slides", "theme");
 
     // Act
     List<Finding> untracked = Checks.Comments(deck.Load());
-    RevisionTests.Git(root, "add", "deck/comments.yaml", "deck/comments-resolved.yaml");
+    GitHelper.Git(root, "add", "deck/comments.yaml", "deck/comments-resolved.yaml");
     List<Finding> tracked = Checks.Comments(deck.Load());
 
     // Assert
@@ -280,14 +279,13 @@ public class CommentArchiveTests
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void A_snapshot_is_the_commit_and_which_slides_changed_since_leaving_comments_aside()
   {
     // Arrange
     using var deck = new DeckFixture();
     string root = deck.Folder.PathTo("");
-    RevisionTests.Git(root, "init", "-q");
-    RevisionTests.Git(root, "add", "-A");
-    RevisionTests.Git(root, "commit", "-q", "-m", "First");
+    GitHelper.Commit(root, "First");
     string head = Revisions.Run(root, "rev-parse", "--short", "HEAD").Output.Trim();
 
     // Act
@@ -309,14 +307,13 @@ public class CommentArchiveTests
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void Changing_only_the_archive_leaves_nothing_to_save()
   {
     // Arrange
     using var deck = new DeckFixture();
     string root = deck.Folder.PathTo("");
-    RevisionTests.Git(root, "init", "-q");
-    RevisionTests.Git(root, "add", "-A");
-    RevisionTests.Git(root, "commit", "-q", "-m", "First");
+    GitHelper.Commit(root, "First");
 
     // Act
     deck.Write("deck/comments-resolved.yaml", Done + "\n  resolved: { outcome: accepted }");

@@ -185,9 +185,6 @@ public record ChartPayload
   public string EdgeColor { get; init; } = "";
 }
 
-/// <summary><see cref="Type"/> is the chart's family, <c>line</c> for a line over columns, or <c>total</c> for a
-/// stack's total, drawn only as its labels; null labels are none. <see cref="Traces"/> is the book cell behind each
-/// value, for a chart read from a book.</summary>
 /// <summary>Colors are a point's own color, by category, where the series colors any; on a line they outline its
 /// markers. <see cref="PointMarkers"/> are a line's points' own markers, over the series', by category, and
 /// <see cref="PointLabels"/> the points' own labels, null where a point takes the series'. <see cref="Dash"/> is a
@@ -197,7 +194,8 @@ public record ChartPayload
 public record SeriesPayload(string Name, List<double?> Values, string Type, bool Secondary, LabelsPayload? Labels,
   MarkersPayload? Markers, List<TracePayload>? Traces = null, List<string?>? Colors = null,
   List<MarkersPayload?>? PointMarkers = null, List<LabelsPayload?>? PointLabels = null, string? Dash = null,
-  StrokePayload? Outline = null, List<StrokePayload?>? Outlines = null);
+  StrokePayload? Outline = null, List<StrokePayload?>? Outlines = null, List<string?>? SpelledLabels = null,
+  List<double[]?>? Bars = null);
 
 /// <summary>A null fill is the line's color.</summary>
 public record MarkersPayload(string Shape, double Size, string? Fill);
@@ -210,7 +208,7 @@ public record LabelsPayload(string Show, string Position, FormatPayload? Format,
 }
 
 public record ValueAxisPayload(bool Visible, double Min, double Max, double Step, FormatPayload? Format,
-  bool Gridlines, bool Reverse = false);
+  bool Gridlines, bool Reverse = false, List<string>? TickLabels = null);
 
 /// <summary>A date axis's pattern, and its step between labels; a null step is for the page to choose.</summary>
 public record DateAxisPayload(string Pattern, int? StepCount, string? StepUnit);
@@ -287,7 +285,8 @@ public delegate string PictureUrl(string path, string? fill);
 /// agrees to serve.</summary>
 public static class PayloadBuilder
 {
-  public static DeckPayload Build(Presentation presentation, long version, PictureUrl pictureUrl)
+  public static DeckPayload Build(Presentation presentation, long version, PictureUrl pictureUrl,
+    Dictionary<string, SlideScene>? scenes = null)
   {
     return new DeckPayload
     {
@@ -295,13 +294,13 @@ public static class PayloadBuilder
       Size = presentation.Size,
       Version = version,
       Sections = presentation.Sections.Select(section => new SectionPayload(section.Name, section.Slides)).ToList(),
-      Slides = presentation.Slides.Select(slide => Slide(presentation, slide, pictureUrl)).ToList(),
-      Variants = presentation.Variants.Select(slide => Slide(presentation, slide, pictureUrl)).ToList(),
+      Slides = presentation.Slides.Select(slide => Slide(presentation, slide, pictureUrl, scenes: scenes)).ToList(),
+      Variants = presentation.Variants.Select(slide => Slide(presentation, slide, pictureUrl, scenes: scenes)).ToList(),
       Picks = presentation.Picks
         .Where(pick => presentation.Slides.Any(slide => slide.Pick == pick.Id))
         .Select(pick => new PickPayload(pick.Id, pick.By, pick.Date, pick.Variants))
         .ToList(),
-      Resolved = PickFile.LoadResolved(presentation.Root, presentation.Root)
+      Resolved = presentation.ResolvedPicks
         .GroupBy(pick => pick.Id)
         .Select(group => group.Last())
         .Select(pick => new PickResolvedPayload(pick.Id, pick.Resolved!.Chosen, pick.Resolved.Why, pick.Resolved.Shown))
@@ -314,19 +313,30 @@ public static class PayloadBuilder
     };
   }
 
-  public static string Title(Presentation presentation, Slide slide)
-  {
-    return slide.Title?.Text is List<Run> runs ? SceneBuilder.Text(presentation, slide, runs) : "";
-  }
-
   /// <summary>The slide as drawn; with <paramref name="stage"/>, a layout's specimen on which the mouse writes the
   /// theme's and layout's files instead, its areas drawn as items to move.</summary>
-  public static SlidePayload Slide(Presentation presentation, Slide slide, PictureUrl pictureUrl, Layout? stage = null)
+  public static SlidePayload Slide(Presentation presentation, Slide slide, PictureUrl pictureUrl, Layout? stage = null,
+    Dictionary<string, SlideScene>? scenes = null, SlideScene? built = null)
   {
     SlideScene scene;
     try
     {
-      scene = SceneBuilder.Build(presentation, slide);
+      if (built is not null)
+      {
+        scene = built;
+      }
+      else if (scenes is not null && scenes.TryGetValue(slide.Id, out SlideScene? cached))
+      {
+        scene = cached;
+      }
+      else
+      {
+        scene = SceneBuilder.Build(presentation, slide);
+        if (scenes is not null)
+        {
+          scenes[slide.Id] = scene;
+        }
+      }
     }
     catch (LoadException exception)
     {
@@ -346,7 +356,7 @@ public static class PayloadBuilder
     {
       Id = slide.Id,
       Number = slide.Number,
-      Title = title is null ? null : string.Concat(title.Paragraphs![0].Runs.Select(run => run.Text)),
+      Title = title?.Paragraphs![0].PlainText,
       Layout = slide.Layout,
       Section = slide.Section,
       Pick = slide.Pick,
@@ -362,11 +372,8 @@ public static class PayloadBuilder
 
   private static IEnumerable<ItemPayload> StageAreas(Theme theme, Layout layout)
   {
-    foreach (string name in theme.Areas.Keys.Concat(layout.Areas.Keys).Distinct())
+    foreach ((string name, Area area, string owner) in theme.AreasOf(layout))
     {
-      (Area area, string owner) = layout.Areas.TryGetValue(name, out Area? own)
-        ? (own, "layout")
-        : (theme.Areas[name], "theme");
       yield return new ItemPayload
       {
         Id = name,
@@ -406,33 +413,27 @@ public static class PayloadBuilder
     Layout layout = theme.Layouts[slide.Layout];
     var guides = new List<GuidePayload>();
     HashSet<string> framed = slide.Elements.Select(element => element.Frame?.Area).OfType<string>().ToHashSet();
-    foreach (string name in theme.Areas.Keys.Concat(layout.Areas.Keys).Distinct())
+    foreach ((string name, Area area, string owner) in theme.AreasOf(layout))
     {
-      (Area area, string owner) = layout.Areas.TryGetValue(name, out Area? own)
-        ? (own, "layout")
-        : (theme.Areas[name], "theme");
       guides.Add(new GuidePayload("area", name, owner, area.Rect, framed.Contains(name)));
     }
 
-    void Placeholder(string name, Placeholder? themeLevel, Placeholder? layoutLevel, bool used)
+    void Placeholder(string name, bool used)
     {
-      (Frame? frame, string owner) = layoutLevel?.Frame is not null
-        ? (layoutLevel.Frame, "layout")
-        : (themeLevel?.Frame, "theme");
+      (Frame? frame, string owner) = theme.PlaceholderFrame(layout, name);
       if (frame is not null)
       {
         guides.Add(new GuidePayload("placeholder", name, owner, frame.Rect, used));
       }
     }
 
-    if (!layout.TitleRemoved)
+    if (theme.HasTitle(layout))
     {
-      Placeholder("title", theme.Title, layout.Title, slide.Title is not null);
+      Placeholder("title", slide.Title is not null);
     }
-    foreach (string name in theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct())
+    foreach (string name in theme.PlaceholderNames(layout))
     {
-      Placeholder(name, theme.Placeholders.GetValueOrDefault(name), layout.Placeholders.GetValueOrDefault(name),
-        slide.Placeholders.ContainsKey(name));
+      Placeholder(name, slide.Placeholders.ContainsKey(name));
     }
     return guides;
   }
@@ -471,9 +472,9 @@ public static class PayloadBuilder
       Direction = item.Kind == "shape" ? Get<string>("direction") : null,
       Adjust = adjust.Count == 0 ? null : adjust,
       Tail = Get<double[]>("tail"),
-      From = Get<double[]>("from"),
-      To = Get<double[]>("to"),
-      Arc = item.Kind == "arc" ? [Number("arc.from")!.Value, Number("arc.to")!.Value] : null,
+      From = item.From,
+      To = item.To,
+      Arc = item.Arc,
       Start = Get<string>("start"),
       End = Get<string>("end"),
       Picture = picture is null ? null : pictureUrl(picture, fill),
@@ -481,7 +482,7 @@ public static class PayloadBuilder
       Crop = Get<double[]>("crop"),
       Alt = Get<string>("alt"),
       Link = Get<string>("link"),
-      Text = item.Paragraphs is null ? null : Text(item, theme),
+      Text = item.Paragraphs is null ? null : Text(item.Properties, item.Paragraphs, theme),
       Chart = item.Chart is null ? null : Chart(item.Chart, properties, theme),
       Table = item.Table is null ? null : Table(item.Table, theme)
     };
@@ -580,7 +581,7 @@ public static class PayloadBuilder
         Column = cell.Column,
         Rows = cell.Rows,
         Columns = cell.Columns,
-        Fill = cell.Properties.TryGetValue("fill", out Resolved? fill) ? Hex(fill.Value, theme) : null,
+        Fill = cell.Fill is Color fill ? Hex(fill, theme) : null,
         BorderTop = Stroke(cell.Properties, theme, "border_top"),
         BorderBottom = Stroke(cell.Properties, theme, "border_bottom"),
         BorderLeft = Stroke(cell.Properties, theme, "border_left"),
@@ -626,16 +627,67 @@ public static class PayloadBuilder
       object? Own(string key) => Value(point + key) ?? Value($"{prefix}markers.{key}");
       return Own("shape") is not string shape || shape == "none"
         ? new MarkersPayload("none", 0, null)
-        : new MarkersPayload(shape, Own("size") as double? ?? 5, Own("fill") is Color fill ? Hex(fill, theme) : null);
+        : new MarkersPayload(shape, Own("size") as double? ?? SceneBuilder.DefaultMarkerSize,
+          Own("fill") is Color fill ? Hex(fill, theme) : null);
     }
     ValueAxisPayload? Axis(string name)
     {
-      return Value($"{name}.visible") is not bool visible
-        ? null
-        : new ValueAxisPayload(visible, Convert.ToDouble(Value($"{name}.min")), Convert.ToDouble(Value($"{name}.max")),
-          Convert.ToDouble(Value($"{name}.step")), Format(Value($"{name}.format") as string, theme),
-          Value($"{name}.gridlines") as bool? ?? false, Value($"{name}.reverse") as bool? ?? false);
+      if (Value($"{name}.visible") is not bool visible)
+      {
+        return null;
+      }
+      double min = Convert.ToDouble(Value($"{name}.min"));
+      double max = Convert.ToDouble(Value($"{name}.max"));
+      double step = Convert.ToDouble(Value($"{name}.step"));
+      string? formatName = Value($"{name}.format") as string;
+      NumberFormat? format = formatName is not null && theme.Styles.Formats.TryGetValue(formatName, out NumberFormat? found)
+        ? found
+        : null;
+      List<string>? tickLabels = format is null ? null : SpellTicks(min, max, step, format);
+      return new ValueAxisPayload(visible, min, max, step, Format(formatName, theme),
+        Value($"{name}.gridlines") as bool? ?? false, Value($"{name}.reverse") as bool? ?? false, tickLabels);
     }
+    List<string?>? SpellSeriesLabels(ChartSeries series, string prefix)
+    {
+      if (chart.Family == "pie")
+      {
+        return null;
+      }
+      var spelled = new List<string?>(series.Values.Count);
+      bool any = false;
+      for (int point = 0; point < series.Values.Count; point++)
+      {
+        if (series.Values[point] is not double raw)
+        {
+          spelled.Add(null);
+          continue;
+        }
+        string pointPrefix = point < chart.Categories.Count ? $"{prefix}points.{chart.Categories[point]}." : "";
+        bool hasPoint = pointPrefix.Length > 0 && properties.ContainsKey($"{pointPrefix}data_labels.show");
+        string show = (hasPoint ? Value($"{pointPrefix}data_labels.show") : Value($"{prefix}data_labels.show")) as string
+          ?? "none";
+        if (show != "value")
+        {
+          spelled.Add(null);
+          continue;
+        }
+        string? formatName = (hasPoint ? Value($"{pointPrefix}data_labels.format") : Value($"{prefix}data_labels.format"))
+          as string;
+        if (formatName is not null && theme.Styles.Formats.TryGetValue(formatName, out NumberFormat? format))
+        {
+          spelled.Add(format.Spell(raw));
+          any = true;
+        }
+        else
+        {
+          spelled.Add(null);
+        }
+      }
+      return any ? spelled : null;
+    }
+    List<double[]?>? waterfallBars = chart.Type == "waterfall"
+      ? chart.Bars().Select(bar => bar is (double from, double to) ? new[] { from, to } : null).ToList()
+      : null;
     return new ChartPayload
     {
       Type = chart.Type,
@@ -650,10 +702,12 @@ public static class PayloadBuilder
           : chart.SeriesIn == "columns"
             ? chart.Lines!.Select(line => new TracePayload(book, line, chart.Columns![index])).ToList()
             : chart.Columns!.Select(column => new TracePayload(book, chart.Lines![index], column)).ToList();
+        List<double[]?>? bars = index == 0 ? waterfallBars : null;
         if (!chart.SeriesOptions.ContainsKey(series.Name))
         {
           return new SeriesPayload(series.Name, series.Values, chart.Family, false, Labels(""),
-            chart.Family == "line" ? Markers("") : null, traces);
+            chart.Family == "line" ? Markers("") : null, traces, SpelledLabels: SpellSeriesLabels(series, ""),
+            Bars: bars);
         }
         string prefix = $"series.{series.Name}.";
         List<string?> colors = chart.Categories
@@ -682,7 +736,7 @@ public static class PayloadBuilder
           pointMarkers.Any(markers => markers is not null) ? pointMarkers : null,
           pointLabels.Any(labels => labels is not null) ? pointLabels : null,
           Value($"{prefix}dash") is string dash and not "solid" ? dash : null, outline,
-          pointOutlines ? outlines : null);
+          pointOutlines ? outlines : null, SpellSeriesLabels(series, prefix), bars);
       }).ToList(),
       Colors = ((List<Color>)Value("series_colors")!).Select(color => Hex(color, theme)).ToList(),
       ValueAxis = Axis("value_axis"),
@@ -708,6 +762,25 @@ public static class PayloadBuilder
       AxisWidth = Value("category_axis.stroke.width") as double? ?? 0.75,
       EdgeColor = theme.Colors["light1"]
     };
+  }
+
+  private static List<string> SpellTicks(double min, double max, double step, NumberFormat format)
+  {
+    if (!((max - min) / step <= 100))
+    {
+      return [format.Spell(min), format.Spell(max)];
+    }
+    var labels = new List<string>();
+    for (int index = 0; ; index++)
+    {
+      double tick = min + index * step;
+      if (tick > max + step * 1e-9)
+      {
+        break;
+      }
+      labels.Add(format.Spell(Math.Abs(tick) < step * 1e-9 ? 0 : tick));
+    }
+    return labels;
   }
 
   private static FormatPayload? Format(string? name, Theme theme)
@@ -749,11 +822,6 @@ public static class PayloadBuilder
       Number("angle", 0));
   }
 
-  private static TextPayload Text(SceneItem item, Theme theme)
-  {
-    return Text(item.Properties, item.Paragraphs!, theme);
-  }
-
   private static TextPayload Text(Dictionary<string, Resolved> properties, List<SceneParagraph> paragraphs,
     Theme theme)
   {
@@ -777,8 +845,9 @@ public static class PayloadBuilder
     }
     return new ParagraphPayload
     {
-      Align = properties.TryGetValue("align", out Resolved? align) ? (string)align.Value : "left",
-      AlignStyle = paragraph.StyleAligns && align!.Origin is Origin origin
+      Align = paragraph.Align,
+      AlignStyle = paragraph.StyleAligns && properties.TryGetValue("align", out Resolved? align) &&
+        align.Origin is Origin origin
         ? new StyleOriginPayload(paragraph.Style!, origin.File, origin.Line)
         : null,
       SpaceBefore = Number("space_before"),

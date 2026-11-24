@@ -409,7 +409,7 @@ function redrawItem(index, node, changed) {
   fresh.dataset.index = index;
   fresh.classList.add('selected');
   node.replaceWith(fresh);
-  fitText(stage);
+  fitText(stage, fresh);
   return fresh;
 }
 
@@ -736,16 +736,31 @@ function moveGesture(event) {
       loadDetail();
     }
   }
-  if (gesture.marquee) {
-    moveMarquee(gesture, event);
-    return;
-  }
   if (gesture.words) {
     selectWords(gesture, event);
     return;
   }
-  let dx = screenX / gesture.scale;
-  let dy = screenY / gesture.scale;
+  gesture.pendingMove = { clientX: event.clientX, clientY: event.clientY, shiftKey: event.shiftKey,
+    altKey: event.altKey };
+  if (!gesture.moveFrame) {
+    gesture.moveFrame = requestAnimationFrame(() => {
+      gesture.moveFrame = null;
+      if (editing.gesture === gesture && gesture.pendingMove) {
+        const pending = gesture.pendingMove;
+        gesture.pendingMove = null;
+        applyGestureMove(gesture, pending);
+      }
+    });
+  }
+}
+
+function applyGestureMove(gesture, event) {
+  if (gesture.marquee) {
+    moveMarquee(gesture, event);
+    return;
+  }
+  let dx = (event.clientX - gesture.startX) / gesture.scale;
+  let dy = (event.clientY - gesture.startY) / gesture.scale;
   if (event.shiftKey && !gesture.handle) {
     [dx, dy] = Math.abs(dx) > Math.abs(dy) ? [dx, 0] : [0, dy];
   }
@@ -798,6 +813,15 @@ function endGesture(event) {
   const gesture = editing.gesture;
   if (!gesture || event.pointerId !== gesture.pointer) {
     return;
+  }
+  if (gesture.moveFrame) {
+    cancelAnimationFrame(gesture.moveFrame);
+    gesture.moveFrame = null;
+  }
+  if (gesture.started && gesture.pendingMove) {
+    const pending = gesture.pendingMove;
+    gesture.pendingMove = null;
+    applyGestureMove(gesture, pending);
   }
   editing.gesture = null;
   if (!gesture.started) {

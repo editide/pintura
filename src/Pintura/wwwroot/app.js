@@ -91,6 +91,23 @@ function currentSlide() {
 
 // Each slide's thumbnail with the payload it drew, so a reload redraws only the slides that changed.
 const thumbnails = new Map();
+const gridCells = new Map();
+
+// Rescales an existing thumbnail or grid frame without remounting its stage or card.
+function scaleFrame(frame, size, width) {
+  const scale = width / size[0];
+  frame.style.width = `${width}px`;
+  frame.style.height = `${size[1] * scale}px`;
+  const stage = frame.querySelector(':scope > .stage');
+  if (stage) {
+    stage.style.transform = `scale(${scale})`;
+    stage.style.setProperty('--scale', scale);
+  }
+  const card = frame.querySelector(':scope > .pick-card');
+  if (card) {
+    card.style.fontSize = `${Math.max(10, width / 14)}px`;
+  }
+}
 
 function renderSidebar() {
   const deck = state.deck;
@@ -275,6 +292,10 @@ function scaleSlide() {
   view.classList.toggle('zoomed', state.zoom > 1);
   const frame = document.getElementById('slide-frame');
   const stage = slideStage();
+  if (!stage) {
+    renderSlide();
+    return;
+  }
   const size = state.deck.size;
   const width = slideWidth(view);
   const scale = width / size[0];
@@ -286,7 +307,9 @@ function scaleSlide() {
   if (frame.querySelector(':scope > .comments')) {
     renderComments(shown, frame, size);
   }
-  slideCaption(shown);
+  if (!state.layout) {
+    slideCaption(shown);
+  }
 }
 
 // The layout's stage names the layout, how many slides it moves, and the way back to the theme.
@@ -317,6 +340,7 @@ function renderGrid() {
   grid.replaceChildren();
   const byId = new Map(deck.slides.map((slide) => [slide.id, slide]));
   const filtering = filteringChanges();
+  const width = GRID_WIDTH * state.gridZoom;
   for (const section of deck.sections) {
     const ids = filtering ? section.slides.filter(slideDiff) : section.slides;
     if (ids.length === 0) {
@@ -332,26 +356,46 @@ function renderGrid() {
     const row = element('div', 'grid-slides', grid);
     for (const id of ids) {
       const slide = byId.get(id);
-      const cell = element('button', 'grid-cell', row);
-      cell.type = 'button';
-      cell.dataset.slide = id;
-      cell.style.width = `${GRID_WIDTH * state.gridZoom}px`;
       const shown = shownSlide(slide);
-      const frame = element('div', 'grid-frame', cell);
-      if (shown) {
-        mountThumbnail(frame, shown, deck.size, GRID_WIDTH * state.gridZoom);
-      } else {
-        mountAbsent(frame, deck.size, GRID_WIDTH * state.gridZoom);
+      const drawn = JSON.stringify([deck.size, shown, pickOf(slide)]);
+      let entry = gridCells.get(id);
+      const fresh = !entry || entry.drawn !== drawn;
+      if (fresh) {
+        const cell = element('button', 'grid-cell');
+        cell.type = 'button';
+        cell.dataset.slide = id;
+        const frame = element('div', 'grid-frame', cell);
+        element('div', 'grid-caption', cell);
+        cell.addEventListener('click', () => {
+          select(id);
+          setView('slide');
+        });
+        entry = { drawn, cell, frame };
+        gridCells.set(id, entry);
       }
+      const { cell, frame } = entry;
+      cell.style.width = `${width}px`;
+      row.append(cell);
+      if (fresh) {
+        if (shown) {
+          mountThumbnail(frame, shown, deck.size, width);
+        } else {
+          mountAbsent(frame, deck.size, width);
+        }
+      } else {
+        scaleFrame(frame, deck.size, width);
+      }
+      delete cell.dataset.change;
       markThumbnail(cell, id);
       markComments(frame, id);
       cell.dataset.pick = slide.pick || '';
-      element('div', 'grid-caption', cell).textContent =
+      cell.querySelector('.grid-caption').textContent =
         `${slide.number} · ${thumbnailTitle(slide) || words(slide.id)}`;
-      cell.addEventListener('click', () => {
-        select(id);
-        setView('slide');
-      });
+    }
+  }
+  for (const id of gridCells.keys()) {
+    if (!byId.has(id)) {
+      gridCells.delete(id);
     }
   }
 }
@@ -1131,9 +1175,7 @@ window.addEventListener('resize', () => {
   if (!state.deck) {
     return;
   }
-  if (state.view === 'slide') {
-    renderSlide();
-  }
+  resized();
   renderPresent();
 });
 
@@ -1697,8 +1739,28 @@ function applyWidths() {
 }
 
 function resized() {
-  if (state.deck && state.view === 'slide') {
+  if (!state.deck || state.view !== 'slide') {
+    return;
+  }
+  const slide = currentSlide();
+  if (!slide || showingPick(slide)) {
     renderSlide();
+  } else {
+    scaleSlide();
+  }
+}
+
+// Scales existing sidebar thumbnails during a drag so the DOM isn't rebuilt each frame.
+function scaleSidebar() {
+  const deck = state.deck;
+  if (!deck) {
+    return;
+  }
+  const width = thumbnailWidth(deck.size);
+  const container = document.getElementById('thumbnails');
+  container.parentElement.style.setProperty('--thumbnail-width', `${width}px`);
+  for (const preview of container.querySelectorAll('.thumbnail .preview')) {
+    scaleFrame(preview, deck.size, width);
   }
 }
 
@@ -1706,12 +1768,17 @@ function resized() {
 // visits; a double click goes back to the default.
 function installResizer(id, key, [least, most], width) {
   const resizer = document.getElementById(id);
-  const apply = (value) => {
+  const resizesNav = key === 'sidebarWidth' || key === 'stripHeight';
+  const apply = (value, dragging = false) => {
     state[key] = value;
     applyWidths();
     resized();
-    if ((key === 'sidebarWidth' || key === 'stripHeight') && state.deck) {
-      renderSidebar();
+    if (resizesNav && state.deck) {
+      if (dragging) {
+        scaleSidebar();
+      } else {
+        renderSidebar();
+      }
     }
   };
   resizer.addEventListener('pointerdown', (event) => {
@@ -1722,11 +1789,15 @@ function installResizer(id, key, [least, most], width) {
     let frame = null;
     const move = (moved) => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => apply(Math.round(Math.min(most, Math.max(least, width(moved))))));
+      frame = requestAnimationFrame(() => apply(Math.round(Math.min(most, Math.max(least, width(moved)))), true));
     };
     const end = () => {
+      cancelAnimationFrame(frame);
       document.body.classList.remove('resizing', 'resizing-rows');
       resizer.removeEventListener('pointermove', move);
+      if (resizesNav && state.deck) {
+        renderSidebar();
+      }
       save();
     };
     resizer.addEventListener('pointermove', move);

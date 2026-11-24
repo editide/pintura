@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -388,6 +387,10 @@ public class LibretaReader : IBookReader
     T answer = parse(text);
     lock (gate)
     {
+      if (answers.Count >= 256)
+      {
+        answers.Clear();
+      }
       answers[entry] = ("", answer);
     }
     return answer;

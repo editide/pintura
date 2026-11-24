@@ -76,9 +76,14 @@ public partial class Importer
   /// pictures read from <paramref name="source"/>, the folder the JSON's picture paths are relative to.</summary>
   public static ImportResult Import(string json, string source, string folder)
   {
+    return Import(JsonNode.Parse(json)!.AsObject(), source, folder);
+  }
+
+  /// <summary>Imports a parsed model <paramref name="deck"/> into <paramref name="folder"/>.</summary>
+  public static ImportResult Import(JsonObject deck, string source, string folder)
+  {
     string target = Path.GetFullPath(folder);
     RefuseUnlessEmpty(target);
-    JsonObject deck = JsonNode.Parse(json)!.AsObject();
     // The import rewrites its folder on every pass, so it works beside the destination and moves in once it loads.
     string scratch = Scratch(target);
     try
@@ -649,13 +654,7 @@ public partial class Importer
     JsonObject properties = draft.Properties;
     string stem = Unique((string?)properties["chart"] ?? draft.Id, charts.Keys.ToHashSet());
     string type = (string)properties["type"]!;
-    string family = type switch
-    {
-      "pie" or "doughnut" => "pie",
-      _ when type.EndsWith("line", StringComparison.Ordinal) => "line",
-      _ when type.EndsWith("bar", StringComparison.Ordinal) => "bar",
-      _ => "column"
-    };
+    string family = Pintura.Chart.FamilyOf(type);
     List<string> categories = properties["categories"]!.AsArray().Select(node => (string)node!).ToList();
     var grid = new List<List<string>> { categories.Prepend("series").ToList() };
     var series = new OrderedDictionary<string, OrderedDictionary<string, JsonNode?>>();
@@ -1279,8 +1278,6 @@ public partial class Importer
 
   #region Styling text
 
-  /// <summary>Gives each paragraph the style that turns what it loads as into what it should be, naming one where
-  /// none does, and each run the span that does the same for the run.</summary>
   /// <summary>A box's paragraphs, or a table cell's, as wanted and as loaded, and where their styles and spans go.
   /// </summary>
   private sealed record TextBlock(ItemDraft Draft, JsonArray Wanted, JsonArray Loaded,
@@ -1388,7 +1385,7 @@ public partial class Importer
           styles[chosen] = new OrderedDictionary<string, JsonNode?>(difference);
         }
         paragraphStyles.Add(chosen);
-        spans.Add(wanted["runs"]!.AsArray().Select(node => Span(block.Draft, node!.AsObject(), wanted)).ToList());
+        spans.Add(wanted["runs"]!.AsArray().Select(node => Span(node!.AsObject(), wanted)).ToList());
       }
       block.Store(paragraphStyles, spans);
     }
@@ -1465,7 +1462,7 @@ public partial class Importer
     return properties;
   }
 
-  private RunSpan Span(ItemDraft draft, JsonObject run, JsonObject paragraph)
+  private RunSpan Span(JsonObject run, JsonObject paragraph)
   {
     JsonObject before = Linked(paragraph, run);
     List<string> names = run["styles"]?.AsArray().Select(node => (string)node!).ToList() ?? new List<string>();
@@ -1606,11 +1603,15 @@ public partial class Importer
 
   private void Write()
   {
-    if (Directory.Exists(folder))
-    {
-      Directory.Delete(folder, true);
-    }
     Directory.CreateDirectory(folder);
+    foreach (string sub in new[] { "theme", "slides", "charts", "tables" })
+    {
+      string path = Path.Combine(folder, sub);
+      if (Directory.Exists(path))
+      {
+        Directory.Delete(path, true);
+      }
+    }
     WriteFile("presentation.yaml", YamlWriter.Write(Presentation()));
     WriteFile("theme/theme.yaml", YamlWriter.Write(ThemeFile()));
     WriteFile("theme/styles.yaml", YamlWriter.Write(StylesFile()));
@@ -1637,8 +1638,11 @@ public partial class Importer
       if (File.Exists(from))
       {
         string target = Path.Combine(folder, written);
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        File.Copy(from, target);
+        if (!File.Exists(target))
+        {
+          Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+          File.Copy(from, target);
+        }
       }
     }
   }
@@ -1896,7 +1900,7 @@ public partial class Importer
       if (level > 0)
       {
         string? bullet = (string?)paragraph["bullet"];
-        prefix = new string(' ', (level - 1) * 2) + (bullet is not null && Numbered().IsMatch(bullet)
+        prefix = new string(' ', (level - 1) * 2) + (bullet is not null && PowerPointVocabulary.Numbered().IsMatch(bullet)
           ? $"{bullet} "
           : "- ");
       }
@@ -1910,8 +1914,6 @@ public partial class Importer
     return block && lines.Count > 1 ? text + "\n" : text;
   }
 
-  /// <summary>Runs as markup with no formatting of their own, links aside when <paramref name="links"/> is set, or
-  /// as a title's plain text when <paramref name="plain"/> is.</summary>
   /// <summary>The CSV the data was read from, or one named for the chart or table when it came from a book, whose
   /// values the import keeps.</summary>
   private static string CsvPath(JsonObject properties, string stem)
@@ -2305,7 +2307,11 @@ public partial class Importer
       case JsonValue value when value.TryGetValue(out string? text):
         return text;
       case JsonValue value:
-        return (double)value;
+        return value.GetValue<object>() switch
+        {
+          JsonElement element => element.GetDouble(),
+          object number => Convert.ToDouble(number, CultureInfo.InvariantCulture)
+        };
     }
     return null;
   }
@@ -2336,9 +2342,6 @@ public partial class Importer
   [GeneratedRegex("[A-Z]")]
   private static partial Regex CamelHump();
 
-  [GeneratedRegex(@"^\d+\.$")]
-  private static partial Regex Numbered();
-
   #endregion
 
 }
@@ -2359,10 +2362,11 @@ public static class ImportCommand
     string written = themeOnly ? Importer.Scratch(target) : target;
 
     var findings = new List<string>();
+    var workarounds = new Workarounds();
     string? media = null;
     try
     {
-      string json;
+      JsonObject model;
       string pictures;
       if (Path.GetExtension(source).ToLowerInvariant() is ".pptx" or ".potx")
       {
@@ -2374,22 +2378,22 @@ public static class ImportCommand
           reads["slides"] = new JsonArray(picked.Select(slide => slide!.DeepClone()).ToArray());
         }
         PowerPointDeck mapped = PowerPointMapping.Map(reads, source, media, wholeTheme: themeOnly);
-        json = mapped.Deck.ToJsonString();
+        model = mapped.Deck;
         pictures = mapped.Media;
         findings.AddRange(mapped.Findings);
+        workarounds.AddRange(mapped.Workarounds);
       }
       else
       {
-        json = File.ReadAllText(source);
+        model = JsonNode.Parse(File.ReadAllText(source))!.AsObject();
         pictures = Path.GetDirectoryName(source)!;
-        if (only is not null && JsonNode.Parse(json) is JsonObject model)
+        if (only is not null)
         {
           List<JsonNode?> picked = only.Pick(model["slides"]!.AsArray().ToList(), slide => (string?)slide?["id"]);
           model["slides"] = new JsonArray(picked.Select(slide => slide!.DeepClone()).ToArray());
-          json = model.ToJsonString();
         }
       }
-      findings.AddRange(Importer.Import(json, pictures, written).Findings);
+      findings.AddRange(Importer.Import(model, pictures, written).Findings);
       Presentation presentation = PresentationLoader.Load(written);
       if (themeOnly)
       {
@@ -2419,6 +2423,15 @@ public static class ImportCommand
       foreach (string finding in findings.Distinct())
       {
         output.WriteLine($"- {finding}");
+      }
+    }
+    if (workarounds.Notes.Count > 0)
+    {
+      output.WriteLine();
+      output.WriteLine("workarounds:");
+      foreach (string note in workarounds.Notes)
+      {
+        output.WriteLine($"- {note}");
       }
     }
     return 0;

@@ -19,8 +19,20 @@ $temporary = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid())
 New-Item -ItemType Directory $temporary | Out-Null
 try {
   Write-Host "Downloading $releaseUrl/$archive"
-  Invoke-WebRequest "$releaseUrl/$archive" -OutFile (Join-Path $temporary $archive) -UseBasicParsing
-  Expand-Archive (Join-Path $temporary $archive) $temporary
+  $archivePath = Join-Path $temporary $archive
+  $sumsPath = Join-Path $temporary 'SHA256SUMS'
+  Invoke-WebRequest "$releaseUrl/$archive" -OutFile $archivePath -UseBasicParsing
+  Invoke-WebRequest "$releaseUrl/SHA256SUMS" -OutFile $sumsPath -UseBasicParsing
+  $expectedLine = Get-Content $sumsPath | Where-Object { $_ -match "\s+$([Regex]::Escape($archive))$" } | Select-Object -First 1
+  if (-not $expectedLine) {
+    throw "No checksum found for $archive in SHA256SUMS."
+  }
+  $expected = ($expectedLine -split '\s+')[0].ToLowerInvariant()
+  $actual = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actual -ne $expected) {
+    throw "Checksum mismatch for ${archive}: expected $expected, got $actual."
+  }
+  Expand-Archive $archivePath $temporary
   $unpacked = Join-Path $temporary 'pintura'
   Get-ChildItem -Recurse $unpacked | Unblock-File
 

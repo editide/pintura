@@ -3,6 +3,7 @@ body.headless {
   display: block;
   height: auto;
   background: #fff;
+  font-family: ui-sans-serif, system-ui, sans-serif;
 }
 
 #root {

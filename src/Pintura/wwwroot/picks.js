@@ -136,6 +136,8 @@ function enlargedIndex(pick) {
   return picking.pick === pick.id ? picking.index : null;
 }
 
+let lastPickDrawn = null;
+
 function renderPick(slide) {
   const pick = pickOf(slide);
   const view = document.getElementById('pick-view');
@@ -150,10 +152,10 @@ function renderPick(slide) {
       (view.clientHeight - ENLARGED_ENDS) * size[0] / size[1])));
   const slides = variants.map((variant) => offeredSlide(variant.slide) || null);
   const drawn = JSON.stringify([size, width, pick, variants, slides, enlarged, past, resolution]);
-  if (view.dataset.drawn === drawn) {
+  if (lastPickDrawn === drawn) {
     return;
   }
-  view.dataset.drawn = drawn;
+  lastPickDrawn = drawn;
   view.replaceChildren();
   view.classList.toggle('enlarged', enlarged !== null);
   if (enlarged === null) {

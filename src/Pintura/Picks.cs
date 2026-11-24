@@ -47,8 +47,6 @@ public static class PickFile
   public const string ResolvedName = "picks-resolved.yaml";
   public const string None = "none";
 
-  private static readonly object Gate = new object();
-
   /// <summary>An entry and its lines, from the start of the line its dash is on; <paramref name="Indent"/> is the
   /// dash's column.</summary>
   private record Entry(Pick Pick, int Start, int End, int Indent);
@@ -114,7 +112,7 @@ public static class PickFile
         throw node.Error($"pick {pick.Id} is written twice");
       }
       (int start, int end) = Node.Extent(text, node.Yaml);
-      int line = text.LastIndexOf('\n', Math.Max(start - 1, 0)) + 1;
+      int line = EntryList.LineStart(text, start);
       int dash = text.IndexOf('-', line);
       entries.Add(new Entry(pick, line, end, dash - line));
     }
@@ -219,18 +217,19 @@ public static class PickFile
   /// <summary>Resolves an open pick, or reopens one, answering with the change that undoes it and the files it wrote,
   /// each with what it read before, null when it didn't exist.</summary>
   public static (PickChange Undo, Dictionary<string, string?> Wrote) Apply(Presentation presentation,
-    PickChange change, string author, DateTime now, Snapshot? seen = null)
+    PickChange change, string author, DateTime now, Snapshot? seen = null, FileTransaction? transaction = null)
   {
     if (change.Reopen is PickUndo reopen)
     {
-      return Reopen(presentation, reopen, now);
+      return Reopen(presentation, reopen, now, transaction);
     }
     if (change.Revisit)
     {
-      return Revisit(presentation, change.Pick ?? throw new PatchException("name the pick to choose again"), now);
+      return Revisit(presentation, change.Pick ?? throw new PatchException("name the pick to choose again"), now,
+        transaction);
     }
     return Resolve(presentation, change.Pick ?? throw new PatchException("name the pick to resolve"), change.Keep,
-      change.Why, change.Shown, author, now, seen);
+      change.Why, change.Shown, author, now, seen, transaction);
   }
 
   /// <summary>Keeps one variant of a pick, or none of them, which keeps the first in place, marked rejected, so the
@@ -240,18 +239,22 @@ public static class PickFile
   /// to it, for the reviewer to resolve with how each thread ended, and the pick moves to the end of
   /// <c>picks-resolved.yaml</c>. Every file is written or none is.</summary>
   private static (PickChange Undo, Dictionary<string, string?> Wrote) Resolve(Presentation presentation, string id,
-    string? keep, string? why, List<string>? shown, string author, DateTime now, Snapshot? seen)
+    string? keep, string? why, List<string>? shown, string author, DateTime now, Snapshot? seen,
+    FileTransaction? transaction = null)
   {
     why = string.IsNullOrWhiteSpace(why) ? null : why.Trim().ReplaceLineEndings(" ");
     if (keep is null && why is null)
     {
       throw new PatchException("say why none of the variants will do");
     }
-    lock (Gate)
+    lock (Files.Gate)
     {
-      Touched files = new Touched(presentation.Root);
-      (string live, List<Entry> entries) = files.Picks();
-      (string archive, List<Entry> archived) = files.Resolved();
+      FileTransaction files = transaction ?? new FileTransaction();
+      string list = Path.Combine(presentation.Root, "presentation.yaml");
+      string picksPath = Path.Combine(presentation.Root, Name);
+      string resolvedPath = Path.Combine(presentation.Root, ResolvedName);
+      (string live, List<Entry> entries) = Parsed(files, picksPath, presentation.Root, false);
+      (string archive, List<Entry> archived) = Parsed(files, resolvedPath, presentation.Root, true);
       int at = entries.FindIndex(entry => entry.Pick.Id == id);
       if (at < 0)
       {
@@ -273,10 +276,10 @@ public static class PickFile
       var moved = new Dictionary<string, List<string>>(StringComparer.Ordinal);
       try
       {
-        files.Write(files.List, Patcher.Settle(files.Read(files.List)!, id, kept));
+        files.Write(list, Patcher.Settle(files.Read(list)!, id, kept), "the pick");
         var resolution = new PickResolution(author, Stamp(now), seen?.Rev, shown, keep ?? None, why);
-        files.Write(files.PicksPath, Without(live, entries, at));
-        files.Write(files.ResolvedPath, Append(archive, archived, Archived(live, entries[at], resolution)));
+        files.Write(picksPath, Without(live, entries, at), "the pick");
+        files.Write(resolvedPath, Append(archive, archived, Archived(live, entries[at], resolution)), "the pick");
         string first = Path.Combine(presentation.Root, "slides", $"{kept}.yaml");
         if (keep is not null && keep != kept)
         {
@@ -286,7 +289,7 @@ public static class PickFile
           {
             deleted[kept] = offered;
           }
-          files.Write(first, chosen);
+          files.Write(first, chosen, "the pick");
         }
         foreach (string slide in others)
         {
@@ -294,21 +297,20 @@ public static class PickFile
           if (files.Read(path) is string text)
           {
             deleted[slide] = text;
-            files.Write(path, null);
+            files.Write(path, null, "the pick");
           }
-          files.Track(Path.Combine(presentation.Root, CommentFile.Name));
-          files.Track(Path.Combine(presentation.Root, CommentFile.ResolvedName));
-          if (CommentFile.MoveSlide(presentation, slide, kept) is { Count: > 0 } ids)
+          if (CommentFile.MoveSlide(presentation, slide, kept, transaction: files) is { Count: > 0 } ids)
           {
             moved[slide] = ids;
           }
         }
         if (keep is null && files.Read(first) is string slideText)
         {
-          files.Write(first, $"rejected: {YamlWriter.Text(id)}\n{Unmarked(slideText, null)}");
+          files.Write(first, $"rejected: {YamlWriter.Text(id)}\n{Unmarked(slideText, null)}", "the pick");
         }
       }
-      catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
+      catch (Exception exception) when (transaction is null &&
+        exception is PatchException or IOException or UnauthorizedAccessException)
       {
         files.Restore();
         throw;
@@ -320,13 +322,16 @@ public static class PickFile
   /// <summary>Puts a resolved pick back as it was before it was resolved: its entry in <c>slides</c>, the variants'
   /// files, its entry in <c>picks.yaml</c>, and the comments resolving it resolved or moved.</summary>
   private static (PickChange Undo, Dictionary<string, string?> Wrote) Reopen(Presentation presentation, PickUndo undo,
-    DateTime now)
+    DateTime now, FileTransaction? transaction = null)
   {
-    lock (Gate)
+    lock (Files.Gate)
     {
-      Touched files = new Touched(presentation.Root);
-      (string live, List<Entry> entries) = files.Picks();
-      (string archive, List<Entry> archived) = files.Resolved();
+      FileTransaction files = transaction ?? new FileTransaction();
+      string list = Path.Combine(presentation.Root, "presentation.yaml");
+      string picksPath = Path.Combine(presentation.Root, Name);
+      string resolvedPath = Path.Combine(presentation.Root, ResolvedName);
+      (string live, List<Entry> entries) = Parsed(files, picksPath, presentation.Root, false);
+      (string archive, List<Entry> archived) = Parsed(files, resolvedPath, presentation.Root, true);
       int at = archived.FindLastIndex(entry => entry.Pick.Id == undo.Pick);
       if (at < 0 || entries.Any(entry => entry.Pick.Id == undo.Pick))
       {
@@ -337,7 +342,7 @@ public static class PickFile
       string? keep = pick.Resolved.Chosen == None ? null : pick.Resolved.Chosen;
       try
       {
-        files.Write(files.List, Patcher.Unsettle(files.Read(files.List)!, undo.Kept, undo.Pick));
+        files.Write(list, Patcher.Unsettle(files.Read(list)!, undo.Kept, undo.Pick), "the pick");
         foreach ((string slide, string text) in undo.Files)
         {
           string path = Path.Combine(presentation.Root, "slides", $"{slide}.yaml");
@@ -346,7 +351,7 @@ public static class PickFile
             throw new PatchException($"slides/{slide}.yaml exists again, so reopening pick {undo.Pick} was dropped",
               true);
           }
-          files.Write(path, text);
+          files.Write(path, text, "the pick");
         }
         int index = undo.Before is not null && entries.FindIndex(entry => entry.Pick.Id == undo.Before) is
           >= 0 and int found
@@ -355,28 +360,26 @@ public static class PickFile
         string first = Path.Combine(presentation.Root, "slides", $"{undo.Kept}.yaml");
         if (keep is null && files.Read(first) is string slideText)
         {
-          files.Write(first, Unmarked(slideText, undo.Pick));
+          files.Write(first, Unmarked(slideText, undo.Pick), "the pick");
         }
-        files.Write(files.PicksPath, Insert(live, entries, index, Unresolved(archive, archived[at])));
-        files.Write(files.ResolvedPath, Without(archive, archived, at));
+        files.Write(picksPath, Insert(live, entries, index, Unresolved(archive, archived[at])), "the pick");
+        files.Write(resolvedPath, Without(archive, archived, at), "the pick");
         if (undo.Comments.Count > 0)
         {
-          files.Track(Path.Combine(presentation.Root, CommentFile.Name));
-          files.Track(Path.Combine(presentation.Root, CommentFile.ResolvedName));
           CommentFile.Apply(presentation,
             new CommentChange(Many: [.. undo.Comments.Select(comment => new CommentChange(Reopen: comment))]), "",
-            now);
+            now, transaction: files);
         }
         if (undo.Moved is { Count: > 0 })
         {
-          files.Track(Path.Combine(presentation.Root, CommentFile.Name));
           foreach ((string slide, List<string> ids) in undo.Moved)
           {
-            CommentFile.MoveSlide(presentation, undo.Kept, slide, ids);
+            CommentFile.MoveSlide(presentation, undo.Kept, slide, ids, files);
           }
         }
       }
-      catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
+      catch (Exception exception) when (transaction is null &&
+        exception is PatchException or IOException or UnauthorizedAccessException)
       {
         files.Restore();
         throw;
@@ -389,7 +392,7 @@ public static class PickFile
   /// was resolved at and any comments resolving it resolved, so the reviewer can choose again after the undo is gone.
   /// The comments it moved stay on the first variant, to follow whichever is kept next.</summary>
   private static (PickChange Undo, Dictionary<string, string?> Wrote) Revisit(Presentation presentation, string id,
-    DateTime now)
+    DateTime now, FileTransaction? transaction = null)
   {
     Pick pick = LoadResolved(presentation.Root, presentation.Root).LastOrDefault(each => each.Id == id)
       ?? throw new PatchException($"pick {id} isn't resolved; someone reopened it", true);
@@ -399,11 +402,25 @@ public static class PickFile
       throw new PatchException($"pick {id} kept {resolved.Chosen}, so there's nothing to choose again");
     }
     var files = new Dictionary<string, string>(StringComparer.Ordinal);
+    VersionScope? scope = resolved.Rev is not null && Revisions.Inside(presentation.Root)
+      ? Revisions.Scope(presentation.Root) : null;
+    string? commit = null;
+    if (scope is not null && resolved.Rev is not null)
+    {
+      try
+      {
+        commit = Revisions.Commit(presentation.Root, resolved.Rev);
+      }
+      catch (InvalidDataException)
+      {
+      }
+    }
     foreach (string slide in Slides(pick).Skip(1))
     {
-      (int exit, string text, _) = resolved.Rev is null ? (1, "", "")
-        : Revisions.Run(presentation.Root, "show", $"{resolved.Rev}:./slides/{slide}.yaml");
-      if (exit != 0)
+      string? text = scope is not null && commit is not null
+        ? GitObjects.For(scope.Top).TryReadText($"{commit}:{scope.Slides}/{slide}.yaml")
+        : null;
+      if (text is null)
       {
         throw new PatchException($"slides/{slide}.yaml wasn't saved when pick {id} was resolved, so its variants " +
           "can't be brought back");
@@ -414,12 +431,12 @@ public static class PickFile
       .Where(comment => comment.Resolved is { Outcome: "removed" } done && done.Date == resolved.Date &&
         files.ContainsKey(comment.Slide))
       .Select(comment => comment.Id)];
-    return Reopen(presentation, new PickUndo(id, pick.Variants[0].Slide, null, files, comments), now);
+    return Reopen(presentation, new PickUndo(id, pick.Variants[0].Slide, null, files, comments), now, transaction);
   }
 
   private static string Stamp(DateTime now)
   {
-    return now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    return EntryList.Stamp(now);
   }
 
   /// <summary>An entry's lines as written, moved to the dash's column 0, with the resolution as its last key.
@@ -474,17 +491,22 @@ public static class PickFile
     {
       return false;
     }
-    (int exit, string then, _) = (1, "", "");
+    string? then = null;
     try
     {
-      (exit, then, _) = Revisions.Run(presentation.Root, "show", $"{rev}:./slides/{slide.Id}.yaml");
+      if (Revisions.Inside(presentation.Root))
+      {
+        VersionScope scope = Revisions.Scope(presentation.Root);
+        string commit = Revisions.Commit(presentation.Root, rev);
+        then = GitObjects.For(scope.Top).TryReadText($"{commit}:{scope.Slides}/{slide.Id}.yaml");
+      }
     }
     catch (InvalidDataException)
     {
       return false;
     }
     string Normal(string text) => Unmarked(text, pick).ReplaceLineEndings("\n").TrimEnd();
-    return exit == 0 && Normal(File.ReadAllText(path)) != Normal(then);
+    return then is not null && Normal(File.ReadAllText(path)) != Normal(then);
   }
 
   /// <summary>A slide's text without its <c>rejected</c> line; with <paramref name="pick"/>, only a line naming that
@@ -544,119 +566,39 @@ public static class PickFile
 
   private static string Append(string text, List<Entry> entries, string lines)
   {
-    return entries.Count == 0 ? lines + "\n" : $"{text.TrimEnd()}\n\n{lines}\n";
+    return EntryList.Append(text, entries.Count, lines);
   }
 
   /// <summary>An entry's lines written before the <paramref name="index"/>th, indented as the file's entries are.
   /// </summary>
   private static string Insert(string text, List<Entry> entries, int index, string lines)
   {
-    if (entries.Count == 0)
-    {
-      return lines + "\n";
-    }
-    lines = Indented(lines, entries[0].Indent);
-    return index < entries.Count
-      ? text.Insert(entries[index].Start, lines + "\n\n")
-      : $"{text.TrimEnd()}\n\n{lines}\n";
+    string indented = entries.Count == 0 ? lines : Indented(lines, entries[0].Indent);
+    return EntryList.Insert(text, entries.Select(entry => entry.Start).ToList(), index, indented);
   }
 
   /// <summary>The text without an entry and the blank lines after it, or null when it was the only one.</summary>
   private static string? Without(string text, List<Entry> entries, int index)
   {
-    if (entries.Count == 1)
-    {
-      return null;
-    }
-    return index + 1 < entries.Count
-      ? text.Remove(entries[index].Start, entries[index + 1].Start - entries[index].Start)
-      : text[..entries[index].Start].TrimEnd() + "\n";
+    return EntryList.Without(text, entries.Select(entry => entry.Start).ToList(), index);
   }
 
-  /// <summary>The presentation's files as one change reads and writes them, remembering how each read first, so a
-  /// failing step puts every one back.</summary>
-  private class Touched(string root)
+  private static (string Text, List<Entry> Entries) Parsed(FileTransaction files, string path, string root,
+    bool archive)
   {
-    public string List { get; } = Path.Combine(root, "presentation.yaml");
-    public string PicksPath { get; } = Path.Combine(root, Name);
-    public string ResolvedPath { get; } = Path.Combine(root, ResolvedName);
-
-    /// <summary>Each file touched, with its text before, null when it didn't exist.</summary>
-    public Dictionary<string, string?> Before { get; } = new Dictionary<string, string?>(StringComparer.Ordinal);
-
-    public (string Text, List<Entry> Entries) Picks()
+    if (files.Read(path) is not string text)
     {
-      return Parsed(PicksPath, false);
+      return ("", []);
     }
-
-    public (string Text, List<Entry> Entries) Resolved()
+    try
     {
-      return Parsed(ResolvedPath, true);
+      Node document = SourceFile.For(path, root).LoadText(text, "picks");
+      return (text, Read(document, archive));
     }
-
-    private (string Text, List<Entry> Entries) Parsed(string path, bool archive)
+    catch (LoadException exception)
     {
-      if (Read(path) is not string text)
-      {
-        return ("", []);
-      }
-      try
-      {
-        return (text, PickFile.Read(SourceFile.For(path, root).Load("picks"), archive));
-      }
-      catch (LoadException exception)
-      {
-        throw new PatchException(exception.Message);
-      }
+      throw new PatchException(exception.Message);
     }
-
-    public string? Read(string path)
-    {
-      return File.Exists(path) ? File.ReadAllText(path) : null;
-    }
-
-    /// <summary>Remembers a file something else will write, to put it back too.</summary>
-    public void Track(string path)
-    {
-      Before.TryAdd(path, Read(path));
-    }
-
-    /// <summary>Writes a file, or with null deletes it.</summary>
-    public void Write(string path, string? text)
-    {
-      Track(path);
-      if (text is null)
-      {
-        File.Delete(path);
-      }
-      else
-      {
-        Pintura.Files.Replace(path, Before[path] is string before ? Patcher.KeepLineEndings(before, text) : text);
-      }
-    }
-
-    public void Restore()
-    {
-      foreach ((string path, string? text) in Before)
-      {
-        try
-        {
-          if (text is null)
-          {
-            File.Delete(path);
-          }
-          else if (Read(path) != text)
-          {
-            Pintura.Files.Replace(path, text);
-          }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-        }
-      }
-    }
-
-
   }
 
 

@@ -660,15 +660,5 @@ public class LoaderTests
     spelled.ShouldBe("10,000,000,000,000,000,000");
   }
 
-  public static string RepositoryRoot()
-  {
-    DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
-    while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "AGENTS.md")))
-    {
-      directory = directory.Parent;
-    }
-    return directory?.FullName ?? throw new InvalidOperationException("no repository root above the tests");
-  }
-
 
 }

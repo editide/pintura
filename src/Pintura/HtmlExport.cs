@@ -4,7 +4,6 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
-using System.Text.RegularExpressions;
 using SkiaSharp;
 
 namespace Pintura;
@@ -14,7 +13,7 @@ namespace Pintura;
 public static class HtmlExport
 {
   private static readonly string[] Scripts = ["shapes.js", "render.js", "charts.js", "book.js", "navigation.js", "export.js"];
-  private static readonly string[] Stylesheets = ["app.css", "export.css"];
+  private static readonly string[] Stylesheets = ["slide.css", "export.css"];
   // Fonts every Windows, Mac, and iPhone has, though Android and Linux may draw a lookalike.
   private static readonly string[] Everywhere =
     ["Arial", "Courier New", "Georgia", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -107,7 +106,7 @@ public static class HtmlExport
     html.AppendLine($"<title>{WebUtility.HtmlEncode(presentation.Name)}</title>");
     foreach (string stylesheet in Stylesheets)
     {
-      html.AppendLine($"<style>\n{InlineFonts(File.ReadAllText(Path.Combine(assets, stylesheet)), assets)}\n</style>");
+      html.AppendLine($"<style>\n{File.ReadAllText(Path.Combine(assets, stylesheet))}\n</style>");
     }
     html.AppendLine("<noscript><style>body.exported { overflow: auto; } .layout { display: none; } "
       + ".deck-text { display: block; }</style></noscript>");
@@ -335,15 +334,6 @@ public static class HtmlExport
     return JsonSerializer.Serialize(value, Sent).Replace("<", "\\u003c");
   }
 
-  private static string InlineFonts(string css, string assets)
-  {
-    return Regex.Replace(css, @"url\(""(fonts/[^""]+\.woff2)""\)", match =>
-    {
-      byte[] font = File.ReadAllBytes(Path.Combine(assets, match.Groups[1].Value));
-      return $"url(\"data:font/woff2;base64,{Convert.ToBase64String(font)}\")";
-    });
-  }
-
   private static string DataUri(string path, string? fill, PictureCache pictures)
   {
     string contentType = PresentationStore.ServedType(path) ?? "application/octet-stream";
@@ -383,8 +373,12 @@ public static class HtmlExport
       return null;
     }
     using SKPixmap pixmap = bitmap.PeekPixels();
-    using SKData lossless = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossless, 25));
-    using SKData lossy = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossy, 80));
+    using SKData? lossless = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossless, 25));
+    using SKData? lossy = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossy, 80));
+    if (lossless is null || lossy is null)
+    {
+      return (lossless ?? lossy)?.ToArray();
+    }
     return (lossless.Size <= 2 * lossy.Size ? lossless : lossy).ToArray();
   }
 

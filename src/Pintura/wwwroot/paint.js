@@ -50,10 +50,10 @@ function renderPaint(item, panel) {
     if (edit.align && item.text) {
       const aligns = new Set(item.text.paragraphs.map((paragraph) => paragraph.align));
       const align = aligns.size === 1 ? sentence([...aligns][0]) : 'Mixed';
-      pickButton(row, 'Align', `${align}, ${item.text.valign}`, (button) => openAlignment(button, item));
+      paintButton(row, 'Align', `${align}, ${item.text.valign}`, (button) => openAlignment(button, item));
     }
     if (edit.style) {
-      pickButton(row, 'Style', paintLabel(edit.style.source, null), (button) => openStyles(button, item));
+      paintButton(row, 'Style', paintLabel(edit.style.source, null), (button) => openStyles(button, item));
     }
   }
 }
@@ -62,33 +62,26 @@ function renderFillAndOutline(item, panel) {
   const edit = item.edit;
   const row = element('div', 'paint-row', panel);
   if (edit.fill) {
-    paintButton(row, 'Fill', item.fill, paintLabel(edit.fill.source, item.fill),
-      (button) => openPaint(button, item, 'fill'));
+    paintButton(row, 'Fill', paintLabel(edit.fill.source, item.fill),
+      (button) => openPaint(button, item, 'fill'), item.fill ?? null);
   }
   const outline = item.stroke
     ? `${paintLabel(edit.strokeColor.source, item.stroke.color)} · ${item.stroke.width}pt`
     : 'None';
-  paintButton(row, item.kind === 'line' || item.kind === 'arc' ? 'Line' : 'Outline', item.stroke?.color, outline,
-    (button) => openPaint(button, item, 'stroke'));
+  paintButton(row, item.kind === 'line' || item.kind === 'arc' ? 'Line' : 'Outline', outline,
+    (button) => openPaint(button, item, 'stroke'), item.stroke?.color ?? null);
 }
 
-function paintButton(row, label, hex, text, open) {
+function paintButton(row, label, text, open, hex) {
   const button = element('button', 'paint-button', row);
   button.type = 'button';
   button.title = `${label}: ${text}`;
-  const chip = element('span', `swatch${hex ? '' : ' empty'}`, button);
-  if (hex) {
-    chip.style.background = hex;
+  if (hex !== undefined) {
+    const chip = element('span', `swatch${hex ? '' : ' empty'}`, button);
+    if (hex) {
+      chip.style.background = hex;
+    }
   }
-  element('span', 'paint-label', button).textContent = label;
-  element('span', 'paint-value', button).textContent = text;
-  button.addEventListener('click', () => open(button));
-}
-
-function pickButton(row, label, text, open) {
-  const button = element('button', 'paint-button', row);
-  button.type = 'button';
-  button.title = `${label}: ${text}`;
   element('span', 'paint-label', button).textContent = label;
   element('span', 'paint-value', button).textContent = text;
   button.addEventListener('click', () => open(button));
@@ -266,7 +259,7 @@ function openStyles(button, item) {
         color: style.hex
       });
       // The list is white like a slide, so text meant for a dark band sits on the theme's dark color.
-      if (lightness(style.hex) > 0.8) {
+      if (contrast(style.hex, '#FFFFFF') < 2) {
         choice.style.background = paintHex('dark1');
       }
       choice.addEventListener('click', () => {
@@ -275,11 +268,6 @@ function openStyles(button, item) {
       });
     }
   });
-}
-
-function lightness(hex) {
-  const [red, green, blue] = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255);
-  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 
 function paintHex(name) {
@@ -348,7 +336,7 @@ function previewPaint(item, change) {
   fresh.classList.add('selected');
   node.replaceWith(fresh);
   paintPreview = { fresh, node };
-  fitText(slideStage());
+  fitText(slideStage(), fresh);
 }
 
 function unpreviewPaint() {

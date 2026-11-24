@@ -1,5 +1,5 @@
+using System.ComponentModel;
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
@@ -11,7 +11,7 @@ namespace Pintura;
 public static class BrowserCommands
 {
   // Long enough for the first run to fetch Chromium.
-  public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
+  internal static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
 
   public static async Task<int> Run(string root, CommandLineOptions options, InstanceRegistry registry,
     TextWriter output)
@@ -67,8 +67,7 @@ public static class BrowserCommands
       return 0;
     }
     string slides = slide == "all" ? "" : $"?slides={Uri.EscapeDataString(slide)}";
-    List<Finding> findings = Checks.All(presentation, await Measure(client, slides),
-      FontSetting.Current(FontFolders.Files()), false);
+    List<Finding> findings = Checks.All(presentation, await Measure(client, slides), FontSetting.Default, false);
     Write(findings.Where(finding => slide == "all" || finding.Slide is null || finding.Slide == slide), output);
     return 0;
   }
@@ -76,8 +75,7 @@ public static class BrowserCommands
   private static async Task<int> Check(HttpClient client, Presentation presentation, CommandLineOptions options,
     TextWriter output)
   {
-    List<Finding> findings = Checks.All(presentation, await Measure(client, ""),
-      FontSetting.Current(FontFolders.Files()), options.Export);
+    List<Finding> findings = Checks.All(presentation, await Measure(client, ""), FontSetting.Default, options.Export);
     return Report(Named(findings, presentation, options.Slides), options.Json, output);
   }
 
@@ -138,8 +136,7 @@ public static class BrowserCommands
       }
       string url = await HeadlessServer.Find(root, registry);
       using var client = new HttpClient { BaseAddress = new Uri($"{url}/"), Timeout = Timeout };
-      return Checks.All(presentation, await Measure(client, query), FontSetting.Current(FontFolders.Files()),
-        options.Export);
+      return Checks.All(presentation, await Measure(client, query), FontSetting.Default, options.Export);
     }
     List<Finding> before = await Findings(first);
     List<Finding> after = await Findings(ends.Length == 1 ? null : ends[1]);
@@ -200,7 +197,7 @@ public static class BrowserCommands
     }
   }
 
-  public static async Task<Measurement> Measure(HttpClient client, string query)
+  internal static async Task<Measurement> Measure(HttpClient client, string query)
   {
     HttpResponseMessage response = await Get(client, $"api/measure{query}");
     return (await response.Content.ReadFromJsonAsync<Measurement>(PayloadJson.Options))!;
@@ -238,19 +235,51 @@ public static class HeadlessServer
   /// <summary>The address of a server that can draw the presentation, starting one when none runs.</summary>
   public static async Task<string> Find(string root, InstanceRegistry registry)
   {
+    if (Running(root, registry) is string url)
+    {
+      return url;
+    }
+    using FileStream? startupLock = await AcquireLock(registry.LockPath(root));
+    if (Running(root, registry) is string raced)
+    {
+      return raced;
+    }
+    if (registry.Find(root, headless: true) is ServerInstance headless)
+    {
+      await RetireOrStop(headless, registry);
+    }
+    return await Start(root, registry);
+  }
+
+  private static string? Running(string root, InstanceRegistry registry)
+  {
     if (registry.Find(root) is ServerInstance preview && preview.Build == ServerInstance.CurrentBuild)
     {
       return preview.Url;
     }
-    if (registry.Find(root, headless: true) is ServerInstance headless)
+    if (registry.Find(root, headless: true) is ServerInstance headless &&
+      headless.Build == ServerInstance.CurrentBuild)
     {
-      if (headless.Build == ServerInstance.CurrentBuild)
-      {
-        return headless.Url;
-      }
-      Stop(headless);
+      return headless.Url;
     }
-    return await Start(root, registry);
+    return null;
+  }
+
+  private static async Task<FileStream?> AcquireLock(string path)
+  {
+    Stopwatch waited = Stopwatch.StartNew();
+    while (waited.Elapsed < StartTimeout)
+    {
+      try
+      {
+        return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+      }
+      catch (IOException)
+      {
+        await Task.Delay(Poll);
+      }
+    }
+    return null;
   }
 
   /// <summary>Runs in the child process: serves until idle, registered for the command that started it to find, and
@@ -287,8 +316,9 @@ public static class HeadlessServer
   {
     string assets = PreviewServer.InterfaceFolder();
     using var store = new PresentationStore(root, assets, TextWriter.Null);
+    long? started = ProcessStartTicks(Environment.ProcessId);
     var instance = new ServerInstance(Environment.ProcessId, root, PreviewServer.FreePort(), true,
-      ServerInstance.CurrentBuild);
+      ServerInstance.CurrentBuild, started);
     string url = $"http://127.0.0.1:{instance.Port}";
     WebApplication app = PreviewServer.Create(assets, url);
     using var requests = new Viewers(Idle, app.Lifetime.StopApplication);
@@ -299,7 +329,13 @@ public static class HeadlessServer
       using IDisposable request = requests.Connect();
       await next(context);
     });
-    await using var headless = new HeadlessBrowser(url);
+    app.MapPost("/api/retire", () =>
+    {
+      registry.Unregister(instance);
+      requests.Retire();
+      return Results.Ok();
+    });
+    await using var headless = new HeadlessBrowser(url, () => store.AssetVersion);
     PreviewServer.Map(app, store, headless, null);
     await app.StartAsync();
     registry.Register(instance);
@@ -408,15 +444,57 @@ public static class HeadlessServer
     });
   }
 
-  private static void Stop(ServerInstance instance)
+  /// <summary>Asks an older headless server to unregister and stop once any active request finishes; falls back to
+  /// killing only if the PID still belongs to the process that registered it.</summary>
+  public static async Task RetireOrStop(ServerInstance instance, InstanceRegistry registry)
+  {
+    try
+    {
+      using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
+      using HttpResponseMessage response = await client.PostAsync($"{instance.Url}/api/retire", null);
+      if (response.IsSuccessStatusCode)
+      {
+        return;
+      }
+    }
+    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+    {
+    }
+    Stop(instance, registry);
+  }
+
+  public static void Stop(ServerInstance instance, InstanceRegistry registry)
   {
     try
     {
       using Process process = Process.GetProcessById(instance.ProcessId);
+      if (instance.Started is long expected)
+      {
+        long actual = process.StartTime.ToUniversalTime().Ticks;
+        if (Math.Abs(actual - expected) > TimeSpan.FromSeconds(2).Ticks)
+        {
+          registry.Unregister(instance);
+          return;
+        }
+      }
       process.Kill();
     }
-    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or Win32Exception)
     {
+    }
+    registry.Unregister(instance);
+  }
+
+  private static long? ProcessStartTicks(int processId)
+  {
+    try
+    {
+      using Process process = Process.GetProcessById(processId);
+      return process.StartTime.ToUniversalTime().Ticks;
+    }
+    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or Win32Exception)
+    {
+      return null;
     }
   }
 

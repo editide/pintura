@@ -66,22 +66,6 @@
   color-scheme: dark;
 }
 
-[hidden] {
-  display: none !important;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-/* Phone browsers enlarge small text in wide blocks by their laid-out width, which ignores the transform that scales a
-   slide down, so footnotes and long bullets would grow and wrap unlike the slide. */
-html {
-  height: 100%;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
 body {
   display: flex;
   flex-direction: column;
@@ -1383,9 +1367,11 @@ main {
   box-shadow: var(--shadow-slide);
 }
 
-/* Elements may sit past the slide's edges, as on PowerPoint's pasteboard, drawn faded there. */
+/* Elements may sit past the slide's edges, as on PowerPoint's pasteboard, drawn faded there.
+   Dragging shouldn't select the slide's text; rewording it in place should. */
 #slide-frame .stage {
   overflow: visible;
+  user-select: none;
 }
 
 /* Holding Ctrl shows which numbers a Ctrl-click traces to the book. A run's inline style sets its own decoration. */
@@ -1426,126 +1412,8 @@ body.ctrl-held #slide-frame a.picture-item {
   font-size: 12.5px;
 }
 
-/* A stage is the slide at its own size, one CSS pixel to the point, scaled into its frame. Its lines are 1.2 times
-   their size, as PowerPoint's single spacing is in every font, rather than the font's own line height. */
-.stage {
-  position: relative;
-  overflow: hidden;
-  transform-origin: 0 0;
-  color: #000;
-  line-height: 1.2;
-}
-
-.item {
-  position: absolute;
-}
-
-.item > svg {
-  position: absolute;
-  inset: 0;
-  overflow: visible;
-}
-
-.text-box {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.text-box.grow {
-  bottom: auto;
-}
-
-.text-flow {
-  column-gap: 0;
-}
-
-.paragraph {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-}
-
-/* Lines break only where the text does, as PowerPoint's unwrapped text does, running past the frame if they must. */
-.text-box.unwrapped .paragraph {
-  white-space: pre;
-}
-
-.bullet {
-  display: inline-block;
-  text-indent: 0;
-  white-space: nowrap;
-}
-
-.picture {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.item > svg.picture {
-  overflow: hidden;
-}
-
-.cells {
-  border-collapse: collapse;
-  table-layout: fixed;
-  isolation: isolate;
-}
-
-.cells td {
-  position: relative;
-  overflow-wrap: break-word;
-}
-
-.cells td::before {
-  content: '';
-  position: absolute;
-  top: calc(var(--border-top-width, 0px) / -2);
-  right: calc(var(--border-right-width, 0px) / -2);
-  bottom: calc(var(--border-bottom-width, 0px) / -2);
-  left: calc(var(--border-left-width, 0px) / -2);
-  border-top: var(--border-top, none);
-  border-right: var(--border-right, none);
-  border-bottom: var(--border-bottom, none);
-  border-left: var(--border-left, none);
-  pointer-events: none;
-  /* A border straddles its edge, so it rises above the fill of the cell across it. */
-  z-index: 1;
-}
-
-.item.table > svg.rules {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.slide-error {
-  position: absolute;
-  inset: 0;
-  padding: 32px;
-  background: #fff4f2;
-  color: #8c1d18;
-  font: 16px/1.5 ui-monospace, monospace;
-  white-space: pre-wrap;
-}
-
 /* Overlays and selection sit on a scaled stage, so their lines and labels divide by the scale to stay one screen
    pixel wide and readable. */
-.item.line,
-.item.arc {
-  pointer-events: none;
-}
-
-.item.line .hit,
-.item.arc .hit {
-  pointer-events: stroke;
-}
-
 #slide-frame .item {
   cursor: move;
 }
@@ -1580,11 +1448,6 @@ body.moving * {
 
 #slide-frame .item.line.selected .hit {
   stroke: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-/* Dragging shouldn't select the slide's text; rewording it in place should. */
-#slide-frame .stage {
-  user-select: none;
 }
 
 #slide-frame .text-flow[contenteditable="true"] {
@@ -2397,114 +2260,6 @@ body.moving * {
   cursor: default;
 }
 
-.absent {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: repeating-linear-gradient(45deg, #f4f4f4 0 12px, #fff 12px 24px);
-  color: #888;
-  font: 24px system-ui, sans-serif;
-}
-
-.changes {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.changes.added { box-shadow: inset 0 0 0 calc(6px / var(--scale, 1)) var(--added); }
-.changes.removed { box-shadow: inset 0 0 0 calc(6px / var(--scale, 1)) var(--removed); }
-
-.change {
-  position: absolute;
-}
-
-.change.outlined {
-  outline: calc(2px / var(--scale, 1)) solid var(--change-color);
-  outline-offset: calc(2px / var(--scale, 1));
-}
-
-.change.added,
-.text-change.added { --change-color: var(--added); }
-.change.removed,
-.text-change.removed { --change-color: var(--removed); }
-.change.changed,
-.text-change.changed { --change-color: var(--changed); }
-
-.change.restyled,
-.change.restyled .part-change {
-  outline-style: dotted;
-}
-
-.part-change {
-  position: absolute;
-  outline: calc(2px / var(--scale, 1)) solid var(--change-color);
-  border-radius: 2px;
-}
-
-.part-change.cell {
-  outline-offset: calc(-2px / var(--scale, 1));
-  border-radius: 0;
-}
-
-.part-change-shapes {
-  position: absolute;
-  inset: 0;
-  overflow: visible;
-}
-
-.part-change-shapes path {
-  fill: none;
-  stroke: var(--change-color);
-  stroke-width: calc(3px / var(--scale, 1));
-  stroke-linejoin: round;
-}
-
-.part-change-shapes .line {
-  stroke-width: calc(8px / var(--scale, 1));
-  stroke-opacity: 0.5;
-  stroke-linecap: round;
-}
-
-.part-change-shapes .repainted {
-  stroke-linecap: round;
-}
-
-.change.restyled .part-change-shapes path:not(.repainted) {
-  stroke-dasharray: calc(2px / var(--scale, 1));
-}
-
-.text-change {
-  position: absolute;
-  background: color-mix(in srgb, var(--change-color) 30%, transparent);
-  box-shadow: inset 0 calc(-2px / var(--scale, 1)) var(--change-color);
-  mix-blend-mode: multiply;
-}
-
-.text-change.caret {
-  width: calc(3px / var(--scale, 1)) !important;
-  margin-left: calc(-1.5px / var(--scale, 1));
-  background: var(--change-color);
-  box-shadow: none;
-  mix-blend-mode: normal;
-}
-
-.change-label {
-  position: absolute;
-  top: 0;
-  right: 0;
-  max-width: 70%;
-  padding: 0 calc(6px / var(--scale, 1));
-  background: var(--changed);
-  color: #000;
-  font: calc(11px / var(--scale, 1)) / 1.5 system-ui, sans-serif;
-}
-
-.changes.added .change-label { background: var(--added); color: #fff; }
-.changes.removed .change-label { background: var(--removed); color: #fff; }
-
 /* Inspector */
 
 .inspector {
@@ -2638,8 +2393,7 @@ body.resizing-rows {
 .chip.kind-text,
 .chip.kind-shape,
 .chip.kind-line,
-.chip.kind-picture,
-.chip.kind-html {
+.chip.kind-picture {
   background: var(--fact-soft);
   color: var(--fact);
 }

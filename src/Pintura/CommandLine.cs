@@ -2,7 +2,8 @@ namespace Pintura;
 
 public enum HeadlessCommand
 {
-  List, Slide, Element, Screenshot, Check, Url, Export, ExportHtml, ExportPptx, Diff, Comments, Resolve, Picks, Outline
+  List, Slide, Element, Screenshot, Check, Url, ExportJson, ExportHtml, ExportPptx, Diff, Comments, Resolve, Picks,
+  Outline
 }
 
 public enum AccountCommand { Login, Logout, WhoAmI }
@@ -66,6 +67,7 @@ public class CommandLineOptions
     string? slide = null;
     string? element = null;
     string? output = null;
+    bool outputFlag = false;
     string? revision = null;
     bool json = false;
     bool resolved = false;
@@ -122,6 +124,7 @@ public class CommandLineOptions
         case "--output":
           Require(arguments, index, 1);
           output = arguments[++index];
+          outputFlag = true;
           break;
         case "--check":
           RequireNoCommand(command, argument);
@@ -151,7 +154,7 @@ public class CommandLineOptions
           break;
         case "--export-json":
           RequireNoCommand(command, argument);
-          command = HeadlessCommand.Export;
+          command = HeadlessCommand.ExportJson;
           break;
         case "--export-html":
           RequireNoCommand(command, argument);
@@ -277,7 +280,7 @@ public class CommandLineOptions
     {
       throw new ArgumentException("--resolved requires --comments or --picks.");
     }
-    if ((command is null or HeadlessCommand.Screenshot or HeadlessCommand.Url or HeadlessCommand.Export or
+    if ((command is null or HeadlessCommand.Screenshot or HeadlessCommand.Url or HeadlessCommand.ExportJson or
       HeadlessCommand.ExportHtml or HeadlessCommand.ExportPptx or HeadlessCommand.Resolve) && json)
     {
       throw new ArgumentException("--json requires --list, --outline, --slide, --element, --check, --comments, " +
@@ -287,8 +290,7 @@ public class CommandLineOptions
     {
       throw new ArgumentException("--export requires --check.");
     }
-    if (command is not (HeadlessCommand.Screenshot or HeadlessCommand.ExportHtml or HeadlessCommand.ExportPptx) &&
-      output is not null)
+    if (outputFlag && command is not HeadlessCommand.Screenshot)
     {
       throw new ArgumentException("--output requires --screenshot.");
     }

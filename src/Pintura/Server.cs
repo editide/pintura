@@ -57,8 +57,7 @@ public static partial class PreviewServer
       OnPrepareResponse = file => file.Context.Response.Headers.CacheControl = "no-cache"
     });
 
-    app.MapGet("/api/presentation", () => Results.Text(
-      JsonSerializer.Serialize(store.Deck, PayloadJson.Options), "application/json"));
+    app.MapGet("/api/presentation", () => Results.Text(store.DeckJson, "application/json"));
     app.MapGet("/api/theme", () => store.Theme is ThemeViewPayload theme
       ? Results.Json(theme, PayloadJson.Options)
       : Results.NotFound());
@@ -68,10 +67,11 @@ public static partial class PreviewServer
         : HeadlessRunner.LayoutDetail(presentation, layout, index)) is { } detail
         ? Results.Json(detail, PayloadJson.Options)
         : Results.NotFound());
+    var saveCache = new SaveCache(store);
     app.MapPost("/api/edit", (EditRequest request) => Edit(store, request));
-    app.MapPost("/api/move", (SlideMove move) => Move(store, move));
-    app.MapPost("/api/comments", (CommentChange change) => Comment(store, change));
-    app.MapPost("/api/picks", (PickChange change) => Pick(store, change));
+    app.MapPost("/api/move", (SlideMove move) => Move(store, move, saveCache));
+    app.MapPost("/api/comments", (CommentChange change) => Comment(store, change, saveCache));
+    app.MapPost("/api/picks", (PickChange change) => Pick(store, change, saveCache));
     app.MapPost("/api/trace", (TracePayload trace) => Trace(store, trace));
     var comparison = new Comparison(store);
     app.MapGet("/api/compare", (string? @base, string? head) => comparison.Answer(@base, head));
@@ -80,27 +80,24 @@ public static partial class PreviewServer
       comparison.Step(slide, before, after, aborted));
     app.MapPost("/api/revert", (RevertRequest request) => comparison.Revert(request));
     app.MapGet("/api/versions", () => Results.Json(Revisions.Versions(store.Root), PayloadJson.Options));
-    app.MapGet("/api/save", () => Saving(() => Saves.Status(store.Root)));
+    app.MapGet("/api/save", () => Saving(saveCache.Status));
     // Without files, the draft is of all the page's edits; with them, of the parts they're in.
     app.MapGet("/api/save/draft", (string[]? files) => Saving(() =>
     {
       store.Refresh();
       string[]? only = files is { Length: > 0 } ? files : null;
       return store.Deck.Error is null && store.Presentation is Presentation presentation
-        ? new
-        {
-          Message = Saves.Draft(store.Root, presentation, only),
-          Mixed = Saves.Mixed(store.Root, presentation, only),
-          Parts = Saves.Parts(store.Root, presentation)
-        }
-        : new { Message = "", Mixed = (string?)null, Parts = new List<SavePart>() };
+        ? Saves.Box(store.Root, presentation, only, commit => comparison.Diff(commit, presentation))
+        : new SaveBox("", null, []);
     }));
     app.MapPost("/api/save", (SaveRequest request) => Saving(() =>
     {
       // A nudge just made may still be in the watcher's debounce, and the draft must describe it.
       store.Refresh();
-      return Saves.Save(store.Root, request.Message, store.Deck.Error is null ? store.Presentation : null,
+      DeckVersion saved = Saves.Save(store.Root, request.Message, store.Deck.Error is null ? store.Presentation : null,
         request.Files);
+      saveCache.Invalidate();
+      return saved;
     }));
     app.MapGet("/api/media", (HttpContext context, string path, string? fill, string? at) =>
     {
@@ -214,7 +211,7 @@ public static partial class PreviewServer
     });
     app.MapGet("/api/findings", async (string slide) =>
     {
-      store.Refresh();
+      store.RefreshIfDirty();
       if (store.Presentation is not Presentation presentation)
       {
         return Results.Json(Array.Empty<Finding>(), PayloadJson.Options);
@@ -222,7 +219,7 @@ public static partial class PreviewServer
       return await Headless(async () =>
       {
         Measurement measurement = await headless.Measure([slide]);
-        List<Finding> findings = Checks.All(presentation, measurement, FontSetting.Current(FontFolders.Files()), false);
+        List<Finding> findings = Checks.All(presentation, measurement, FontSetting.Default, false);
         return Results.Json(findings.Where(finding => finding.Slide == slide), PayloadJson.Options);
       });
     });
@@ -260,12 +257,22 @@ public static partial class PreviewServer
         {
           return Refused($"{string.Join(", ", broken)} doesn't load; fix it first", StatusCodes.Status409Conflict);
         }
-        (byte[] bytes, ExportReport report) = await Task.Run(() => Pptx(presentation, name, progress));
+        (byte[] bytes, ExportReport report) = await Task.Run(() => Pptx(presentation, name, headless, progress));
         Findings(context, [.. PickFile.Warnings(presentation), .. report.Gaps]);
         return Results.File(bytes, PptxType, name);
       }
       Findings(context, PickFile.Warnings(presentation));
-      return Results.File(await headless.Print(store.Deck.Size), "application/pdf", name);
+      await progress.Gate.WaitAsync();
+      try
+      {
+        progress.Stage = "Printing PDF";
+        return Results.File(await headless.Print(store.Deck.Size), "application/pdf", name);
+      }
+      finally
+      {
+        progress.Stage = null;
+        progress.Gate.Release();
+      }
     }
     catch (PlaywrightException exception)
     {
@@ -297,45 +304,44 @@ public static partial class PreviewServer
 
   private static string Html(Presentation presentation, string assets, ExportProgress progress)
   {
-    lock (progress)
+    progress.Gate.Wait();
+    try
     {
-      try
+      return HtmlExport.Build(presentation, assets, progress: (stage, fraction) =>
       {
-        return HtmlExport.Build(presentation, assets, progress: (stage, fraction) =>
-        {
-          progress.Stage = stage;
-          progress.Fraction = fraction;
-        });
-      }
-      finally
-      {
-        progress.Stage = null;
-        progress.Fraction = null;
-      }
+        progress.Stage = stage;
+        progress.Fraction = fraction;
+      });
+    }
+    finally
+    {
+      progress.Stage = null;
+      progress.Fraction = null;
+      progress.Gate.Release();
     }
   }
 
   /// <summary>Exports over the presentation's last export, kept in the temporary folder, so pressing Export again
   /// rewrites only the slides that changed. One export runs at a time.</summary>
   private static (byte[] Bytes, ExportReport Report) Pptx(Presentation presentation, string name,
-    ExportProgress progress)
+    HeadlessBrowser headless, ExportProgress progress)
   {
     string root = Path.GetFullPath(presentation.Root);
     string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(root)))[..12].ToLowerInvariant();
     string deck = Temporary.Folder("exports", key, name);
-    lock (progress)
+    progress.Gate.Wait();
+    try
     {
       progress.Fraction = 0;
-      try
-      {
-        ExportReport report = Exporter.Write(presentation, deck, ToolHosts.Default(),
-          fraction => progress.Fraction = fraction);
-        return (File.ReadAllBytes(report.File), report);
-      }
-      finally
-      {
-        progress.Fraction = null;
-      }
+      ExportReport report = Exporter.Write(presentation, deck, ToolHosts.Default(),
+        fraction => progress.Fraction = fraction,
+        rasterize: pictures => headless.RasterizeAsync(pictures).GetAwaiter().GetResult());
+      return (File.ReadAllBytes(report.File), report);
+    }
+    finally
+    {
+      progress.Fraction = null;
+      progress.Gate.Release();
     }
   }
 
@@ -343,49 +349,62 @@ public static partial class PreviewServer
   /// file alone for the page to redraw from.</summary>
   private static IResult Edit(PresentationStore store, EditRequest request)
   {
-    if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+    return WithLoaded(store, presentation =>
     {
-      return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
-    }
-    if (request.Edits.Count == 0)
+      if (request.Edits.Count == 0)
+      {
+        return Refused("the edit carries no values", StatusCodes.Status400BadRequest);
+      }
+      var files = new List<(string Path, string? Name, List<ValueEdit> Edits)>();
+      foreach (IGrouping<string?, ValueEdit> group in request.Edits.GroupBy(edit => edit.File))
+      {
+        bool listing = group.Key == presentation.Origin.File;
+        string? path = listing ? Path.Combine(presentation.Root, "presentation.yaml")
+          : group.Key is not null ? ThemeFile(presentation.Theme, group.Key)
+          : presentation.Find(request.Slide!) is not null ? SlideFile(presentation, request.Slide!)
+          : null;
+        if (path is null)
+        {
+          return Refused(group.Key is null ? $"no slide {request.Slide}"
+            : $"the mouse writes only the theme's theme.yaml and layouts, not {group.Key}",
+            StatusCodes.Status404NotFound);
+        }
+        if (listing && !group.All(Renamed))
+        {
+          return Refused("the mouse writes only presentation.yaml's fields and section names",
+            StatusCodes.Status400BadRequest);
+        }
+        if (!listing && !group.All(edit => Writable(edit, group.Key is not null)))
+        {
+          return Refused(group.Key is null
+            ? "the mouse writes frames, line ends, text, fills, outlines, styles, and alignments, adds text boxes, and " +
+              "deletes elements"
+            : "the mouse writes a layout's frames, areas, fills, and outlines, and deletes its elements",
+            StatusCodes.Status400BadRequest);
+        }
+        if (group.Select(edit => Unnamed(edit, presentation.Theme)).FirstOrDefault(problem => problem is not null) is
+          string unnamed)
+        {
+          return Refused(unnamed, StatusCodes.Status400BadRequest);
+        }
+        files.Add((path, group.Key, group.Select(edit => edit with { File = null }).ToList()));
+      }
+      return Patch(store, presentation, files);
+    });
+  }
+
+  /// <summary>Takes the file lock before reading <see cref="PresentationStore.Presentation"/>, so back-to-back write
+  /// requests never run against a pre-refresh snapshot.</summary>
+  private static IResult WithLoaded(PresentationStore store, Func<Presentation, IResult> run)
+  {
+    lock (Files.Gate)
     {
-      return Refused("the edit carries no values", StatusCodes.Status400BadRequest);
+      if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+      {
+        return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
+      }
+      return run(presentation);
     }
-    var files = new List<(string Path, string? Name, List<ValueEdit> Edits)>();
-    foreach (IGrouping<string?, ValueEdit> group in request.Edits.GroupBy(edit => edit.File))
-    {
-      bool listing = group.Key == presentation.Origin.File;
-      string? path = listing ? Path.Combine(presentation.Root, "presentation.yaml")
-        : group.Key is not null ? ThemeFile(presentation.Theme, group.Key)
-        : presentation.Find(request.Slide!) is not null ? SlideFile(presentation, request.Slide!)
-        : null;
-      if (path is null)
-      {
-        return Refused(group.Key is null ? $"no slide {request.Slide}"
-          : $"the mouse writes only the theme's theme.yaml and layouts, not {group.Key}",
-          StatusCodes.Status404NotFound);
-      }
-      if (listing && !group.All(Renamed))
-      {
-        return Refused("the mouse writes only presentation.yaml's fields and section names",
-          StatusCodes.Status400BadRequest);
-      }
-      if (!listing && !group.All(edit => Writable(edit, group.Key is not null)))
-      {
-        return Refused(group.Key is null
-          ? "the mouse writes frames, line ends, text, fills, outlines, styles, and alignments, adds text boxes, and " +
-            "deletes elements"
-          : "the mouse writes a layout's frames, areas, fills, and outlines, and deletes its elements",
-          StatusCodes.Status400BadRequest);
-      }
-      if (group.Select(edit => Unnamed(edit, presentation.Theme)).FirstOrDefault(problem => problem is not null) is
-        string unnamed)
-      {
-        return Refused(unnamed, StatusCodes.Status400BadRequest);
-      }
-      files.Add((path, group.Key, group.Select(edit => edit with { File = null }).ToList()));
-    }
-    return Patch(store, presentation, files);
   }
 
   /// <summary>The theme's <c>theme.yaml</c> or a layout's file, by the name origins give it.</summary>
@@ -407,37 +426,55 @@ public static partial class PreviewServer
     return Patch(store, presentation, [(SlideFile(presentation, slide.Id), null, edits.ToList())]);
   }
 
+  /// <summary>Runs a write under the server's file lock with one rollback transaction, records the written files for
+  /// Save when requested, refreshes the store, and answers with the version and undo.</summary>
+  private static IResult Write<T>(PresentationStore store, Presentation presentation,
+    Func<FileTransaction, (T Undo, IEnumerable<string>? Recorded)> apply)
+  {
+    lock (Files.Gate)
+    {
+      var transaction = new FileTransaction();
+      T undo;
+      IEnumerable<string>? recorded;
+      try
+      {
+        (undo, recorded) = apply(transaction);
+      }
+      catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
+      {
+        transaction.Restore();
+        return Unwritten(store, exception);
+      }
+      if (recorded is not null)
+      {
+        foreach (string path in recorded)
+        {
+          if (transaction.Before.TryGetValue(path, out string? before))
+          {
+            PageEdits.Wrote(presentation.Root, path, before);
+          }
+        }
+      }
+      store.Refresh();
+      return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
+    }
+  }
+
   /// <summary>Applies each file's edits and reloads, answering with the edits that write them all back, each named
   /// with its file as the request named it. A file failing puts back the ones written before it.</summary>
   private static IResult Patch(PresentationStore store, Presentation presentation,
     IReadOnlyList<(string Path, string? Name, List<ValueEdit> Edits)> files)
   {
-    var undo = new List<ValueEdit>();
-    var written = new List<(string Path, string Text)>();
-    try
+    return Write(store, presentation, transaction =>
     {
+      var undo = new List<ValueEdit>();
       foreach ((string path, string? name, List<ValueEdit> edits) in files)
       {
-        string before = File.ReadAllText(path);
-        List<ValueEdit> back = Patcher.ApplyToFile(path, edits, MarkupContext.For(presentation));
-        written.Add((path, before));
+        List<ValueEdit> back = Patcher.ApplyToFile(path, edits, MarkupContext.For(presentation), transaction);
         undo.InsertRange(0, back.Select(edit => edit with { File = name }));
       }
-    }
-    catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
-    {
-      foreach ((string path, string text) in written)
-      {
-        Put(path, text);
-      }
-      return Unwritten(store, exception);
-    }
-    foreach ((string path, string text) in written)
-    {
-      PageEdits.Wrote(presentation.Root, path, text);
-    }
-    store.Refresh();
-    return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
+      return (undo, transaction.Before.Keys);
+    });
   }
 
   /// <summary>Why a write was refused or failed, after a reload, so the page redraws what the files now hold.</summary>
@@ -456,171 +493,103 @@ public static partial class PreviewServer
 
   /// <summary>Moves, deletes, or restores a slide's line in presentation.yaml, with its file for the last two, and
   /// reloads, answering with the move that puts it back.</summary>
-  private static IResult Move(PresentationStore store, SlideMove move)
+  private static IResult Move(PresentationStore store, SlideMove move, SaveCache saveCache)
   {
-    if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+    return WithLoaded(store, presentation =>
     {
-      return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
-    }
-    if (!PresentationLoader.IsSlideStem(move.Slide))
-    {
-      return Refused($"{move.Slide} isn't a slide's file stem", StatusCodes.Status400BadRequest);
-    }
-    if (move.Pick is not null && (move.Delete || move.Restore is not null))
-    {
-      return Refused($"pick {move.Pick} waits on you to keep one of its variants, or none, rather than deleting it",
-        StatusCodes.Status400BadRequest);
-    }
-    SlideMove? undo;
-    string list = Path.Combine(presentation.Root, "presentation.yaml");
-    string commentsPath = Path.Combine(presentation.Root, CommentFile.Name);
-    string resolvedPath = Path.Combine(presentation.Root, CommentFile.ResolvedName);
-    string file = SlideFile(presentation, move.Slide);
-    // A delete or restore touches the slide, the list, and the comments; one step failing puts back the others, so
-    // the page never loses a slide without the undo that brings it back.
-    string? listBefore = File.Exists(list) ? File.ReadAllText(list) : null;
-    string? commentsBefore = File.Exists(commentsPath) ? File.ReadAllText(commentsPath) : null;
-    string? resolvedBefore = File.Exists(resolvedPath) ? File.ReadAllText(resolvedPath) : null;
-    string? slideBefore = null;
-    bool written = false;
-    try
-    {
-      if (move.Delete)
+      if (!PresentationLoader.IsSlideStem(move.Slide))
       {
-        slideBefore = File.ReadAllText(file);
-        List<Comment> comments = CommentFile.RemoveSlide(presentation, move.Slide,
-          CommentFile.Author(presentation.Root), DateTime.Now, Saves.Snapshot(presentation.Root));
-        undo = Patcher.MoveInFile(list, move)! with
-        {
-          Restore = slideBefore,
-          Comments = comments.Count > 0 ? comments : null
-        };
-        File.Delete(file);
+        return Refused($"{move.Slide} isn't a slide's file stem", StatusCodes.Status400BadRequest);
       }
-      else if (move.Restore is string text)
+      if (move.Pick is not null && (move.Delete || move.Restore is not null))
       {
-        if (File.Exists(file))
+        return Refused($"pick {move.Pick} waits on you to keep one of its variants, or none, rather than deleting it",
+          StatusCodes.Status400BadRequest);
+      }
+      string list = Path.Combine(presentation.Root, "presentation.yaml");
+      string file = SlideFile(presentation, move.Slide);
+      // A delete or restore touches the slide, the list, and the comments; one step failing puts back the others, so
+      // the page never loses a slide without the undo that brings it back.
+      return Write<SlideMove?>(store, presentation, transaction =>
+      {
+        SlideMove? undo;
+        if (move.Delete)
         {
-          throw new PatchException($"slides/{move.Slide}.yaml exists again, so restoring it was dropped", true);
-        }
-        Files.Replace(file, text);
-        written = true;
-        undo = Patcher.MoveInFile(list, move);
-        if (move.Comments is { Count: > 0 } comments)
-        {
-          store.Refresh();
-          foreach (Comment comment in comments)
+          string slideBefore = transaction.Read(file)
+            ?? throw new FileNotFoundException($"Could not find file '{file}'.", file);
+          List<Comment> comments = CommentFile.RemoveSlide(presentation, move.Slide,
+            CommentFile.Author(presentation.Root), DateTime.Now, saveCache.Snapshot(), transaction);
+          undo = Patcher.MoveInFile(list, move, transaction)! with
           {
-            CommentFile.Apply(store.Presentation!, new CommentChange(Reopen: comment.Id), "", DateTime.Now);
+            Restore = slideBefore,
+            Comments = comments.Count > 0 ? comments : null
+          };
+          transaction.Write(file, null);
+        }
+        else if (move.Restore is string text)
+        {
+          if (File.Exists(file))
+          {
+            throw new PatchException($"slides/{move.Slide}.yaml exists again, so restoring it was dropped", true);
+          }
+          transaction.Write(file, text);
+          undo = Patcher.MoveInFile(list, move, transaction);
+          if (move.Comments is { Count: > 0 } comments)
+          {
+            store.Refresh();
+            foreach (Comment comment in comments)
+            {
+              CommentFile.Apply(store.Presentation!, new CommentChange(Reopen: comment.Id), "", DateTime.Now,
+                transaction: transaction);
+            }
           }
         }
-      }
-      else
-      {
-        undo = Patcher.MoveInFile(list, move);
-      }
-    }
-    catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
-    {
-      Put(list, listBefore);
-      Put(commentsPath, commentsBefore);
-      Put(resolvedPath, resolvedBefore);
-      if (written)
-      {
-        Put(file, null);
-      }
-      else if (slideBefore is not null && !File.Exists(file))
-      {
-        Put(file, slideBefore);
-      }
-      return Unwritten(store, exception);
-    }
-    PageEdits.Wrote(presentation.Root, list, listBefore);
-    if (move.Delete || move.Restore is not null)
-    {
-      PageEdits.Wrote(presentation.Root, file, slideBefore);
-    }
-    store.Refresh();
-    return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
-  }
-
-  /// <summary>Puts a file back as it was, absent when <paramref name="text"/> is null, unless it already is.</summary>
-  private static void Put(string path, string? text)
-  {
-    try
-    {
-      if (text is null)
-      {
-        File.Delete(path);
-      }
-      else if (!File.Exists(path) || File.ReadAllText(path) != text)
-      {
-        Files.Replace(path, text);
-      }
-    }
-    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-    {
-    }
+        else
+        {
+          undo = Patcher.MoveInFile(list, move, transaction);
+        }
+        string[] recorded = move.Delete || move.Restore is not null ? [list, file] : [list];
+        return (undo, recorded);
+      });
+    });
   }
 
   /// <summary>Adds, removes, rewords, replies to, restores, resolves, or reopens comments and reloads, answering with
   /// the change that undoes it.</summary>
-  private static IResult Comment(PresentationStore store, CommentChange change)
+  private static IResult Comment(PresentationStore store, CommentChange change, SaveCache saveCache)
   {
-    if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+    return WithLoaded(store, presentation =>
     {
-      return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
-    }
-    if (change.Kinds != 1 || change.Many?.Any(each => each.Kinds != 1 || each.Many is not null) == true)
-    {
-      return Refused("a change adds, removes, rewords, replies to, restores, resolves, or reopens one comment, or " +
-        "several at once",
-        StatusCodes.Status400BadRequest);
-    }
-    CommentChange undo;
-    try
-    {
-      undo = CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
-        Saves.Snapshot(presentation.Root));
-    }
-    catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
-    {
-      return Unwritten(store, exception);
-    }
-    store.Refresh();
-    return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
+      if (change.Kinds != 1 || change.Many?.Any(each => each.Kinds != 1 || each.Many is not null) == true)
+      {
+        return Refused("a change adds, removes, rewords, replies to, restores, resolves, or reopens one comment, or " +
+          "several at once",
+          StatusCodes.Status400BadRequest);
+      }
+      return Write<CommentChange>(store, presentation, transaction =>
+        (CommentFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
+          saveCache.Snapshot(), transaction), null));
+    });
   }
 
   /// <summary>Keeps a variant of a pick, or none, or reopens one, and reloads, answering with the change that undoes
   /// it.</summary>
-  private static IResult Pick(PresentationStore store, PickChange change)
+  private static IResult Pick(PresentationStore store, PickChange change, SaveCache saveCache)
   {
-    if (store.Presentation is not Presentation presentation || store.Deck.Error is not null)
+    return WithLoaded(store, presentation =>
     {
-      return Refused("the presentation doesn't load; fix its error first", StatusCodes.Status409Conflict);
-    }
-    if ((change.Pick is null) == (change.Reopen is null) ||
-      change.Reopen?.Files.Keys.Any(slide => !PresentationLoader.IsSlideStem(slide)) == true)
-    {
-      return Refused("a change resolves a pick or reopens one", StatusCodes.Status400BadRequest);
-    }
-    PickChange undo;
-    Dictionary<string, string?> wrote;
-    try
-    {
-      (undo, wrote) = PickFile.Apply(presentation, change, CommentFile.Author(presentation.Root), DateTime.Now,
-        Saves.Snapshot(presentation.Root));
-    }
-    catch (Exception exception) when (exception is PatchException or IOException or UnauthorizedAccessException)
-    {
-      return Unwritten(store, exception);
-    }
-    foreach ((string path, string? before) in wrote)
-    {
-      PageEdits.Wrote(presentation.Root, path, before);
-    }
-    store.Refresh();
-    return Results.Json(new { store.Version, Undo = undo }, PayloadJson.Options);
+      if ((change.Pick is null) == (change.Reopen is null) ||
+        change.Reopen?.Files.Keys.Any(slide => !PresentationLoader.IsSlideStem(slide)) == true)
+      {
+        return Refused("a change resolves a pick or reopens one", StatusCodes.Status400BadRequest);
+      }
+      return Write(store, presentation, transaction =>
+      {
+        (PickChange undo, Dictionary<string, string?> wrote) = PickFile.Apply(presentation, change,
+          CommentFile.Author(presentation.Root), DateTime.Now, saveCache.Snapshot(), transaction);
+        return (undo, wrote.Keys);
+      });
+    });
   }
 
   /// <summary>Opens Libreta at the cell a linked number reads, in a book the presentation includes.</summary>
@@ -828,15 +797,10 @@ public static partial class PreviewServer
 /// <summary>Mouse edits to a slide's file and the theme's and layouts' files, applied together or not at all.</summary>
 public record EditRequest(string? Slide, List<ValueEdit> Edits);
 
-/// <summary>The page's before side: a revision drawn as the page draws the working tree, and what changed since.
-/// </summary>
 /// <summary>An element, the title, or a placeholder of a slide, or with no id the whole slide, to write back as the
 /// revision <paramref name="Base"/> has it.</summary>
 public record RevertRequest(string Base, string Slide, string? Id = null, string? Owner = null);
 
-/// <summary>The working tree against a revision; with <see cref="LastSave"/>, against the version before that save,
-/// since nothing drawn differs from the save itself; with <see cref="Head"/>, that later version drawn as
-/// <see cref="After"/> in the working tree's place.</summary>
 /// <summary>The changes since a version, or between two; <see cref="Latest"/> names the slides a later version draws as
 /// the working tree does, which take comments though the version shows in its place.</summary>
 public record ComparePayload(string Base, string Commit, DeckVersion Version, DeckPayload Before, DeckDiff Diff,
@@ -854,7 +818,7 @@ public class Comparison
   private readonly PresentationStore store;
   private readonly object gate = new object();
   private Side[] sides = [];
-  private (string? Base, string Commit, string? Head, Presentation After, string Json)? answer;
+  private (string? Base, string Commit, string? Head, Presentation After, DeckDiff Diff, string Json)? answer;
   private readonly object historyGate = new object();
   // The slides each version changed as drawn against the version before it, and those it renamed, by the version's
   // commit; commits never change, so neither do these.
@@ -890,8 +854,8 @@ public class Comparison
         ComparePayload payload;
         if (headCommit is not null)
         {
-          Side earlier = Before(revision!, commit);
-          Side later = Before(head!, headCommit);
+          Side earlier = Before(commit);
+          Side later = Before(headCommit);
           DeckDiff latest = Differ.Compare(later.Presentation, current, renamed: Renamed(headCommit));
           // A slide renamed since takes its comments under a name the version doesn't know it by.
           HashSet<string> since = [.. latest.Slides.Where(slide => slide.Status != "moved").Select(slide => slide.Id),
@@ -911,7 +875,7 @@ public class Comparison
           }
         }
         string json = JsonSerializer.Serialize(payload, PayloadJson.Options);
-        answer = (revision, commit, headCommit, current, json);
+        answer = (revision, commit, headCommit, current, payload.Diff, json);
         return Results.Text(json, "application/json");
       }
     }
@@ -921,9 +885,6 @@ public class Comparison
     }
   }
 
-  /// <summary>The newest version no later than <paramref name="before"/> that changed a slide as drawn, or the oldest
-  /// later than <paramref name="after"/>, with the version before it; not found past either end of the versions.
-  /// </summary>
   /// <summary>The nearest version before or after one that changed the slide, which is named as that one has it and
   /// followed through its renames. A page that stops waiting stops the walk at the next version, keeping what it
   /// learned of those it passed.</summary>
@@ -1019,7 +980,7 @@ public class Comparison
       string commit = Revisions.Commit(store.Root, revision);
       lock (gate)
       {
-        return Results.Json(Before(revision, commit).Deck, PayloadJson.Options);
+        return Results.Json(Before(commit).Deck, PayloadJson.Options);
       }
     }
     catch (Exception exception) when (exception is InvalidDataException or LoadException)
@@ -1044,7 +1005,7 @@ public class Comparison
           return Refused("the presentation doesn't load; fix its error first");
         }
         current = presentation;
-        side = Before(request.Base, commit);
+        side = Before(commit);
       }
     }
     catch (Exception exception) when (exception is InvalidDataException or LoadException)
@@ -1112,11 +1073,26 @@ public class Comparison
     return (item.Role == "title" ? slide.Title! : slide.Placeholders[item.Id]).Origin.Path;
   }
 
+  /// <summary>The cached presentation and diff against <paramref name="commit"/> for <paramref name="current"/>,
+  /// reusing the loaded revision and diff already computed for the page.</summary>
+  public (Presentation Before, DeckDiff Diff) Diff(string commit, Presentation current)
+  {
+    lock (gate)
+    {
+      Side side = Before(commit);
+      if (answer is { } last && last.Commit == commit && last.Head is null && last.After == current)
+      {
+        return (side.Presentation, last.Diff);
+      }
+      return (side.Presentation, Differ.Compare(side.Presentation, current));
+    }
+  }
+
   /// <summary>The revision as loaded and drawn, loaded again only once the commit changes. Called under the gate.
   /// </summary>
   private ComparePayload Compare(string revision, string commit, Presentation current)
   {
-    Side side = Before(revision, commit);
+    Side side = Before(commit);
     return new ComparePayload(revision, commit, side.Version, side.Deck,
       Differ.Compare(side.Presentation, current, renamed: Renamed(commit)));
   }
@@ -1131,7 +1107,7 @@ public class Comparison
 
   // Three: with nothing unsaved the page compares against the last save and then the version before it, and between
   // two versions it keeps both.
-  private Side Before(string revision, string commit)
+  private Side Before(string commit)
   {
     if (sides.FirstOrDefault(side => side.Commit == commit) is Side kept)
     {
@@ -1171,6 +1147,69 @@ public class Comparison
 /// to show while it waits; null when none runs.</summary>
 public sealed class ExportProgress
 {
+  internal SemaphoreSlim Gate { get; } = new SemaphoreSlim(1, 1);
   public string? Stage { get; set; }
   public double? Fraction { get; set; }
+}
+
+/// <summary>Caches <see cref="Saves.Status"/> and <see cref="Saves.Snapshot"/> for one store version and HEAD, so
+/// reloads across open tabs and back-to-back comments don't repeat the same git calls.</summary>
+internal sealed class SaveCache
+{
+  private readonly PresentationStore store;
+  private readonly object gate = new();
+  private (long Version, long Head)? statusKey;
+  private SaveStatus? status;
+  private (long Version, long Head)? snapshotKey;
+  private Snapshot? snapshot;
+
+  public SaveCache(PresentationStore store)
+  {
+    this.store = store;
+  }
+
+  public SaveStatus Status()
+  {
+    (long Change, long Head) key = (store.ChangeVersion, store.HeadVersion);
+    lock (gate)
+    {
+      if (statusKey == key && status is not null)
+      {
+        return status;
+      }
+      SaveStatus computed = Saves.Status(store.Root);
+      statusKey = key;
+      status = computed;
+      return computed;
+    }
+  }
+
+  public Snapshot? Snapshot()
+  {
+    (long Change, long Head) key = (store.ChangeVersion, store.HeadVersion);
+    lock (gate)
+    {
+      if (snapshotKey == key)
+      {
+        return snapshot;
+      }
+      Snapshot? computed = Saves.Snapshot(store.Root);
+      snapshotKey = key;
+      snapshot = computed;
+      return computed;
+    }
+  }
+
+  public void Invalidate()
+  {
+    lock (gate)
+    {
+      statusKey = null;
+      status = null;
+      snapshotKey = null;
+      snapshot = null;
+    }
+  }
+
+
 }

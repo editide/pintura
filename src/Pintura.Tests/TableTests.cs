@@ -415,6 +415,25 @@ public class TableTests
   }
 
   [Fact]
+  public void Listing_the_same_cell_twice_is_an_error()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Table("""
+      data: results.csv
+      cells:
+        - { row: 2, column: 2, bold: true }
+        - { row: 2, column: 2, italic: true }
+      """);
+
+    // Act
+    LoadException error = deck.Error("table");
+
+    // Assert
+    error.Problem.ShouldBe("row 2, column 2 is listed more than once in cells");
+  }
+
+  [Fact]
   public void More_columns_than_the_csv_has_is_an_error()
   {
     // Arrange

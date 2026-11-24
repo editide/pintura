@@ -197,6 +197,22 @@ public class ThemeViewTests
   }
 
   [Fact]
+  public void A_table_row_border_without_a_width_is_omitted_as_the_table_does()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Write("theme/styles.yaml", DeckFixture.Styles.Replace("border_top: { color: dark1, width: 1 }",
+      "border_top: { color: dark1 }"));
+
+    // Act
+    TableRowSamplePayload total = Build(deck).Tables.Single().Rows.Single(row => row.Name == "total");
+
+    // Assert
+    total.BorderTop.ShouldBeNull();
+    total.BorderBottom!.Width.ShouldBe(2);
+  }
+
+  [Fact]
   public void A_series_color_counts_only_the_charts_with_a_series_that_reaches_it()
   {
     // Arrange

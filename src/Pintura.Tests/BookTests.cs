@@ -434,6 +434,7 @@ public class BookTests
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void A_revision_draws_a_chart_line_or_column_its_book_no_longer_has_as_gaps()
   {
     // Arrange
@@ -453,9 +454,7 @@ public class BookTests
           - { line: historical.segments.connectivity_revenue }
           - { line: historical.segments.space_revenue }
       """);
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", "deck", "theme", "book");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root, "first", "deck", "theme", "book");
 
     // Act
     Presentation committed = Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root, deck.Books);
@@ -516,6 +515,31 @@ public class BookTests
   }
 
   [Fact]
+  public void More_columns_than_a_view_has_names_the_view()
+  {
+    // Arrange
+    using DeckFixture deck = Deck("""
+      layout: content
+      elements:
+        - id: results
+          table: results
+          frame: content
+      """);
+    deck.Write("deck/tables/results.yaml", """
+      data:
+        view: acme::historical/segments
+      columns: [{}, {}, {}, { width: 100 }]
+      """);
+
+    // Act
+    LoadException error = deck.Error();
+
+    // Assert
+    error.Problem.ShouldBe("columns lists 4 columns, and acme::historical/segments has 3");
+  }
+
+  [Fact]
+  [Trait("Needs", "git")]
   public void A_revision_draws_a_view_column_or_line_its_book_no_longer_has_as_ref()
   {
     // Arrange
@@ -533,9 +557,7 @@ public class BookTests
         lines: [connectivity_revenue, { line: space_revenue, label: Space }]
       style: plain
       """);
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", "deck", "theme", "book");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root, "first", "deck", "theme", "book");
 
     // Act
     Presentation committed = Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root, deck.Books);
@@ -777,6 +799,7 @@ public class BookTests
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void A_revision_reads_its_books_from_git_at_the_working_trees_paths()
   {
     // Arrange
@@ -784,9 +807,7 @@ public class BookTests
       layout: content
       title: ${acme::historical.segments.connectivity_revenue["2025"]} in revenue
       """);
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", "deck", "theme", "book");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root, "first", "deck", "theme", "book");
     Directory.Delete(deck.Folder.PathTo("book"), true);
 
     // Act
@@ -795,10 +816,11 @@ public class BookTests
     // Assert
     committed.Books["acme"].Root.ShouldBe(deck.Folder.PathTo("book"));
     committed.Files.ReadAllText(Path.Combine(committed.Books["acme"].Root, "book.yaml")).Trim().ShouldBe("name: Acme");
-    PayloadBuilder.Title(committed, committed.Slides[0]).ShouldBe("11,387 in revenue");
+    SceneBuilder.Title(committed, committed.Slides[0]).ShouldBe("11,387 in revenue");
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void A_revision_draws_a_reference_its_book_no_longer_resolves_as_ref()
   {
     // Arrange
@@ -806,20 +828,19 @@ public class BookTests
       layout: content
       title: ${acme::historical.segments.space_revenue["2025"]} in revenue
       """);
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", "deck", "theme", "book");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root, "first", "deck", "theme", "book");
 
     // Act
     Presentation committed = Revisions.Load(deck.Folder.PathTo("deck"), "HEAD", deck.Folder.Root, deck.Books);
 
     // Assert
     committed.Slides[0].Error.ShouldBeNull();
-    PayloadBuilder.Title(committed, committed.Slides[0]).ShouldBe("#REF! in revenue");
+    SceneBuilder.Title(committed, committed.Slides[0]).ShouldBe("#REF! in revenue");
     deck.Error().Problem.ShouldStartWith("no line historical.segments.space_revenue in book acme");
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void A_books_key_at_a_revision_moves_with_its_files_and_the_formats_above_it_alone()
   {
     // Arrange
@@ -827,15 +848,13 @@ public class BookTests
     folder.Write("formats.yaml", "formats: {}");
     folder.Write("books/acme/book.yaml", "name: Acme");
     folder.Write("notes.md", "Not read by the book");
-    RevisionTests.Git(folder.Root, "init", "-q");
-    RevisionTests.Git(folder.Root, "add", ".");
-    RevisionTests.Git(folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(folder.Root);
     string Key() => GitTree.Open(folder.Root, Revisions.Commit(folder.Root, "HEAD")).BookKey(folder.PathTo("books/acme"))!;
     string first = Key();
     void Commit(string path, string text)
     {
       folder.Write(path, text);
-      RevisionTests.Git(folder.Root, "commit", "-q", "-am", path);
+      GitHelper.Git(folder.Root, "commit", "-q", "-am", path);
     }
 
     // Act
@@ -853,6 +872,7 @@ public class BookTests
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void A_revision_quoting_a_book_outside_the_repository_cant_be_compared()
   {
     // Arrange
@@ -871,9 +891,7 @@ public class BookTests
       slides:
         - two
       """);
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", "deck", "theme");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root, "first", "deck", "theme");
 
     // Act
     LoadException error = Should.Throw<LoadException>(() =>
@@ -943,14 +961,13 @@ public class BookTests
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void A_revisions_answers_are_asked_of_libreta_at_its_commit_once_and_kept_across_readers()
   {
     // Arrange
     using var folder = new TempFolder();
     folder.Write("book/book.yaml", "name: Acme");
-    RevisionTests.Git(folder.Root, "init", "-q");
-    RevisionTests.Git(folder.Root, "add", "book");
-    RevisionTests.Git(folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(folder.Root, "first", "book");
     string commit = Revisions.Commit(folder.Root, "HEAD");
     string libreta = FakeLibreta(folder, $$"""
       #!/bin/sh

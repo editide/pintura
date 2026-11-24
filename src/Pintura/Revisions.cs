@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using YamlDotNet.RepresentationModel;
@@ -43,6 +44,13 @@ public record VersionScope(string Top, string Presentation, List<string> Saved, 
 /// as the working tree names them.</summary>
 public static class Revisions
 {
+  internal record RepoInfo(string Top, string Spelled, string Presentation, string GitDir);
+
+  private record CachedScope(string Stamp, VersionScope Scope);
+
+  private static readonly ConcurrentDictionary<string, RepoInfo> Repos = new(StringComparer.Ordinal);
+  private static readonly ConcurrentDictionary<string, CachedScope> Scopes = new(StringComparer.Ordinal);
+
   /// <summary>The presentation as a revision left it, with its theme, books and pictures, read from git.</summary>
   public static Presentation Load(string root, string revision, string? displayBase = null, IBookReader? books = null)
   {
@@ -54,23 +62,111 @@ public static class Revisions
   /// <summary>The tree of the commit a revision names, in the repository holding the presentation.</summary>
   public static GitTree Tree(string root, string revision)
   {
-    (_, string spelled, _) = Locate(Path.GetFullPath(root));
-    return GitTree.Open(spelled, Commit(root, revision));
+    RepoInfo info = Locate(Path.GetFullPath(root));
+    return GitTree.Open(info.Spelled, Commit(root, revision));
   }
 
-  /// <summary>The repository's top, as git answers it and as the root spells it, and the presentation's folder in it.
-  /// </summary>
-  private static (string Top, string Spelled, string Presentation) Locate(string root)
+  /// <summary>The repository's top, as git answers it and as the root spells it, the presentation's folder in it, and
+  /// the git directory; cached per presentation root.</summary>
+  internal static RepoInfo? TryLocate(string root)
   {
-    string top = TopLevel(root);
-    string presentation = Run(root, "rev-parse", "--show-prefix").Output.Trim().TrimEnd('/');
+    root = Path.GetFullPath(root);
+    if (Repos.TryGetValue(root, out RepoInfo? cached))
+    {
+      if (Directory.Exists(cached.GitDir))
+      {
+        return cached;
+      }
+      Repos.TryRemove(root, out _);
+    }
+    (int exit, string output, _) = Run(root, "rev-parse", "--show-toplevel", "--show-prefix", "--absolute-git-dir");
+    if (exit != 0)
+    {
+      return null;
+    }
+    string[] lines = output.Split('\n');
+    if (lines.Length < 3)
+    {
+      return null;
+    }
+    string top = Path.GetFullPath(lines[0].Trim());
+    string presentation = lines[1].Trim().TrimEnd('/');
+    string gitDir = Path.GetFullPath(lines[2].Trim());
     // The top as root spells it: git answers with symlinks resolved, such as macOS's /private/var for /var.
     string spelled = root;
     foreach (string _ in presentation.Split('/', StringSplitOptions.RemoveEmptyEntries))
     {
       spelled = Path.GetDirectoryName(spelled)!;
     }
-    return (top, spelled, presentation.Length == 0 ? "." : presentation);
+    var info = new RepoInfo(top, spelled, presentation.Length == 0 ? "." : presentation, gitDir);
+    Repos[root] = info;
+    return info;
+  }
+
+  private static RepoInfo Locate(string root)
+  {
+    return TryLocate(root) ?? throw new InvalidDataException($"{root} is not in a git repository");
+  }
+
+  /// <summary>Whether <paramref name="root"/> sits inside a git work tree.</summary>
+  public static bool Inside(string root)
+  {
+    return TryLocate(root) is not null;
+  }
+
+  /// <summary>The full commit hash <c>HEAD</c> points to, or null before the first commit.</summary>
+  public static string? Head(string top)
+  {
+    (int exit, string output, _) = Run(top, "rev-parse", "--verify", "--quiet", "HEAD");
+    return exit == 0 ? output.Trim() : null;
+  }
+
+  /// <summary>Git's configured <c>user.name</c> and <c>user.email</c> in one call; empty strings when unset.</summary>
+  public static (string Name, string Email) Identity(string folder)
+  {
+    string name = "";
+    string email = "";
+    (int exit, string output, _) = Run(folder, "config", "--get-regexp", @"^user\.(name|email)$");
+    if (exit != 0)
+    {
+      return (name, email);
+    }
+    foreach (string line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+    {
+      int space = line.IndexOf(' ');
+      if (space <= 0)
+      {
+        continue;
+      }
+      string key = line[..space];
+      string value = line[(space + 1)..].Trim();
+      if (key.Equals("user.name", StringComparison.OrdinalIgnoreCase))
+      {
+        name = value;
+      }
+      else if (key.Equals("user.email", StringComparison.OrdinalIgnoreCase))
+      {
+        email = value;
+      }
+    }
+    return (name, email);
+  }
+
+  /// <summary>Drops cached repository info at or under <paramref name="folder"/>.</summary>
+  internal static void Forget(string folder)
+  {
+    folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+    StringComparison comparison = OperatingSystem.IsLinux()
+      ? StringComparison.Ordinal
+      : StringComparison.OrdinalIgnoreCase;
+    foreach (string key in Repos.Keys)
+    {
+      if (key.Equals(folder, comparison) || key.StartsWith(folder + Path.DirectorySeparatorChar, comparison))
+      {
+        Repos.TryRemove(key, out _);
+        Scopes.TryRemove(key, out _);
+      }
+    }
   }
 
   /// <summary>The repository paths of the theme and the books a manifest names, with each book's id; null for the
@@ -104,12 +200,20 @@ public static class Revisions
   public static VersionScope Scope(string root)
   {
     root = Path.GetFullPath(root);
-    (string top, string spelled, string presentation) = Locate(root);
-    string manifest = File.ReadAllText(Path.Combine(root, "presentation.yaml"));
-    List<(string? Book, string Path)> linked = Linked(root, spelled, manifest, "HEAD").ToList();
-    return new VersionScope(top, presentation,
-      [presentation, .. linked.Where(path => path.Book is null).Select(path => path.Path)],
+    RepoInfo info = Locate(root);
+    string manifestPath = Path.Combine(root, "presentation.yaml");
+    string stamp = DiskFiles.Instance.Stamp(manifestPath);
+    if (Scopes.TryGetValue(root, out CachedScope? cached) && cached.Stamp == stamp && cached.Scope.Top == info.Top)
+    {
+      return cached.Scope;
+    }
+    string manifest = File.ReadAllText(manifestPath);
+    List<(string? Book, string Path)> linked = Linked(root, info.Spelled, manifest, "HEAD").ToList();
+    var scope = new VersionScope(info.Top, info.Presentation,
+      [info.Presentation, .. linked.Where(path => path.Book is null).Select(path => path.Path)],
       [.. linked.Where(path => path.Book is not null).Select(path => path.Path)]);
+    Scopes[root] = new CachedScope(stamp, scope);
+    return scope;
   }
 
   /// <summary>The commits on the current branch that changed the presentation, its theme, or its books, newest first;
@@ -234,7 +338,8 @@ public static class Revisions
   /// </summary>
   public static string Commit(string folder, string revision)
   {
-    (int exit, string output, _) = Run(TopLevel(folder), "rev-parse", "--verify", "--quiet", "--end-of-options",
+    string top = TryLocate(folder)?.Top ?? TopLevel(folder);
+    (int exit, string output, _) = Run(top, "rev-parse", "--verify", "--quiet", "--end-of-options",
       $"{revision}^{{commit}}");
     if (exit != 0)
     {

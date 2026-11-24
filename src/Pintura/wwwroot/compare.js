@@ -217,6 +217,49 @@ function chartParts(changes, chart) {
   const pointAt = (category) => chart.categories.indexOf(category);
   const parts = [];
   for (const change of changes) {
+    const target = change.target;
+    if (target?.kind === 'chart') {
+      const part = target.part;
+      if (part === 'title' || part === 'legend') {
+        parts.push({ parts: [part] });
+      } else if (part === 'data_labels' && !target.series) {
+        parts.push({ parts: ['label'] });
+      } else if (part === 'markers' && !target.series) {
+        parts.push({ parts: ['marker', 'legend'] });
+      } else if (part === 'value_axis' || part === 'gridline' || part === 'secondary_axis' || part === 'category_axis') {
+        parts.push({ parts: [part] });
+      } else if (part === 'value_axis_and_gridline') {
+        parts.push({ parts: ['value_axis', 'gridline'] });
+      } else if (part === 'categories') {
+        parts.push({ parts: ['category_axis'] });
+      } else if (target.series && target.point) {
+        const named = { data_labels: ['label'], markers: ['marker'], color: MARKS }[part];
+        parts.push({ parts: named, series: seriesAt(target.series), point: pointAt(target.point) });
+      } else if (target.series && part === 'values') {
+        const index = seriesAt(target.series);
+        for (const point of changedEntries(change).filter((point) => point < chart.categories.length)) {
+          parts.push({ parts: [...MARKS, 'label'], series: index, point });
+        }
+        if (!pie) {
+          parts.push({ parts: ['line'], series: index });
+        }
+      } else if (target.series) {
+        const named = { data_labels: ['label'], markers: ['marker', 'legend'] }[part] ||
+          [...MARKS, 'line', 'label', 'legend'];
+        parts.push({ parts: named, series: seriesAt(target.series) });
+      } else if (part === 'series_colors') {
+        for (const index of changedEntries(change)) {
+          if (pie && index < chart.categories.length) {
+            parts.push({ parts: ['slice', 'legend'], point: index });
+          } else if (!pie && index < chart.series.length) {
+            parts.push({ parts: ['bar', 'marker', 'line', 'legend'], series: index });
+          }
+        }
+      } else {
+        return null;
+      }
+      continue;
+    }
     const key = change.key;
     const point = /^series\.(.+?)\.points\.(.+?)\.(data_labels|markers|color)(\.|$)/.exec(key);
     const series = /^series\.(.+?)\.(data_labels|markers|type|axis)(\.|$)/.exec(key);
@@ -272,12 +315,20 @@ function chartParts(changes, chart) {
 function changedCells(changes) {
   const cells = new Map();
   for (const change of changes) {
-    const cell = /^cell (\d+),(\d+)([. ]|$)/.exec(change.key);
-    if (!cell) {
-      return null;
+    let row;
+    let column;
+    if (change.target?.kind === 'cell') {
+      ({ row, column } = change.target);
+    } else {
+      const cell = /^cell (\d+),(\d+)([. ]|$)/.exec(change.key);
+      if (!cell) {
+        return null;
+      }
+      row = Number(cell[1]);
+      column = Number(cell[2]);
     }
     if (!markedInWords(change)) {
-      cells.set(`${cell[1]},${cell[2]}`, { row: Number(cell[1]), column: Number(cell[2]) });
+      cells.set(`${row},${column}`, { row, column });
     }
   }
   return [...cells.values()];
@@ -705,113 +756,6 @@ function markText(drawn, node, regions, showingBefore, scale) {
     }
   }
   drawn.style.transform = turned;
-}
-
-// #endregion
-
-// #region Inspector
-
-// Each changed value before and after, reworded text as one diff, with the level that set it now.
-function renderChangeTable(changes, parent) {
-  if (changes.length === 0) {
-    return;
-  }
-  const list = element('dl', 'props changes-table', parent);
-  for (const change of changes) {
-    const entry = element('div', `prop${change.cause ? ' restyled' : ''}`, list);
-    element('dt', null, entry).textContent = changeLabel(change.key);
-    const value = element('dd', null, entry);
-    if (textChange(change) && change.before != null && change.after != null) {
-      const diff = element('div', 'text-diff', value);
-      for (const part of textDiff(change.before, change.after)) {
-        element({ same: 'span', removed: 'del', added: 'ins' }[part.op], null, diff).textContent = part.text;
-      }
-    } else {
-      const key = change.key.split('.').pop();
-      const shown = (display) => (display == null ? 'Unset' : propertyValue({ key, display }).text);
-      element('div', 'was', value).textContent = shown(change.before);
-      element('div', 'now', value).textContent = shown(change.after);
-    }
-    const origin = change.cause || change.afterOrigin || change.beforeOrigin;
-    if (origin) {
-      originTag(originOf(origin), entry);
-    } else {
-      element('span', null, entry);
-    }
-  }
-}
-
-// Whether the slide's file holds the change, so writing the item back as the revision has it undoes it. Theme and
-// layout items, and changes only the theme made, are reverted in those files.
-function revertible(item) {
-  return item.owner === 'slide' && (item.status !== 'changed' || item.changes.some((change) => !change.cause));
-}
-
-// Writes the item, or without one the whole slide, back as the revision has it.
-function revertButton(parent, label, slide, item = null) {
-  const button = element('button', 'revert', parent);
-  button.type = 'button';
-  button.textContent = label;
-  const was = namedBase() ? `of ${namedBase()}` : 'it was';
-  button.title = `Write ${item ? item.id : slide} back as ${was}; Ctrl+Z undoes it`;
-  button.addEventListener('click', () => revert(slide, item?.id, item?.owner));
-}
-
-const STATUS = { added: 'Added', removed: 'Removed', changed: 'Changed', moved: 'Moved' };
-
-// The selected item's changes since the revision, above how it looks.
-function renderItemChanges(selection, panel) {
-  const change = slideDiff(selection.slide)?.items.find((item) =>
-    item.id === selection.id && item.owner === selection.owner);
-  if (!change) {
-    return;
-  }
-  const node = section(panel, `${STATUS[change.status] || change.status}${sinceBase()}`,
-    `change-section ${change.status}`);
-  renderChangeTable(change.changes, node);
-  if (revertible(change)) {
-    revertButton(node, namedBase() ? `Revert to ${namedBase()}` : 'Revert', selection.slide, change);
-  }
-}
-
-// With nothing selected, what changed on the slide, and the theme values behind any restyling.
-function renderSlideChanges(slide, panel) {
-  const diff = slideDiff(slide.id);
-  if (!diff) {
-    return;
-  }
-  const status = diff.moved
-    ? `${diff.status === 'changed' ? 'Changed and moved' : 'Moved'} from slide ${diff.before}`
-    : STATUS[diff.status] || diff.status;
-  const node = section(panel, `${status}${sinceBase()}`, `change-section ${diff.status}`);
-  renderChangeTable(diff.changes, node);
-  const list = element('ul', 'change-list', node);
-  for (const item of diff.items) {
-    const restyled = item.status === 'changed' && item.changes.every((change) => change.cause);
-    const entry = element('li', `${item.status}${restyled ? ' restyled' : ''}`, list);
-    const index = (slide.items || []).findIndex((candidate) => candidate.id === item.id && candidate.owner === item.owner);
-    const name = element(index >= 0 ? 'button' : 'span', 'change-name', entry);
-    name.textContent = words(item.id);
-    if (index >= 0) {
-      name.type = 'button';
-      name.addEventListener('click', () => pickItem(slide, index));
-    }
-    const keys = item.changes.map((change) => changeLabel(change.key).toLowerCase());
-    element('span', 'change-what', entry).textContent =
-      `${(STATUS[item.status] || item.status).toLowerCase()}${keys.length > 0 ? `: ${keys.join(', ')}` : ''}`;
-    if (revertible(item)) {
-      revertButton(entry, 'Revert', slide.id, item);
-    }
-  }
-  if (diff.status === 'changed' && (diff.changes.some((change) => !change.cause) || diff.items.some(revertible))) {
-    revertButton(node, namedBase() ? `Revert the slide to ${namedBase()}` : 'Revert the slide', slide.id);
-  }
-  const causes = state.compare.diff.causes.filter((cause) => cause.slides.includes(slide.id));
-  for (const cause of causes) {
-    const note = element('p', 'note', node);
-    note.textContent = `Restyled by the theme: ${cause.before ?? 'unset'} → ${cause.after ?? 'unset'} `;
-    originTag(originOf(cause.origin), note);
-  }
 }
 
 // #endregion

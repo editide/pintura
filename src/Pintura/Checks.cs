@@ -20,6 +20,10 @@ public record Finding(string Level, string Kind, string Where, string Message)
 /// <summary>How the machine finds fonts, which decides the fix a missing one names.</summary>
 public record FontSetting(bool Wsl, bool WindowsFontsVisible)
 {
+  private static readonly Lazy<FontSetting> Cached = new Lazy<FontSetting>(() => Current(FontFolders.Files()));
+
+  public static FontSetting Default => Cached.Value;
+
   public static FontSetting Current(IEnumerable<string> fontFiles)
   {
     bool wsl = Environment.GetEnvironmentVariable("WSL_DISTRO_NAME") is not null;
@@ -48,7 +52,6 @@ public static class Checks
   private const int Agreeing = 2;
   private const int RepeatedOnSlides = 3;
 
-  /// <summary>Every check but the export's, which <paramref name="export"/> adds, in the order they print.</summary>
   /// <summary>What a change introduced and what it cleared. A finding is the same one when the other side has it word
   /// for word, or failing that the same kind at the same level on the same element, so text overflowing by more than
   /// it did is still the overflow that was there.</summary>
@@ -80,18 +83,36 @@ public static class Checks
     return (introduced, unmatched);
   }
 
+  private sealed class Scenes(Presentation presentation)
+  {
+    private readonly Dictionary<string, SlideScene> built = new Dictionary<string, SlideScene>(StringComparer.Ordinal);
+
+    public SlideScene Of(Slide slide)
+    {
+      if (!built.TryGetValue(slide.Id, out SlideScene? scene))
+      {
+        scene = SceneBuilder.Build(presentation, slide);
+        built[slide.Id] = scene;
+      }
+      return scene;
+    }
+
+
+  }
+
   public static List<Finding> All(Presentation presentation, Measurement measurement, FontSetting fonts, bool export)
   {
-    List<Finding> findings = Structure(presentation);
+    var scenes = new Scenes(presentation);
+    List<Finding> findings = Structure(presentation, scenes);
     findings.AddRange(Text(measurement, fonts, presentation.Theme.Checks.Shrink));
     findings.AddRange(Contrast(measurement));
-    findings.AddRange(Geometry(presentation, measurement));
-    findings.AddRange(Consistency(presentation));
-    findings.AddRange(Comments(presentation));
+    findings.AddRange(Geometry(presentation, measurement, scenes));
+    findings.AddRange(Consistency(presentation, scenes));
+    findings.AddRange(Comments(presentation, scenes));
     findings.AddRange(Picks(presentation));
     if (export)
     {
-      findings.AddRange(Export(presentation, measurement));
+      findings.AddRange(Export(presentation, measurement, scenes));
     }
     return findings;
   }
@@ -100,18 +121,23 @@ public static class Checks
 
   public static List<Finding> Structure(Presentation presentation)
   {
+    return Structure(presentation, new Scenes(presentation));
+  }
+
+  private static List<Finding> Structure(Presentation presentation, Scenes scenes)
+  {
     return presentation.Offered
       .Where(slide => slide.Error is not null)
       .Select(slide => Structure(slide.Error!, slide.Id) with { Slide = slide.Id })
       .Concat(presentation.Offered.Where(slide => slide.Error is null)
-        .SelectMany(slide => Flattened(presentation, slide)))
+        .SelectMany(slide => Flattened(presentation, slide, scenes)))
       .ToList();
   }
 
   /// <summary>A fill on an SVG of several colors, such as a logo, which it paints in one.</summary>
-  private static IEnumerable<Finding> Flattened(Presentation presentation, Slide slide)
+  private static IEnumerable<Finding> Flattened(Presentation presentation, Slide slide, Scenes scenes)
   {
-    foreach (SceneItem item in SceneBuilder.Build(presentation, slide).Items.Where(item => item.Owner == "slide" &&
+    foreach (SceneItem item in scenes.Of(slide).Items.Where(item => item.Owner == "slide" &&
       item.Kind == "picture" && item.Properties.GetValueOrDefault("fill")?.Value is Color { IsNone: false }))
     {
       int paints = SvgPaint.Paints(presentation.Files.ReadAllText(item.Element!.PicturePath!));
@@ -143,6 +169,11 @@ public static class Checks
   /// and a comments file git doesn't track.</summary>
   public static List<Finding> Comments(Presentation presentation)
   {
+    return Comments(presentation, new Scenes(presentation));
+  }
+
+  private static List<Finding> Comments(Presentation presentation, Scenes scenes)
+  {
     List<Finding> findings = Untracked(presentation, "comments",
     [
       (CommentFile.Name, "a thread resolved from it leaves no history"),
@@ -159,7 +190,7 @@ public static class Checks
           "resolve it";
       }
       else if (comment.Element is string element && slide.Error is null &&
-        SceneBuilder.Build(presentation, slide).Items.All(item => item.Id != element))
+        scenes.Of(slide).Items.All(item => item.Id != element))
       {
         where = $"{comment.Slide}/{element}";
         problem = $"comment {comment.Id} is on element {element}, which no longer exists; move it to an element or " +
@@ -189,16 +220,28 @@ public static class Checks
     {
       return findings;
     }
+    List<(string Name, string Problem)> existing = [.. files.Where(file =>
+      File.Exists(Path.Combine(presentation.Root, file.Name)))];
+    if (existing.Count == 0)
+    {
+      return findings;
+    }
     try
     {
-      if (Revisions.Run(presentation.Root, "rev-parse", "--is-inside-work-tree").Exit != 0)
+      if (!Revisions.Inside(presentation.Root))
       {
         return findings;
       }
-      foreach ((string name, string problem) in files)
+      (int exit, string output, _) = Revisions.Run(presentation.Root,
+        ["ls-files", "-z", "--", .. existing.Select(file => file.Name)]);
+      if (exit != 0)
       {
-        if (File.Exists(Path.Combine(presentation.Root, name)) &&
-          Revisions.Run(presentation.Root, "ls-files", "--error-unmatch", "--", name).Exit != 0)
+        return findings;
+      }
+      HashSet<string> tracked = [.. output.Split('\0', StringSplitOptions.RemoveEmptyEntries)];
+      foreach ((string name, string problem) in existing)
+      {
+        if (!tracked.Contains(name))
         {
           findings.Add(new Finding("warning", kind, kind,
             $"{name} isn't in git, so {problem}; commit it with the slides") { Topic = kind });
@@ -320,6 +363,11 @@ public static class Checks
 
   public static List<Finding> Geometry(Presentation presentation, Measurement? measurement = null)
   {
+    return Geometry(presentation, measurement, new Scenes(presentation));
+  }
+
+  private static List<Finding> Geometry(Presentation presentation, Measurement? measurement, Scenes scenes)
+  {
     Dictionary<(string, string), BoxMeasure> measured = (measurement?.Boxes ?? [])
       .GroupBy(box => (box.Slide, box.Id))
       .ToDictionary(group => group.Key, group => group.First());
@@ -329,9 +377,10 @@ public static class Checks
     var candidates = new List<Candidate>();
     foreach (Slide slide in presentation.Offered.Where(slide => slide.Error is null))
     {
-      List<Placed> items = Place(presentation, slide, measured, pictures);
+      SlideScene scene = scenes.Of(slide);
+      List<Placed> items = Place(presentation, slide, scene, measured, pictures);
       List<Placed> areas = Areas(presentation.Theme, slide);
-      candidates.AddRange(WideTables(presentation, slide));
+      candidates.AddRange(WideTables(presentation, slide, scene));
       candidates.AddRange(OffSlide(presentation, slide, items));
       candidates.AddRange(Overlaps(slide, items));
       candidates.AddRange(ChartLabels(slide, items, measurement));
@@ -341,19 +390,19 @@ public static class Checks
       candidates.AddRange(Crossings(slide, items));
       candidates.AddRange(NearMisses(slide, items, areas));
       candidates.AddRange(UnevenRows(slide, items));
-      candidates.AddRange(Margins(presentation, slide, items, pictures));
+      candidates.AddRange(Margins(slide, scene, items, pictures));
     }
     return Collapse(candidates);
   }
 
   /// <summary>Tables whose columns need more than the frame gives them: wider than it, or leaving nothing for the
   /// columns without a width.</summary>
-  private static IEnumerable<Candidate> WideTables(Presentation presentation, Slide slide)
+  private static IEnumerable<Candidate> WideTables(Presentation presentation, Slide slide, SlideScene scene)
   {
-    foreach (SceneItem item in SceneBuilder.Build(presentation, slide).Items.Where(item => item.Table is not null))
+    foreach (SceneItem item in scene.Items.Where(item => item.Table is not null))
     {
       Table table = presentation.Tables[item.Element!.Table!];
-      double frame = ((Frame)item.Properties["frame"].Value).Rect[2];
+      double frame = item.Frame!.Rect[2];
       double given = table.Columns.Sum(column => column.Width ?? 0);
       int shared = table.ColumnCount - table.Columns.Count(column => column.Width is not null);
       string? problem = given - frame > OverflowTolerance
@@ -716,10 +765,10 @@ public static class Checks
 
   /// <summary>Pictures whose image has transparent margins built in, so their frame, and anything aligned to it,
   /// misses what they draw. An icon, an SVG given a fill, keeps the padding its set draws every icon with.</summary>
-  private static IEnumerable<Candidate> Margins(Presentation presentation, Slide slide, List<Placed> items,
+  private static IEnumerable<Candidate> Margins(Slide slide, SlideScene scene, List<Placed> items,
     Dictionary<(string, string), PictureMeasure> pictures)
   {
-    foreach (SceneItem item in SceneBuilder.Build(presentation, slide).Items
+    foreach (SceneItem item in scene.Items
       .Where(item => item.Kind == "picture" && !item.Properties.ContainsKey("fill")))
     {
       if (pictures.GetValueOrDefault((slide.Id, item.Id))?.Margins is not [double left, double top, double right,
@@ -756,27 +805,22 @@ public static class Checks
       .MinBy(other => (other.Right - other.Left) * (other.Bottom - other.Top));
   }
 
-  private static List<Placed> Place(Presentation presentation, Slide slide,
+  private static List<Placed> Place(Presentation presentation, Slide slide, SlideScene scene,
     Dictionary<(string, string), BoxMeasure> measured, Dictionary<(string, string), PictureMeasure> pictures)
   {
     Layout layout = presentation.Theme.Layouts[slide.Layout];
     var placed = new List<Placed>();
-    foreach (SceneItem item in SceneBuilder.Build(presentation, slide).Items
+    foreach (SceneItem item in scene.Items
       .Where(item => item.Element?.Decorative != true))
     {
-      string owner = item.Role switch
-      {
-        null => item.Owner,
-        _ when (item.Role == "title" ? slide.Title : slide.Placeholders[item.Id])?.Frame is not null => "slide",
-        _ when (item.Role == "title" ? layout.Title : layout.Placeholders.GetValueOrDefault(item.Id))?.Frame
-          is not null => "layout",
-        _ => "theme"
-      };
+      string owner = item.Role is null
+        ? item.Owner
+        : presentation.Theme.PlaceholderFrame(layout, item.Role == "title" ? "title" : item.Id,
+          item.Role == "title" ? slide.Title : slide.Placeholders[item.Id]).Owner;
       string name = item.Role == "title" ? "the title" : item.Id;
-      if (item.Properties.TryGetValue("from", out Resolved? from))
+      if (item.From is double[] start)
       {
-        double[] start = (double[])from.Value;
-        double[] end = (double[])item.Properties["to"].Value;
+        double[] end = item.To!;
         int steps = Math.Max(2, (int)Math.Ceiling(double.Hypot(end[0] - start[0], end[1] - start[1])));
         placed.Add(new Placed(item.Id, name, owner, [start[0], start[1], end[0] - start[0], end[1] - start[1]])
         {
@@ -788,14 +832,13 @@ public static class Checks
         });
         continue;
       }
-      if (!item.Properties.TryGetValue("frame", out Resolved? frame))
+      if (item.Frame is not Frame frame)
       {
         continue;
       }
-      if (item.Kind == "arc")
+      if (item.Arc is double[] arc)
       {
-        double[][] path = ArcPoints(((Frame)frame.Value).Rect, Convert.ToDouble(item.Properties["arc.from"].Value),
-          Convert.ToDouble(item.Properties["arc.to"].Value));
+        double[][] path = ArcPoints(frame.Rect, arc[0], arc[1]);
         (double left, double top) = (path.Min(point => point[0]), path.Min(point => point[1]));
         placed.Add(new Placed(item.Id, name, owner,
           [left, top, path.Max(point => point[0]) - left, path.Max(point => point[1]) - top])
@@ -805,7 +848,7 @@ public static class Checks
         });
         continue;
       }
-      double[] rect = [.. pictures.GetValueOrDefault((slide.Id, item.Id))?.Drawn ?? ((Frame)frame.Value).Rect];
+      double[] rect = [.. pictures.GetValueOrDefault((slide.Id, item.Id))?.Drawn ?? frame.Rect];
       if (measured.GetValueOrDefault((slide.Id, item.Id)) is { Height: double grown } box)
       {
         rect[3] = grown;
@@ -814,11 +857,10 @@ public static class Checks
           (rect[0], rect[2]) = (left, width);
         }
       }
-      double rotate = item.Properties.TryGetValue("rotate", out Resolved? turn) ? (double)turn.Value : 0;
       placed.Add(new Placed(item.Id, name, owner, rect)
       {
         Kind = item.Kind,
-        Rotate = rotate % 360,
+        Rotate = item.Rotate % 360,
         Grown = measured.GetValueOrDefault((slide.Id, item.Id))?.Height is not null,
         Sides = AnchoredSides(item),
         Ink = measured.GetValueOrDefault((slide.Id, item.Id))?.Ink,
@@ -847,16 +889,14 @@ public static class Checks
   /// them. Null for a box that draws, whose every edge shows.</summary>
   private static HashSet<string>? AnchoredSides(SceneItem item)
   {
-    bool painted = item.Properties.TryGetValue("fill", out Resolved? fill) && fill.Value is Color { IsNone: false };
-    bool outlined = item.Properties.ContainsKey("stroke.color") && item.Properties.ContainsKey("stroke.width");
-    if (item.Paragraphs is null || item.Kind == "table" || painted || outlined)
+    if (item.Paragraphs is null || item.Kind == "table" || item.HasFill || item.HasStroke)
     {
       return null;
     }
     var sides = new HashSet<string>();
     foreach (SceneParagraph paragraph in item.Paragraphs)
     {
-      string align = paragraph.Properties.TryGetValue("align", out Resolved? value) ? (string)value.Value : "left";
+      string align = paragraph.Align;
       sides.UnionWith(align switch
       {
         "center" => [],
@@ -864,10 +904,9 @@ public static class Checks
         _ => [align]
       });
     }
-    string valign = item.Properties.TryGetValue("valign", out Resolved? anchor) ? (string)anchor.Value : "top";
-    if (valign != "middle")
+    if (item.Valign != "middle")
     {
-      sides.Add(valign);
+      sides.Add(item.Valign);
     }
     return sides;
   }
@@ -875,9 +914,8 @@ public static class Checks
   private static List<Placed> Areas(Theme theme, Slide slide)
   {
     Layout layout = theme.Layouts[slide.Layout];
-    return theme.Areas.Keys.Concat(layout.Areas.Keys).Distinct()
-      .Select(name => new Placed(name, $"the {name} area", "area",
-        (layout.Areas.GetValueOrDefault(name) ?? theme.Areas[name]).Rect))
+    return theme.AreasOf(layout)
+      .Select(entry => new Placed(entry.Name, $"the {entry.Name} area", "area", entry.Area.Rect))
       .ToList();
   }
 
@@ -887,22 +925,27 @@ public static class Checks
 
   public static List<Finding> Consistency(Presentation presentation)
   {
+    return Consistency(presentation, new Scenes(presentation));
+  }
+
+  private static List<Finding> Consistency(Presentation presentation, Scenes scenes)
+  {
     var findings = new List<Finding>();
     // Only the deck as drawn sets what the rest of it agrees on, so variants of one slide don't outvote it.
     List<Slide> slides = presentation.Slides.Where(slide => slide.Error is null).ToList();
     List<Slide> offered = presentation.Offered.Where(slide => slide.Error is null).ToList();
     findings.AddRange(offered.SelectMany(slide => Moved(presentation, slide)));
-    findings.AddRange(Sizes(presentation, slides));
-    findings.AddRange(RepeatedOneOffs(presentation, slides));
-    findings.AddRange(offered.SelectMany(slide => Totals(presentation, slide)));
+    findings.AddRange(Sizes(presentation, slides, scenes));
+    findings.AddRange(RepeatedOneOffs(slides));
+    findings.AddRange(offered.SelectMany(slide => Totals(presentation, slide, scenes)));
     return findings;
   }
 
   /// <summary>A total whose value isn't what its stack adds up to, to within the last digit its labels show, since the
   /// CSV holds both and nothing else keeps them in step.</summary>
-  private static IEnumerable<Finding> Totals(Presentation presentation, Slide slide)
+  private static IEnumerable<Finding> Totals(Presentation presentation, Slide slide, Scenes scenes)
   {
-    SlideScene scene = SceneBuilder.Build(presentation, slide);
+    SlideScene scene = scenes.Of(slide);
     foreach (SceneItem item in scene.Items.Where(item => item.Chart is not null))
     {
       Chart chart = item.Chart!;
@@ -918,16 +961,11 @@ public static class Checks
         var off = new List<(string Category, double Value, double Sum)>();
         for (int point = 0; point < chart.Categories.Count; point++)
         {
-          string labels = $"series.{total.Name}.points.{chart.Categories[point]}.data_labels.";
-          if (!item.Properties.ContainsKey($"{labels}show"))
-          {
-            labels = $"series.{total.Name}.data_labels.";
-          }
-          if (item.Properties.GetValueOrDefault($"{labels}show")?.Value is "none")
+          if (item.SeriesLabelShow(total.Name, chart.Categories[point]) == "none")
           {
             continue;
           }
-          NumberFormat? format = item.Properties.GetValueOrDefault($"{labels}format")?.Value is string name
+          NumberFormat? format = item.SeriesLabelFormat(total.Name, chart.Categories[point]) is string name
             ? presentation.Theme.Styles.Formats[name]
             : null;
           double tolerance = format is null ? 1e-9 : 0.5 * Math.Pow(10, -(format.Decimals ?? 0)) / (format.Scale ?? 1);
@@ -975,13 +1013,7 @@ public static class Checks
         stepped = true;
         continue;
       }
-      string? name = new[]
-        {
-          $"series.{series.Name}.points.{category}.data_labels.format", $"series.{series.Name}.data_labels.format",
-          "data_labels.format"
-        }
-        .Select(key => item.Properties.GetValueOrDefault(key)?.Value as string)
-        .FirstOrDefault(found => found is not null);
+      string? name = item.SeriesLabelFormat(series.Name, category);
       NumberFormat? format = name is null ? null : presentation.Theme.Styles.Formats[name];
       double tolerance = format is null ? 1e-9 : 0.5 * Math.Pow(10, -(format.Decimals ?? 0)) / (format.Scale ?? 1);
       if (stepped && Math.Abs(value - level) > tolerance + 1e-9)
@@ -1009,15 +1041,11 @@ public static class Checks
   {
     Theme theme = presentation.Theme;
     Layout layout = theme.Layouts[slide.Layout];
-    var placed = new List<(string Id, string Name, Placeholder? Own, Placeholder? Layout, Placeholder? Theme)>
+    var placed = new List<(string Id, string Name, Placeholder? Own)> { ("title", "the title", slide.Title) };
+    placed.AddRange(slide.Placeholders.Select(pair => (pair.Key, pair.Key, (Placeholder?)pair.Value)));
+    foreach ((string id, string name, Placeholder? own) in placed)
     {
-      ("title", "the title", slide.Title, layout.Title, theme.Title)
-    };
-    placed.AddRange(slide.Placeholders.Select(pair => (pair.Key, pair.Key, (Placeholder?)pair.Value,
-      layout.Placeholders.GetValueOrDefault(pair.Key), theme.Placeholders.GetValueOrDefault(pair.Key))));
-    foreach ((string id, string name, Placeholder? own, Placeholder? layoutLevel, Placeholder? themeLevel) in placed)
-    {
-      Frame? inherited = layoutLevel?.Frame ?? themeLevel?.Frame;
+      Frame? inherited = theme.PlaceholderFrame(layout, id).Frame;
       if (own?.Frame is not { } frame || inherited is null || frame.Rect.SequenceEqual(inherited.Rect))
       {
         continue;
@@ -1035,13 +1063,13 @@ public static class Checks
   /// The kind is everything that decides a size without a one-off: the box's style, level, and paragraph style, and
   /// the layout when it sets the size.
   /// </summary>
-  private static IEnumerable<Finding> Sizes(Presentation presentation, List<Slide> slides)
+  private static IEnumerable<Finding> Sizes(Presentation presentation, List<Slide> slides, Scenes scenes)
   {
     var seen = new List<Sized>();
     foreach (Slide slide in slides)
     {
       Layout? layout = presentation.Theme.Layouts.GetValueOrDefault(slide.Layout);
-      foreach (SceneItem item in SceneBuilder.Build(presentation, slide).Items.Where(item => item.Owner == "slide"))
+      foreach (SceneItem item in scenes.Of(slide).Items.Where(item => item.Owner == "slide"))
       {
         foreach (SceneParagraph paragraph in item.Paragraphs ?? [])
         {
@@ -1091,7 +1119,7 @@ public static class Checks
 
   /// <summary>The same one-off formatting on several slides, which wants to be a style. Only what a style can hold
   /// counts.</summary>
-  private static IEnumerable<Finding> RepeatedOneOffs(Presentation presentation, List<Slide> slides)
+  private static IEnumerable<Finding> RepeatedOneOffs(List<Slide> slides)
   {
     var seen = new List<OneOff>();
     void Add(TextProperties properties, string[] keys, Slide slide, string id, Element? box = null)
@@ -1257,15 +1285,28 @@ public static class Checks
   /// headless page drew them.</summary>
   public static List<Finding> Export(Presentation presentation, Measurement? measurement = null)
   {
+    return Export(presentation, measurement, new Scenes(presentation));
+  }
+
+  private static List<Finding> Export(Presentation presentation, Measurement? measurement, Scenes scenes)
+  {
     var findings = new List<Finding>();
     var candidates = new List<Candidate>();
     foreach (Slide slide in presentation.Slides.Where(slide => slide.Error is null))
     {
-      foreach (SceneItem item in SceneBuilder.Build(presentation, slide).Items)
+      if (presentation.Theme.Layouts.TryGetValue(slide.Layout, out Layout? layout))
+      {
+        foreach (string gap in ExportGaps.ForSlide(slide, layout))
+        {
+          findings.Add(new Finding("warning", "export", slide.Id, gap) { Slide = slide.Id });
+        }
+      }
+      foreach (SceneItem item in scenes.Of(slide).Items)
       {
         ChartMeasure? chart = measurement?.Charts?.FirstOrDefault(chart => chart.Slide == slide.Id &&
           chart.Id == item.Id);
-        foreach (string gap in Gaps(item).Concat(chart is null ? [] : Clipped(chart)))
+        foreach (string gap in ExportGaps.ForItem(item, presentation.Theme).Distinct(StringComparer.Ordinal)
+          .Concat(chart is null ? [] : Clipped(chart)))
         {
           string key = item.Owner == "slide" ? $"{slide.Id}/{item.Id}/{gap}" : $"{item.Owner}/{item.Id}/{gap}";
           candidates.Add(new Candidate(key, item.Owner,
@@ -1285,52 +1326,6 @@ public static class Checks
       string labels = clipped.Count == 1 ? $"axis label {clipped[0]}, so it cuts it"
         : $"axis labels {string.Join(", ", clipped.SkipLast(1))} and {clipped[^1]}, so it cuts them";
       yield return $"PowerPoint can't narrow a chart's plot to fit its {labels} off at its edge";
-    }
-  }
-
-  private static IEnumerable<string> Gaps(SceneItem item)
-  {
-    Element? element = item.Element;
-    switch (item.Kind)
-    {
-      case "picture":
-        if (element?.Crop is not null)
-        {
-          yield return "picture crop isn't exported";
-        }
-        if (element?.Alt is not null)
-        {
-          yield return "picture alt text isn't exported";
-        }
-        if (element?.Opacity is not null)
-        {
-          yield return "picture opacity isn't exported";
-        }
-        if (item.Properties.TryGetValue("fit", out Resolved? fit) && (string)fit.Value == "cover")
-        {
-          yield return "fit: cover needs a crop, which isn't exported";
-        }
-        break;
-      case "shape" when element?.Shape == "callout":
-        yield return "a callout's tail isn't exported, so it points elsewhere";
-        break;
-      case "shape" when element?.Shape is "brace" or "bracket":
-        yield return $"a {element!.Shape} exports with PowerPoint's curl rather than a quarter of its thickness";
-        break;
-    }
-    if (item.Kind == "chart" && item.Properties.ContainsKey("plot.insets"))
-    {
-      yield return "a chart's plot insets aren't exported, so PowerPoint places its plot itself";
-    }
-    if (item.Properties.TryGetValue("columns", out Resolved? columns) && (int)columns.Value > 1)
-    {
-      yield return "text columns aren't exported";
-    }
-    // A layout's page number becomes PowerPoint's slide-number placeholder; a slide's own field has no such home.
-    bool slideNumber = (item.Paragraphs ?? []).Any(paragraph => paragraph.Runs.Any(run => run.Field == "slide"));
-    if (slideNumber && item.Owner == "slide" && item.Role is null)
-    {
-      yield return "${slide} in a slide's own text exports as plain text, or not at all when it is the only text";
     }
   }
 
