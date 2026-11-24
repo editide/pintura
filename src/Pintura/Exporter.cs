@@ -839,9 +839,9 @@ public partial class Exporter
     {
       style["fill"] = Color(Get(properties, "fill"), opacity);
     }
-    else if (opacity is not null)
+    else
     {
-      gaps.Add("opacity on an element with no fill isn't exported");
+      gaps.UnionWith(ExportGaps.OpacityWithoutFill(false, opacity is not null));
     }
     Border(style, properties);
     Effects(style, properties);
@@ -951,11 +951,6 @@ public partial class Exporter
         }
         break;
       case "right_triangle":
-        if (direction != "up")
-        {
-          gaps.Add($"a right triangle facing {direction} exports facing right, as PowerPoint has no such shape and a " +
-            "turn moves its right angle");
-        }
         break;
       case "chevron":
       case "home_plate":
@@ -992,17 +987,15 @@ public partial class Exporter
         {
           Turned($"right_{shape}", "width");
         }
-        gaps.Add($"a {shape} exports with PowerPoint's curl rather than a quarter of its thickness");
         break;
       case "callout":
         type = "wedge_rectangle_callout";
         // The tools normalize the unbounded tail_x/tail_y handles to ±2147483647.
-        gaps.Add("a callout's tail isn't exported, so it points elsewhere");
         break;
       default:
-        gaps.Add($"a {shape} shape isn't exported");
         break;
     }
+    gaps.UnionWith(ExportGaps.Shape(shape, direction));
     return new Geometry(type, rotation, adjustments, flipVertical);
   }
 
@@ -1337,23 +1330,8 @@ public partial class Exporter
     {
       frame = Contain(frame, Intrinsic(source));
     }
-    else if (fit == "cover")
-    {
-      // The tools write no a:srcRect.
-      gaps.Add("fit: cover needs a crop, which isn't exported");
-    }
-    if (Truthy(Get(properties, "crop")))
-    {
-      gaps.Add("picture crop isn't exported");
-    }
-    if (Truthy(Get(properties, "alt")))
-    {
-      gaps.Add("picture alt text isn't exported");
-    }
-    if (Truthy(Get(properties, "link")))
-    {
-      gaps.Add("picture links aren't exported");
-    }
+    gaps.UnionWith(ExportGaps.Picture(fit == "cover", Truthy(Get(properties, "crop")), Truthy(Get(properties, "alt")),
+      Truthy(Get(properties, "link")), Get(properties, "opacity") is not null));
     JsonObject placed = Box(frame);
     var element = new JsonObject
     {
@@ -1362,10 +1340,6 @@ public partial class Exporter
       ["size"] = placed["size"]!.DeepClone(),
       ["lock_aspect_ratio"] = LocksAspect(frame, Intrinsic(source))
     };
-    if (Get(properties, "opacity") is not null)
-    {
-      gaps.Add("picture opacity isn't exported");
-    }
     var style = new JsonObject();
     Border(style, properties);
     Effects(style, properties);
@@ -1408,21 +1382,14 @@ public partial class Exporter
       scale *= 1000;
       commas += ",";
     }
-    if (Math.Abs(scale - 1) > 1e-9)
-    {
-      gaps.Add($"a chart's format scale of {Number(Get(format, "scale"))?.ToString(CultureInfo.InvariantCulture)} " +
-        "isn't exported, as PowerPoint scales only by thousands, or by a hundred as a percent");
-    }
+    gaps.UnionWith(ExportGaps.Format(Number(Get(format, "scale")), Text(Get(format, "suffix")),
+      Truthy(Get(format, "negativeColor")), null));
     static string Quote(string? text) => string.IsNullOrEmpty(text) ? "" : $"\"{text.Replace("\"", "")}\"";
     int decimals = (int)(Number(Get(format, "decimals")) ?? 0);
     bool separator = Get(format, "separator") is not JsonNode flag || Truthy(flag);
     string digits = (separator ? "#,##0" : "0") + (decimals != 0 ? $".{new string('0', decimals)}" : "");
     string positive = $"{Quote(Text(Get(format, "prefix")))}{digits}{commas}" +
       (percent.Length > 0 ? percent : Quote(Text(Get(format, "suffix"))));
-    if (Truthy(Get(format, "negativeColor")))
-    {
-      gaps.Add("a chart's negative_style isn't exported, as PowerPoint colors negatives only from a fixed palette");
-    }
     return (Text(Get(format, "negative")) ?? "parentheses") == "parentheses" ? $"{positive};({positive})" : positive;
   }
 
@@ -1452,7 +1419,7 @@ public partial class Exporter
     }
     if (Get(Formats, name) is not JsonNode format)
     {
-      gaps.Add($"a chart's format {name} isn't in the theme, so its numbers export unformatted");
+      gaps.Add(ExportGaps.UnknownFormat(name));
       return null;
     }
     return NumberFormat(format);
@@ -1779,8 +1746,7 @@ public partial class Exporter
             string runs = "default_text_style_for_all_runs";
             if (seriesLabels is null || !JsonNode.DeepEquals(own[runs], seriesLabels[runs]))
             {
-              gaps.Add("a waterfall point's label in a color or boldness of its own exports in its series', as " +
-                "editide can't yet style one waterfall label");
+              gaps.Add(ExportGaps.WaterfallPointLabel);
             }
             byIndex.Add(label);
             continue;
@@ -1821,6 +1787,7 @@ public partial class Exporter
     }
 
     JsonObject element = Box(Get(properties, "frame"));
+    gaps.UnionWith(ExportGaps.PlotInsets(Get(properties, "plot.insets") is not null));
     element["series_list"] = seriesList;
     element["chart_data"] = data;
     if (waterfall)
@@ -1881,12 +1848,7 @@ public partial class Exporter
       JsonObject Axis(string name, bool percent)
       {
         var result = new JsonObject { ["labels_text_style"] = text.DeepClone() };
-        if (Truthy(Get(properties, $"{name}.reverse")))
-        {
-          // No field for a reversed value axis (c:orientation maxMin).
-          gaps.Add($"a reversed {(name == "value_axis" ? "value" : "secondary")} axis isn't exported, " +
-            "so it runs bottom up in PowerPoint");
-        }
+        gaps.UnionWith(ExportGaps.ReversedAxis(name, Truthy(Get(properties, $"{name}.reverse"))));
         if (IsFalse(Get(properties, $"{name}.visible")))
         {
           result["is_deleted"] = true;
@@ -2107,7 +2069,7 @@ public partial class Exporter
   #region Slides
 
   // Elements for one edit, in the order Pintura draws them, each at its slot when given one.
-  private JsonObject Elements(IEnumerable<JsonNode> items, int start, Func<int, int>? slot = null)
+  private JsonObject Elements(IEnumerable<JsonNode> items, int start, Func<int, int>? slot = null, bool onSlide = false)
   {
     var edit = new JsonObject();
     int z = start;
@@ -2143,9 +2105,11 @@ public partial class Exporter
         {
           element["wrap_text"] = false;
         }
-        if ((Number(Get(properties, "columns")) is double columns and not 0 ? columns : 1) > 1)
+        gaps.UnionWith(ExportGaps.TextColumns(Number(Get(properties, "columns")) is double columns and not 0 ? columns : 1));
+        if (onSlide && Text(Get(item, "role")) is null && Items(Get(item, "paragraphs")).Any(paragraph =>
+          Items(Get(paragraph, "runs")).Any(run => Text(Get(run, "field")) == "slide")))
         {
-          gaps.Add("text columns aren't exported");
+          gaps.Add(ExportGaps.SlideNumberOnSlide);
         }
       }
       else if (kind == "shape")
@@ -2758,8 +2722,7 @@ public partial class Exporter
       foreach (string id in Items(Get(slide, "hide")).Select(Text).OfType<string>()
         .Where(id => drawnByLayout.Any(item => Text(Get(item, "id")) == id && !IsPageNumber(item))))
       {
-        gaps.Add($"slide {Text(Get(slide, "id"))} hides {id}, which PowerPoint shows, as a slide can't leave out one " +
-          "of its layout's shapes");
+        gaps.Add(ExportGaps.HiddenLayoutElement(Text(Get(slide, "id")) ?? "", id));
       }
       if (unused.Count > 0)
       {
@@ -2784,7 +2747,7 @@ public partial class Exporter
         int element = index - sections.Count;
         return start + element + raised.Count(entry => entry.Over <= element);
       }
-      foreach ((string key, JsonNode? value) in Elements(sections.Concat(own), used.Count, Slot).ToList())
+      foreach ((string key, JsonNode? value) in Elements(sections.Concat(own), used.Count, Slot, onSlide: true).ToList())
       {
         edit[key] = value?.DeepClone();
       }

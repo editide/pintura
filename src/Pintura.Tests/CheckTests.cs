@@ -1077,6 +1077,45 @@ public class CheckTests
   }
 
   [Fact]
+  public void Export_checks_report_the_same_static_gaps_as_the_exporter()
+  {
+    // Arrange
+    using var deck = new DeckFixture();
+    deck.Chart("""
+      type: line
+      data: revenue.csv
+      value_axis:
+        reverse: true
+      """);
+    deck.Write("deck/slides/chart.yaml", """
+      layout: content
+      title: Gaps
+      elements:
+        - id: chart
+          chart: revenue
+          frame: [40, 120, 400, 260]
+        - id: ghost
+          frame: [460, 120, 200, 40]
+          opacity: 0.5
+          text: Faded
+        - id: corner
+          shape: right_triangle
+          direction: left
+          frame: [460, 180, 100, 80]
+      """);
+
+    // Act
+    List<Finding> findings = Checks.Export(deck.Load());
+
+    // Assert
+    List<string> messages = findings.Select(finding => finding.Message).ToList();
+    messages.ShouldContain("a reversed value axis isn't exported, so it runs bottom up in PowerPoint");
+    messages.ShouldContain("opacity on an element with no fill isn't exported");
+    messages.ShouldContain("a right triangle facing left exports facing right, as PowerPoint has no such shape and a " +
+      "turn moves its right angle");
+  }
+
+  [Fact]
   public void A_decorative_element_is_left_out_of_the_geometry_checks()
   {
     // Arrange

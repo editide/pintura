@@ -1321,11 +1321,19 @@ public static class Checks
     var candidates = new List<Candidate>();
     foreach (Slide slide in presentation.Slides.Where(slide => slide.Error is null))
     {
+      if (presentation.Theme.Layouts.TryGetValue(slide.Layout, out Layout? layout))
+      {
+        foreach (string gap in ExportGaps.ForSlide(slide, layout))
+        {
+          findings.Add(new Finding("warning", "export", slide.Id, gap) { Slide = slide.Id });
+        }
+      }
       foreach (SceneItem item in scenes.Of(slide).Items)
       {
         ChartMeasure? chart = measurement?.Charts?.FirstOrDefault(chart => chart.Slide == slide.Id &&
           chart.Id == item.Id);
-        foreach (string gap in Gaps(item).Concat(chart is null ? [] : Clipped(chart)))
+        foreach (string gap in ExportGaps.ForItem(item, presentation.Theme).Distinct(StringComparer.Ordinal)
+          .Concat(chart is null ? [] : Clipped(chart)))
         {
           string key = item.Owner == "slide" ? $"{slide.Id}/{item.Id}/{gap}" : $"{item.Owner}/{item.Id}/{gap}";
           candidates.Add(new Candidate(key, item.Owner,
@@ -1345,52 +1353,6 @@ public static class Checks
       string labels = clipped.Count == 1 ? $"axis label {clipped[0]}, so it cuts it"
         : $"axis labels {string.Join(", ", clipped.SkipLast(1))} and {clipped[^1]}, so it cuts them";
       yield return $"PowerPoint can't narrow a chart's plot to fit its {labels} off at its edge";
-    }
-  }
-
-  private static IEnumerable<string> Gaps(SceneItem item)
-  {
-    Element? element = item.Element;
-    switch (item.Kind)
-    {
-      case "picture":
-        if (element?.Crop is not null)
-        {
-          yield return "picture crop isn't exported";
-        }
-        if (element?.Alt is not null)
-        {
-          yield return "picture alt text isn't exported";
-        }
-        if (element?.Opacity is not null)
-        {
-          yield return "picture opacity isn't exported";
-        }
-        if (item.Properties.TryGetValue("fit", out Resolved? fit) && (string)fit.Value == "cover")
-        {
-          yield return "fit: cover needs a crop, which isn't exported";
-        }
-        break;
-      case "shape" when element?.Shape == "callout":
-        yield return "a callout's tail isn't exported, so it points elsewhere";
-        break;
-      case "shape" when element?.Shape is "brace" or "bracket":
-        yield return $"a {element!.Shape} exports with PowerPoint's curl rather than a quarter of its thickness";
-        break;
-    }
-    if (item.Kind == "chart" && item.Properties.ContainsKey("plot.insets"))
-    {
-      yield return "a chart's plot insets aren't exported, so PowerPoint places its plot itself";
-    }
-    if (item.Properties.TryGetValue("columns", out Resolved? columns) && (int)columns.Value > 1)
-    {
-      yield return "text columns aren't exported";
-    }
-    // A layout's page number becomes PowerPoint's slide-number placeholder; a slide's own field has no such home.
-    bool slideNumber = (item.Paragraphs ?? []).Any(paragraph => paragraph.Runs.Any(run => run.Field == "slide"));
-    if (slideNumber && item.Owner == "slide" && item.Role is null)
-    {
-      yield return "${slide} in a slide's own text exports as plain text, or not at all when it is the only text";
     }
   }
 
