@@ -12,10 +12,11 @@
   </PropertyGroup>
 
   <!-- Trimming discards the runtime's precompiled code, so ReadyToRun restores it or startup doubles; trimming also
-       turns off reflection-based JSON, which the payloads rely on. -->
+       turns off reflection-based JSON, which the payloads rely on (and TrimmerRootAssembly keeps their types). -->
   <PropertyGroup Condition="'$(PublishTrimmed)' == 'true'">
     <PublishReadyToRun>true</PublishReadyToRun>
     <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <NoWarn>$(NoWarn);IL2026</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
