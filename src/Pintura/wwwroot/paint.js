@@ -343,7 +343,7 @@ function previewPaint(item, change) {
   fresh.classList.add('selected');
   node.replaceWith(fresh);
   paintPreview = { fresh, node };
-  fitText(slideStage());
+  fitText(slideStage(), fresh);
 }
 
 function unpreviewPaint() {

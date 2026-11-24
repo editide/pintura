@@ -1,6 +1,259 @@
 /* The exported file's viewer: the preview's sidebar beside a toolbar above one slide at fit. */
+:root {
+  color-scheme: light;
+  --page: #eceef1;
+  --surface: #ffffff;
+  --ink: oklch(20% 0 0);
+  --muted: oklch(49% 0 0);
+  --faint: oklch(66% 0 0);
+  --rule: oklch(92.5% 0 0);
+  --strong-rule: oklch(84% 0 0);
+  --accent: #0057b8;
+  --hover: color-mix(in oklab, var(--accent) 6%, var(--surface));
+  --accent-soft: color-mix(in oklab, var(--accent) 11%, var(--surface));
+  --shadow-tint: oklch(20% 0 0);
+  --shadow-slide: 0 0 0 1px color-mix(in oklab, var(--shadow-tint) 7%, transparent),
+    0 10px 30px -10px color-mix(in oklab, var(--shadow-tint) 30%, transparent);
+  --sans: ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --ease: 120ms ease;
+  --sidebar-width: 232px;
+}
+
 body.exported {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  height: 100%;
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.45 var(--sans);
+  -webkit-font-smoothing: antialiased;
   overflow: hidden;
+}
+
+button {
+  color: inherit;
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.icon-button .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.layout {
+  --nav-column: var(--sidebar-width);
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--nav-column) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.layout.nav-hidden {
+  --nav-column: 0px;
+}
+
+.layout.nav-hidden .sidebar {
+  display: none;
+}
+
+.sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--rule);
+  background: var(--surface);
+}
+
+.sidebar-head {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 10px 10px 16px;
+}
+
+.deck-name {
+  padding-top: 3px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 14px 24px 8px;
+}
+
+.section-name {
+  margin: 24px 0 8px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.thumbnail {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thumbnail .number {
+  width: 18px;
+  padding-top: 2px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.thumbnail .preview {
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--ease);
+}
+
+.thumbnail:hover .preview {
+  border-color: var(--strong-rule);
+}
+
+.thumbnail.current .preview {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+}
+
+.thumbnail.current .number {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.present {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  cursor: none;
+}
+
+.book {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  box-shadow: -8px 0 24px rgb(0 0 0 / 0.12);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 280ms;
+}
+
+.book.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book,
+  .book.open {
+    transition: none;
+  }
+}
+
+.book-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 45px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.book-bar button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.book-bar button span {
+  overflow: hidden;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-bar button:hover span {
+  text-decoration-thickness: 2px;
+}
+
+.book iframe {
+  flex: 1;
+  border: none;
+}
+
+#book-back {
+  min-width: 0;
 }
 
 body.exported #view {

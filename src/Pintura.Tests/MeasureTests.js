@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 
-const { countLines, overflow, fitted, shadowFilter, inkMargins, shortLastLine, widened, parseColor, ruleRuns } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
+const { countLines, overflow, fitted, shadowFilter, shortLastLine, widened, ruleRuns } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'render.js'));
+const { inkMargins, parseColor } = require(path.join(__dirname, '..', 'Pintura', 'wwwroot', 'measure.js'));
 
 test('runs side by side on one line count once', () => {
   // Arrange

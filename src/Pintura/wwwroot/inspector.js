@@ -11,8 +11,7 @@ const KINDS = {
   line: 'Line',
   picture: 'Picture',
   chart: 'Chart',
-  table: 'Table',
-  html: 'HTML'
+  table: 'Table'
 };
 
 const LABELS = {
@@ -532,7 +531,6 @@ const ICONS = {
     '<path d="M3 14l4-3 3 2 3-4 4 4"/>',
   chart: '<path d="M4 16V9M8 16V5M12 16v-6M16 16V7M3 16.5h14"/>',
   table: '<rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M3 8h14M3 12h14M8 4v12"/>',
-  html: '<path d="M7 6l-4 4 4 4M13 6l4 4-4 4"/>',
   placement: '<path d="M10 3v14M3 10h14M8 5l2-2 2 2M8 15l2 2 2-2M5 8l-2 2 2 2M15 8l2 2-2 2"/>',
   typeface: '<path d="M3 15l4-10 4 10M4.5 11.5h5M13 9.5c.6-.8 1.4-1 2.2-1 1.2 0 1.8.7 1.8 1.8V15M17 12.2c-2.8 0-4.2.6-4.2 ' +
     '1.6 0 .8.6 1.3 1.5 1.3 1.3 0 2.7-1 2.7-2.9"/>',
@@ -1490,6 +1488,113 @@ function pickItem(slide, index) {
 }
 
 // #endregion
+
+// #endregion
+
+// #region Changes
+
+// Each changed value before and after, reworded text as one diff, with the level that set it now.
+function renderChangeTable(changes, parent) {
+  if (changes.length === 0) {
+    return;
+  }
+  const list = element('dl', 'props changes-table', parent);
+  for (const change of changes) {
+    const entry = element('div', `prop${change.cause ? ' restyled' : ''}`, list);
+    element('dt', null, entry).textContent = changeLabel(change.key);
+    const value = element('dd', null, entry);
+    if (textChange(change) && change.before != null && change.after != null) {
+      const diff = element('div', 'text-diff', value);
+      for (const part of textDiff(change.before, change.after)) {
+        element({ same: 'span', removed: 'del', added: 'ins' }[part.op], null, diff).textContent = part.text;
+      }
+    } else {
+      const key = change.key.split('.').pop();
+      const shown = (display) => (display == null ? 'Unset' : propertyValue({ key, display }).text);
+      element('div', 'was', value).textContent = shown(change.before);
+      element('div', 'now', value).textContent = shown(change.after);
+    }
+    const origin = change.cause || change.afterOrigin || change.beforeOrigin;
+    if (origin) {
+      originTag(originOf(origin), entry);
+    } else {
+      element('span', null, entry);
+    }
+  }
+}
+
+// Whether the slide's file holds the change, so writing the item back as the revision has it undoes it. Theme and
+// layout items, and changes only the theme made, are reverted in those files.
+function revertible(item) {
+  return item.owner === 'slide' && (item.status !== 'changed' || item.changes.some((change) => !change.cause));
+}
+
+// Writes the item, or without one the whole slide, back as the revision has it.
+function revertButton(parent, label, slide, item = null) {
+  const button = element('button', 'revert', parent);
+  button.type = 'button';
+  button.textContent = label;
+  const was = namedBase() ? `of ${namedBase()}` : 'it was';
+  button.title = `Write ${item ? item.id : slide} back as ${was}; Ctrl+Z undoes it`;
+  button.addEventListener('click', () => revert(slide, item?.id, item?.owner));
+}
+
+const STATUS = { added: 'Added', removed: 'Removed', changed: 'Changed', moved: 'Moved' };
+
+// The selected item's changes since the revision, above how it looks.
+function renderItemChanges(selection, panel) {
+  const change = slideDiff(selection.slide)?.items.find((item) =>
+    item.id === selection.id && item.owner === selection.owner);
+  if (!change) {
+    return;
+  }
+  const node = section(panel, `${STATUS[change.status] || change.status}${sinceBase()}`,
+    `change-section ${change.status}`);
+  renderChangeTable(change.changes, node);
+  if (revertible(change)) {
+    revertButton(node, namedBase() ? `Revert to ${namedBase()}` : 'Revert', selection.slide, change);
+  }
+}
+
+// With nothing selected, what changed on the slide, and the theme values behind any restyling.
+function renderSlideChanges(slide, panel) {
+  const diff = slideDiff(slide.id);
+  if (!diff) {
+    return;
+  }
+  const status = diff.moved
+    ? `${diff.status === 'changed' ? 'Changed and moved' : 'Moved'} from slide ${diff.before}`
+    : STATUS[diff.status] || diff.status;
+  const node = section(panel, `${status}${sinceBase()}`, `change-section ${diff.status}`);
+  renderChangeTable(diff.changes, node);
+  const list = element('ul', 'change-list', node);
+  for (const item of diff.items) {
+    const restyled = item.status === 'changed' && item.changes.every((change) => change.cause);
+    const entry = element('li', `${item.status}${restyled ? ' restyled' : ''}`, list);
+    const index = (slide.items || []).findIndex((candidate) => candidate.id === item.id && candidate.owner === item.owner);
+    const name = element(index >= 0 ? 'button' : 'span', 'change-name', entry);
+    name.textContent = words(item.id);
+    if (index >= 0) {
+      name.type = 'button';
+      name.addEventListener('click', () => pickItem(slide, index));
+    }
+    const keys = item.changes.map((change) => changeLabel(change.key).toLowerCase());
+    element('span', 'change-what', entry).textContent =
+      `${(STATUS[item.status] || item.status).toLowerCase()}${keys.length > 0 ? `: ${keys.join(', ')}` : ''}`;
+    if (revertible(item)) {
+      revertButton(entry, 'Revert', slide.id, item);
+    }
+  }
+  if (diff.status === 'changed' && (diff.changes.some((change) => !change.cause) || diff.items.some(revertible))) {
+    revertButton(node, namedBase() ? `Revert the slide to ${namedBase()}` : 'Revert the slide', slide.id);
+  }
+  const causes = state.compare.diff.causes.filter((cause) => cause.slides.includes(slide.id));
+  for (const cause of causes) {
+    const note = element('p', 'note', node);
+    note.textContent = `Restyled by the theme: ${cause.before ?? 'unset'} → ${cause.after ?? 'unset'} `;
+    originTag(originOf(cause.origin), note);
+  }
+}
 
 // #endregion
 

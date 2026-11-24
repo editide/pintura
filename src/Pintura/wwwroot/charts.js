@@ -936,7 +936,10 @@ function renderChart(item, parent) {
   node.draw();
   // Text is measured to place axes and labels, so the chart is laid out again once its font has loaded.
   const { font, size } = item.chart.text;
-  node.loaded = document.fonts.load(`${size}px ${fontFamily(font)}`).then(() => node.draw()).catch(() => {});
+  const spec = `${size}px ${fontFamily(font)}`;
+  node.loaded = document.fonts.check(spec)
+    ? Promise.resolve()
+    : document.fonts.load(spec).then(() => node.draw()).catch(() => {});
   return node;
 }
 

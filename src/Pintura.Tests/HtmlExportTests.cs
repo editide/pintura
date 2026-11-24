@@ -75,7 +75,7 @@ public class HtmlExportTests
   }
 
   [Fact]
-  public void The_page_carries_the_interfaces_fonts()
+  public void The_page_carries_only_the_slide_and_viewer_styles_without_interface_fonts()
   {
     // Arrange
     using var fixture = new DeckFixture();
@@ -85,7 +85,8 @@ public class HtmlExportTests
 
     // Assert
     html.ShouldNotContain("url(\"fonts/");
-    Regex.Matches(html, "url\\(\"data:font/woff2;base64,").Count.ShouldBe(2);
+    html.ShouldNotContain("data:font/woff2;base64,");
+    html.ShouldNotContain(".inspector-panel");
   }
 
   [Fact]
