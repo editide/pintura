@@ -880,7 +880,7 @@ public static partial class Patcher
         List<(char Character, int Start, int End, string? Field)> removed = old[start..end];
         if (typed.Contains(FieldMark))
         {
-          throw new PatchException("a field can't be typed on the slide; write it in the file");
+          throw new PatchException("a field can't be added or split on the slide");
         }
         int from;
         int to;
@@ -904,7 +904,7 @@ public static partial class Patcher
     bool same = reread.Count == parsed.Count && reread.Select((paragraph, index) =>
       Plain(paragraph) == paragraphs[index] && paragraph.Level == parsed[index].Level &&
       paragraph.Style == parsed[index].Style).All(match => match);
-    return same ? updated : throw new PatchException("that text would read as markup; write it in the file");
+    return same ? updated : throw new PatchException("that text would read as formatting, so it wasn't saved");
   }
 
   /// <summary>The value with paragraphs split or joined: the paragraphs read as one text with a newline between
@@ -949,7 +949,7 @@ public static partial class Patcher
       List<(char Character, int Start, int End, string? Field)> removed = old[start..end];
       if (typed.Contains(FieldMark))
       {
-        throw new PatchException("a field can't be typed on the slide; write it in the file");
+        throw new PatchException("a field can't be added or split on the slide");
       }
       int from;
       int to;
@@ -1008,7 +1008,7 @@ public static partial class Patcher
     List<Paragraph> reread = Parse(updated, false, context);
     bool same = reread.Count == paragraphs.Count &&
       reread.Select((paragraph, index) => Plain(paragraph) == paragraphs[index]).All(match => match);
-    return same ? updated : throw new PatchException("that text would read as markup; write it in the file");
+    return same ? updated : throw new PatchException("that text would read as formatting, so it wasn't saved");
   }
 
   /// <summary>Bold, italic, a link or a span: where its content starts and ends on its line, and the markup on either
