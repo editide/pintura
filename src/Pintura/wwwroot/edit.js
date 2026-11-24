@@ -915,11 +915,11 @@ function deleteKey(event) {
   const kept = items.filter((item) => !item.edit.delete);
   if (kept.length > 0 && state.layout) {
     notice(`${kept.map(elementName).join(', ')} ${kept.length > 1 ? 'stay' : 'stays'}: only elements are deleted ` +
-      'here; remove the rest in the file');
+      'here, and the rest come from the layout or theme');
   } else if (kept.length > 0) {
     notice(kept.length > 1
       ? `${kept.map(elementName).join(', ')} stay: the layout or theme gives them`
-      : kept[0].edit.locked || `${kept[0].id} is a placeholder the layout gives; empty it in the file`);
+      : kept[0].edit.locked || `${kept[0].id} is a placeholder the layout gives, so it can't be deleted; empty its text instead`);
   }
   const deleted = items.filter((item) => item.edit.delete);
   if (deleted.length === 0) {

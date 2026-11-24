@@ -1120,13 +1120,13 @@ public class PatcherTests
   }
 
   [Fact]
-  public void Unbolding_text_its_style_makes_bold_is_refused_with_a_style_that_would_turn_it_off()
+  public void Unbolding_text_its_style_makes_bold_is_refused_as_set_by_its_style()
   {
     // Act
     PatchException exception = Should.Throw<PatchException>(() => Apply(Slide, Format("bold", false, 0, 0, 7)));
 
     // Assert
-    exception.Message.ShouldContain("regular: { bold: false }");
+    exception.Message.ShouldBe("that text is bold by its style, so bold can't be turned off here");
   }
 
   [Fact]

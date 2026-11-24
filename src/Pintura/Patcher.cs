@@ -177,7 +177,7 @@ public static partial class Patcher
     bool element = path.StartsWith("elements.", StringComparison.Ordinal) && (was ?? now) is YamlMappingNode;
     if (!element)
     {
-      throw new PatchException($"{path} was {(was is null ? "added" : "removed")} since; revert it in the file");
+      throw new PatchException($"{path} was {(was is null ? "added" : "removed")} since, so this can't be undone here");
     }
     if (now is not null)
     {
@@ -267,7 +267,7 @@ public static partial class Patcher
       Expect(text, node, edit);
       if (!OneLine(node))
       {
-        throw new PatchException($"{edit.Path} is written across lines; change it in the file");
+        throw new PatchException($"{edit.Path} is written across lines, so it can't be changed here");
       }
       return First(edit, Written, Splice(text, node, value), Splice(text, node, DoubleQuoted(value)));
     }
@@ -312,7 +312,7 @@ public static partial class Patcher
           [.. Candidates(entry => Splice(text, scalar, $"{{ text: {source}, {entry} }}")),
             .. Candidates(entry => Splice(text, scalar, $"{{ text: {DoubleQuoted(scalar.Value ?? "")}, {entry} }}"))]);
       case YamlScalarNode when words:
-        throw new PatchException($"{holder} is written across lines; give it a {missing[0]} in the file");
+        throw new PatchException($"{holder} is written across lines, so it can't take a {missing[0]} here");
       case YamlScalarNode { Value: "none" } none when OneLine(none):
         return First(edit, written, Candidates(entry => Splice(text, none, $"{{ {entry} }}")));
       case YamlMappingNode { Style: MappingStyle.Flow } map:
@@ -336,9 +336,9 @@ public static partial class Patcher
           int start = Node.Extent(text, first).Start;
           return First(edit, written, Candidates(entry => Splice(text, start, start, $"{entry}\n{Indent(first)}")));
         }
-        throw new PatchException($"there's no line to write {missing[0]} after; add it in the file");
+        throw new PatchException($"there's no line to write {missing[0]} after, so it can't be added here");
       default:
-        throw new PatchException($"{holder} isn't a map; give it a {missing[0]} in the file");
+        throw new PatchException($"{holder} isn't a map, so it can't take a {missing[0]} here");
     }
   }
 
@@ -424,7 +424,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow)
     {
-      throw new PatchException("elements is written as a flow list; delete the element in the file");
+      throw new PatchException("elements is written as a flow list, so an element can't be deleted here");
     }
     List<string?> ids = Ids(root);
     ids.RemoveAt(index);
@@ -540,7 +540,7 @@ public static partial class Patcher
     int start = LineStart(text, dash);
     if (dash < 0 || text[dash] != '-' || text[start..dash].Trim().Length > 0)
     {
-      throw new PatchException("the entry doesn't start its own line; change it in the file");
+      throw new PatchException("the entry doesn't start its own line, so it can't be changed here");
     }
     // A block scalar ends where the next line's indentation does.
     int end = Node.Extent(text, entry).End;
@@ -600,7 +600,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow)
     {
-      throw new PatchException("slides is written as a flow list; reorder it in the file");
+      throw new PatchException("slides is written as a flow list, so slides can't be reordered here");
     }
     int anchor = -1;
     if (move.To is not null)
@@ -612,7 +612,7 @@ public static partial class Patcher
       }
       if (entries.LastIndexOf(move.To) != anchor)
       {
-        throw new PatchException($"two sections are named {move.To.Section}; move {move.Slide} in the file");
+        throw new PatchException($"two sections are named {move.To.Section}, so {move.Slide} can't be moved into one here");
       }
     }
     List<ListEntry?> order = [.. entries];
@@ -657,7 +657,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow)
     {
-      throw new PatchException("slides is written as a flow list; delete the slide in the file");
+      throw new PatchException("slides is written as a flow list, so a slide can't be deleted here");
     }
     (int start, int end) = EntryLines(text, list.Children[index]);
     string removed = string.Concat(text[..start], text[end..]);
@@ -681,7 +681,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow || list.Children.Count == 0)
     {
-      throw new PatchException($"slides is written as a flow list; add {move.Slide} back in the file");
+      throw new PatchException($"slides is written as a flow list, so {move.Slide} can't be added back here");
     }
     int anchor = -1;
     if (move.To is not null)
@@ -736,7 +736,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow)
     {
-      throw new PatchException($"slides is written as a flow list; change {named} in the file");
+      throw new PatchException($"slides is written as a flow list, so {named} can't be changed here");
     }
     (int start, int end) = EntryLines(text, list.Children[index]);
     string indent = text[start..text.IndexOf('-', start)];
@@ -746,7 +746,7 @@ public static partial class Patcher
     if (Parse(written) is not YamlMappingNode after || Value(after, "slides") is not YamlSequenceNode afterList ||
       afterList.Children.Count != list.Children.Count || Entry(afterList.Children[index]) != expected)
     {
-      throw new PatchException($"couldn't rewrite {named} cleanly; change it in presentation.yaml");
+      throw new PatchException($"couldn't rewrite {named} cleanly, so it wasn't changed");
     }
     return written;
   }
@@ -772,7 +772,7 @@ public static partial class Patcher
 
   private static PatchException MoveConflict(SlideMove move)
   {
-    return new PatchException($"slides changed in the file since the sidebar was drawn, so moving {move.Slide} was " +
+    return new PatchException($"slides changed since the sidebar was drawn, so moving {move.Slide} was " +
       "dropped", true);
   }
 
@@ -1311,7 +1311,7 @@ public static partial class Patcher
       List<Paragraph> parsed = Parse(body, false, context);
       if (range.Paragraph < 0 || range.Paragraph >= parsed.Count)
       {
-        throw new PatchException("the text changed in the file since it was selected");
+        throw new PatchException("the text changed since it was selected");
       }
       Paragraph paragraph = parsed[range.Paragraph];
       List<(char Character, int Start, int End, string? Field)> characters = Characters(paragraph);
@@ -1336,9 +1336,7 @@ public static partial class Patcher
       bool marked = before[start..end].All(character => Toggled(character, format.Mark, true) == character);
       if (!format.On && !marked && format.Mark != "underline")
       {
-        string off = format.Mark == "bold" ? "regular: { bold: false }" : "upright: { italic: false }";
-        throw new PatchException($"that text is {format.Mark} by its style; change the style in the file, or add " +
-          $"one that only turns {format.Mark} off, such as {off}, and use it on the text");
+        throw new PatchException($"that text is {format.Mark} by its style, so {format.Mark} can't be turned off here");
       }
       if (wanted.SequenceEqual(before))
       {
@@ -1356,8 +1354,8 @@ public static partial class Patcher
         lines[paragraph.Line] = candidate;
         return string.Join('\n', lines);
       }).FirstOrDefault(candidate => Reads(candidate, parsed, range.Paragraph, wanted, context));
-      body = written ?? throw new PatchException($"that {format.Mark} crosses formatting, such as a span or a link; " +
-        "make it in the file");
+      body = written ?? throw new PatchException($"that {format.Mark} crosses formatting, such as a span or a link, so it can't be " +
+        "made here");
     }
     return body + (trailing ? "\n" : "");
   }
@@ -1838,7 +1836,7 @@ public static partial class Patcher
   private static PatchException Conflict(ValueEdit edit)
   {
     string changed = edit.Path.Length == 0 ? "the slide" : edit.Path;
-    return new PatchException($"{changed} changed in the file since the slide was drawn, so the edit was dropped",
+    return new PatchException($"{changed} changed since the slide was drawn, so the edit was dropped",
       true);
   }
 
@@ -1891,7 +1889,7 @@ public static partial class Patcher
       {
       }
     }
-    throw new PatchException($"{edit.Path} can't be written back as it was edited; change it in the file");
+    throw new PatchException($"{edit.Path} can't be written back as it was edited, so the edit was dropped");
   }
 
   #endregion
