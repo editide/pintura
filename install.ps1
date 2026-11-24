@@ -30,7 +30,7 @@ try {
   $expected = ($expectedLine -split '\s+')[0].ToLowerInvariant()
   $actual = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actual -ne $expected) {
-    throw "Checksum mismatch for $archive: expected $expected, got $actual."
+    throw "Checksum mismatch for ${archive}: expected $expected, got $actual."
   }
   Expand-Archive $archivePath $temporary
   $unpacked = Join-Path $temporary 'pintura'
