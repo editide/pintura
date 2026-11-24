@@ -447,7 +447,7 @@ public static class ExportGaps
   {
     Element? element = item.Element;
     bool hasOpacity = item.Properties.ContainsKey("opacity");
-    bool hasFill = item.Properties.TryGetValue("fill", out Resolved? fill) && fill.Value is Color color && color.None != true;
+    bool hasFill = item.HasFill;
     switch (item.Kind)
     {
       case "picture":

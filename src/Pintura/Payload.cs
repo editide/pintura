@@ -479,9 +479,9 @@ public static class PayloadBuilder
       Direction = item.Kind == "shape" ? Get<string>("direction") : null,
       Adjust = adjust.Count == 0 ? null : adjust,
       Tail = Get<double[]>("tail"),
-      From = Get<double[]>("from"),
-      To = Get<double[]>("to"),
-      Arc = item.Kind == "arc" ? [Number("arc.from")!.Value, Number("arc.to")!.Value] : null,
+      From = item.From,
+      To = item.To,
+      Arc = item.Arc,
       Start = Get<string>("start"),
       End = Get<string>("end"),
       Picture = picture is null ? null : pictureUrl(picture, fill),
@@ -588,7 +588,7 @@ public static class PayloadBuilder
         Column = cell.Column,
         Rows = cell.Rows,
         Columns = cell.Columns,
-        Fill = cell.Properties.TryGetValue("fill", out Resolved? fill) ? Hex(fill.Value, theme) : null,
+        Fill = cell.Fill is Color fill ? Hex(fill, theme) : null,
         BorderTop = Stroke(cell.Properties, theme, "border_top"),
         BorderBottom = Stroke(cell.Properties, theme, "border_bottom"),
         BorderLeft = Stroke(cell.Properties, theme, "border_left"),
@@ -634,7 +634,8 @@ public static class PayloadBuilder
       object? Own(string key) => Value(point + key) ?? Value($"{prefix}markers.{key}");
       return Own("shape") is not string shape || shape == "none"
         ? new MarkersPayload("none", 0, null)
-        : new MarkersPayload(shape, Own("size") as double? ?? 5, Own("fill") is Color fill ? Hex(fill, theme) : null);
+        : new MarkersPayload(shape, Own("size") as double? ?? SceneBuilder.DefaultMarkerSize,
+          Own("fill") is Color fill ? Hex(fill, theme) : null);
     }
     ValueAxisPayload? Axis(string name)
     {
@@ -759,7 +760,15 @@ public static class PayloadBuilder
 
   private static TextPayload Text(SceneItem item, Theme theme)
   {
-    return Text(item.Properties, item.Paragraphs!, theme);
+    return new TextPayload
+    {
+      Insets = item.Insets,
+      Valign = item.Valign,
+      Fit = item.Fit,
+      Wrap = item.Wrap,
+      Columns = item.Columns,
+      Paragraphs = item.Paragraphs!.Select(paragraph => Paragraph(paragraph, theme)).ToList()
+    };
   }
 
   private static TextPayload Text(Dictionary<string, Resolved> properties, List<SceneParagraph> paragraphs,
@@ -785,8 +794,9 @@ public static class PayloadBuilder
     }
     return new ParagraphPayload
     {
-      Align = properties.TryGetValue("align", out Resolved? align) ? (string)align.Value : "left",
-      AlignStyle = paragraph.StyleAligns && align!.Origin is Origin origin
+      Align = paragraph.Align,
+      AlignStyle = paragraph.StyleAligns && properties.TryGetValue("align", out Resolved? align) &&
+        align.Origin is Origin origin
         ? new StyleOriginPayload(paragraph.Style!, origin.File, origin.Line)
         : null,
       SpaceBefore = Number("space_before"),

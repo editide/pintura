@@ -31,6 +31,25 @@ public class SceneItem
   public Element? Element { get; init; }
   public Chart? Chart { get; init; }
   public SceneTable? Table { get; init; }
+
+  public Frame? Frame => Properties.TryGetValue("frame", out Resolved? value) ? (Frame)value.Value : null;
+  public double[]? From => Properties.TryGetValue("from", out Resolved? value) ? (double[])value.Value : null;
+  public double[]? To => Properties.TryGetValue("to", out Resolved? value) ? (double[])value.Value : null;
+  public double[]? Arc => Kind == "arc" && Properties.TryGetValue("arc.from", out Resolved? from) &&
+    Properties.TryGetValue("arc.to", out Resolved? to)
+    ? [Convert.ToDouble(from.Value), Convert.ToDouble(to.Value)]
+    : null;
+  public double Rotate => Properties.TryGetValue("rotate", out Resolved? value) ? Convert.ToDouble(value.Value) : 0;
+  public Color? Fill => Properties.TryGetValue("fill", out Resolved? value) ? (Color)value.Value : null;
+  public bool HasFill => Fill is { IsNone: false };
+  public bool HasStroke => Properties.ContainsKey("stroke.color") && Properties.ContainsKey("stroke.width");
+  public string Valign => Properties.TryGetValue("valign", out Resolved? value) ? (string)value.Value : "top";
+  public string Fit => Properties.TryGetValue("fit", out Resolved? value) ? (string)value.Value : "none";
+  public double[] Insets => Properties.TryGetValue("insets", out Resolved? value) ? (double[])value.Value : [0, 0, 0, 0];
+  public bool Wrap => !Properties.TryGetValue("wrap", out Resolved? value) || (bool)value.Value;
+  public int Columns => Properties.TryGetValue("columns", out Resolved? value) ? (int)value.Value : 1;
+
+
 }
 
 /// <summary>A table as drawn: each column's width, each row's minimum height, and the cells a merge leaves showing,
@@ -54,6 +73,10 @@ public class SceneCell
   public TracePayload? Trace { get; init; }
   public Dictionary<string, Resolved> Properties { get; init; } = new Dictionary<string, Resolved>();
   public List<SceneParagraph> Paragraphs { get; init; } = new List<SceneParagraph>();
+
+  public Color? Fill => Properties.TryGetValue("fill", out Resolved? value) ? (Color)value.Value : null;
+
+
 }
 
 public class SceneParagraph
@@ -72,6 +95,10 @@ public class SceneParagraph
   public Origin Origin { get; init; } = new Origin("", 0, 0);
   public Dictionary<string, Resolved> Properties { get; init; } = new Dictionary<string, Resolved>();
   public List<SceneRun> Runs { get; init; } = new List<SceneRun>();
+
+  public string Align => Properties.TryGetValue("align", out Resolved? value) ? (string)value.Value : "left";
+
+
 }
 
 public class SceneRun
@@ -88,6 +115,7 @@ public class SceneRun
 /// one-offs, then paragraph and run styles. Nothing is stored; every call recomputes from the model.</summary>
 public class SceneBuilder
 {
+  public const double DefaultMarkerSize = 5.0;
   private static readonly string[] ParagraphKeys = [.. TextProperties.Character, .. TextProperties.Paragraph];
 
   private readonly Presentation presentation;
@@ -830,7 +858,7 @@ public class SceneBuilder
     }
     else
     {
-      properties.TryAdd($"{prefix}markers.size", new Resolved(5.0, null));
+      properties.TryAdd($"{prefix}markers.size", new Resolved(DefaultMarkerSize, null));
     }
   }
 

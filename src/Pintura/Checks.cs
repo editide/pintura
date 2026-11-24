@@ -403,7 +403,7 @@ public static class Checks
     foreach (SceneItem item in scene.Items.Where(item => item.Table is not null))
     {
       Table table = presentation.Tables[item.Element!.Table!];
-      double frame = ((Frame)item.Properties["frame"].Value).Rect[2];
+      double frame = item.Frame!.Rect[2];
       double given = table.Columns.Sum(column => column.Width ?? 0);
       int shared = table.ColumnCount - table.Columns.Count(column => column.Width is not null);
       string? problem = given - frame > OverflowTolerance
@@ -819,10 +819,9 @@ public static class Checks
         : presentation.Theme.PlaceholderFrame(layout, item.Role == "title" ? "title" : item.Id,
           item.Role == "title" ? slide.Title : slide.Placeholders[item.Id]).Owner;
       string name = item.Role == "title" ? "the title" : item.Id;
-      if (item.Properties.TryGetValue("from", out Resolved? from))
+      if (item.From is double[] start)
       {
-        double[] start = (double[])from.Value;
-        double[] end = (double[])item.Properties["to"].Value;
+        double[] end = item.To!;
         int steps = Math.Max(2, (int)Math.Ceiling(double.Hypot(end[0] - start[0], end[1] - start[1])));
         placed.Add(new Placed(item.Id, name, owner, [start[0], start[1], end[0] - start[0], end[1] - start[1]])
         {
@@ -834,14 +833,13 @@ public static class Checks
         });
         continue;
       }
-      if (!item.Properties.TryGetValue("frame", out Resolved? frame))
+      if (item.Frame is not Frame frame)
       {
         continue;
       }
-      if (item.Kind == "arc")
+      if (item.Arc is double[] arc)
       {
-        double[][] path = ArcPoints(((Frame)frame.Value).Rect, Convert.ToDouble(item.Properties["arc.from"].Value),
-          Convert.ToDouble(item.Properties["arc.to"].Value));
+        double[][] path = ArcPoints(frame.Rect, arc[0], arc[1]);
         (double left, double top) = (path.Min(point => point[0]), path.Min(point => point[1]));
         placed.Add(new Placed(item.Id, name, owner,
           [left, top, path.Max(point => point[0]) - left, path.Max(point => point[1]) - top])
@@ -851,7 +849,7 @@ public static class Checks
         });
         continue;
       }
-      double[] rect = [.. pictures.GetValueOrDefault((slide.Id, item.Id))?.Drawn ?? ((Frame)frame.Value).Rect];
+      double[] rect = [.. pictures.GetValueOrDefault((slide.Id, item.Id))?.Drawn ?? frame.Rect];
       if (measured.GetValueOrDefault((slide.Id, item.Id)) is { Height: double grown } box)
       {
         rect[3] = grown;
@@ -860,11 +858,10 @@ public static class Checks
           (rect[0], rect[2]) = (left, width);
         }
       }
-      double rotate = item.Properties.TryGetValue("rotate", out Resolved? turn) ? (double)turn.Value : 0;
       placed.Add(new Placed(item.Id, name, owner, rect)
       {
         Kind = item.Kind,
-        Rotate = rotate % 360,
+        Rotate = item.Rotate % 360,
         Grown = measured.GetValueOrDefault((slide.Id, item.Id))?.Height is not null,
         Sides = AnchoredSides(item),
         Ink = measured.GetValueOrDefault((slide.Id, item.Id))?.Ink,
@@ -893,16 +890,14 @@ public static class Checks
   /// them. Null for a box that draws, whose every edge shows.</summary>
   private static HashSet<string>? AnchoredSides(SceneItem item)
   {
-    bool painted = item.Properties.TryGetValue("fill", out Resolved? fill) && fill.Value is Color { IsNone: false };
-    bool outlined = item.Properties.ContainsKey("stroke.color") && item.Properties.ContainsKey("stroke.width");
-    if (item.Paragraphs is null || item.Kind == "table" || painted || outlined)
+    if (item.Paragraphs is null || item.Kind == "table" || item.HasFill || item.HasStroke)
     {
       return null;
     }
     var sides = new HashSet<string>();
     foreach (SceneParagraph paragraph in item.Paragraphs)
     {
-      string align = paragraph.Properties.TryGetValue("align", out Resolved? value) ? (string)value.Value : "left";
+      string align = paragraph.Align;
       sides.UnionWith(align switch
       {
         "center" => [],
@@ -910,10 +905,9 @@ public static class Checks
         _ => [align]
       });
     }
-    string valign = item.Properties.TryGetValue("valign", out Resolved? anchor) ? (string)anchor.Value : "top";
-    if (valign != "middle")
+    if (item.Valign != "middle")
     {
-      sides.Add(valign);
+      sides.Add(item.Valign);
     }
     return sides;
   }
