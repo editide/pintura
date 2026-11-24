@@ -619,5 +619,42 @@ public class IncrementalExportTests
     report.Gaps.ShouldNotContain(gap => gap.StartsWith("sections"));
   }
 
+  [Fact]
+  public void A_failure_partway_through_saves_finished_slides_so_the_next_export_resumes_incrementally()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    string output = fixture.Folder.PathTo("out/deck.pptx");
+    string resume = Exporter.ResumePath(output);
+    int added = 0;
+    var failing = new BlandTools
+    {
+      Calling = (tool, _) =>
+      {
+        if (tool == "add_slide" && ++added == 2)
+        {
+          throw new InvalidOperationException("editide answered 500");
+        }
+      }
+    };
+    var resumed = new BlandTools();
+
+    // Act
+    InvalidOperationException error = Should.Throw<InvalidOperationException>(() =>
+      Exporter.Write(fixture.Load(), output, failing));
+    bool savedPartial = File.Exists(resume) && File.Exists(ExportManifest.PathFor(resume));
+    ExportReport report = Exporter.Write(fixture.Load(), output, resumed);
+
+    // Assert
+    error.Message.ShouldContain("partial export saved");
+    savedPartial.ShouldBeTrue();
+    File.Exists(resume).ShouldBeFalse();
+    File.Exists(ExportManifest.PathFor(resume)).ShouldBeFalse();
+    report.Reused.ShouldBe(1);
+    report.Billed.ShouldBe(new ExportBilling(1, 0, 0));
+    resumed.Calls.ShouldNotContain("edit_theme");
+    resumed.Calls.Count(call => call == "add_slide").ShouldBe(1);
+  }
+
 
 }

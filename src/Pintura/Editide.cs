@@ -20,6 +20,8 @@ public sealed class EditideTools : IToolHost
 
   private static readonly TimeSpan Pause = TimeSpan.FromSeconds(1);
 
+  private const int TransientRetries = 3;
+
   private readonly HttpClient http;
   private readonly Action<TimeSpan> wait;
   private string? version;
@@ -63,7 +65,8 @@ public sealed class EditideTools : IToolHost
   /// <summary>The key's plan, as <c>whoami</c> answers it.</summary>
   public AccountPlan Plan()
   {
-    JsonNode answer = Send(() => new HttpRequestMessage(HttpMethod.Get, "api/auth/whoami"), "checking your plan");
+    JsonNode answer = Send(() => new HttpRequestMessage(HttpMethod.Get, "api/auth/whoami"), "checking your plan",
+      retry: true);
     return new AccountPlan((string?)answer["product"] ?? "", (string?)answer["tier"] ?? "",
       (int?)answer["slides_delivered_this_period"] ?? 0,
       (int?)answer["tier_definition"]?["monthly_slides_included"] ?? 0);
@@ -80,7 +83,7 @@ public sealed class EditideTools : IToolHost
     JsonNode answer = Send(() => new HttpRequestMessage(HttpMethod.Post, "api/presentations")
     {
       Content = Form(deck, PptxType)
-    }, "uploading the deck");
+    }, "uploading the deck", retry: true);
     return new Session(this, (string)answer["file_id"]!);
   }
 
@@ -91,7 +94,8 @@ public sealed class EditideTools : IToolHost
     {
       return version;
     }
-    JsonNode answer = Send(() => new HttpRequestMessage(HttpMethod.Get, "version"), "asking editide's version");
+    JsonNode answer = Send(() => new HttpRequestMessage(HttpMethod.Get, "version"), "asking editide's version",
+      retry: true);
     string reported = (string?)answer["version"] ?? "";
     if (!System.Version.TryParse(reported.Split('-')[0], out Version? parsed) || parsed < Minimum)
     {
@@ -109,20 +113,29 @@ public sealed class EditideTools : IToolHost
     return new MultipartFormDataContent { { file, "file", Path.GetFileName(path) } };
   }
 
-  /// <summary>Sends a request and answers its JSON body.</summary>
-  private JsonNode Send(Func<HttpRequestMessage> request, string doing, string? tool = null)
+  /// <summary>Whether repeating a tool call after a transient failure leaves the deck in the same state.</summary>
+  private static bool SafeToRepeat(string tool)
   {
-    (HttpStatusCode status, byte[] body) = Raw(request, doing);
+    return tool.StartsWith("read_", StringComparison.Ordinal) ||
+      tool.StartsWith("list_", StringComparison.Ordinal) ||
+      tool is "edit_theme" or "edit_sections";
+  }
+
+  /// <summary>Sends a request and answers its JSON body.</summary>
+  private JsonNode Send(Func<HttpRequestMessage> request, string doing, string? tool = null, bool retry = false)
+  {
+    (HttpStatusCode status, byte[] body) = Raw(request, doing, retry);
     JsonNode? json = Json(body);
     return (int)status is >= 200 and < 300 && json is not null ? json : throw Failure(status, json, body, doing, tool);
   }
 
-  /// <summary>Sends a request, again after the wait editide's Retry-After asks while it throttles, for up to five
-  /// minutes, and answers its status and body; a request is made afresh each time, as sending one disposes its content.
-  /// </summary>
-  private (HttpStatusCode Status, byte[] Body) Raw(Func<HttpRequestMessage> request, string doing)
+  /// <summary>Sends a request, retrying while editide throttles (for up to five minutes) and, when
+  /// <paramref name="retry"/> is set, on 5xx and transient transport failures; a request is made afresh each time, as
+  /// sending one disposes its content.</summary>
+  private (HttpStatusCode Status, byte[] Body) Raw(Func<HttpRequestMessage> request, string doing, bool retry = false)
   {
     TimeSpan waited = TimeSpan.Zero;
+    int transient = 0;
     while (true)
     {
       HttpResponseMessage response;
@@ -133,6 +146,12 @@ public sealed class EditideTools : IToolHost
       }
       catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
       {
+        if (retry && transient < TransientRetries)
+        {
+          wait(Pause * (1 << transient));
+          transient++;
+          continue;
+        }
         throw new InvalidOperationException($"{doing} failed: couldn't reach editide at {http.BaseAddress} " +
           $"({exception.Message})", exception);
       }
@@ -149,6 +168,12 @@ public sealed class EditideTools : IToolHost
             waited += delay;
             continue;
           }
+        }
+        if (retry && (int)response.StatusCode >= 500 && transient < TransientRetries)
+        {
+          wait(Pause * (1 << transient));
+          transient++;
+          continue;
         }
         using Stream stream = response.Content.ReadAsStream();
         using var buffer = new MemoryStream();
@@ -226,7 +251,7 @@ public sealed class EditideTools : IToolHost
       JsonNode answer = editide.Send(() => new HttpRequestMessage(HttpMethod.Post, $"api/tools/{tool}")
       {
         Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json")
-      }, $"calling {tool}", tool);
+      }, $"calling {tool}", tool, SafeToRepeat(tool));
       if ((bool?)answer["success"] != true)
       {
         throw editide.Failure(HttpStatusCode.OK, answer, [], $"calling {tool}", tool);
@@ -239,7 +264,7 @@ public sealed class EditideTools : IToolHost
       JsonNode answer = editide.Send(() => new HttpRequestMessage(HttpMethod.Post, $"api/presentations/{id}/attachments")
       {
         Content = Form(picture, "application/octet-stream")
-      }, $"uploading {Path.GetFileName(picture)}");
+      }, $"uploading {Path.GetFileName(picture)}", retry: true);
       return (string)answer["attachment_id"]!;
     }
 
@@ -247,7 +272,7 @@ public sealed class EditideTools : IToolHost
     {
       string doing = "downloading the deck";
       (HttpStatusCode status, byte[] body) = editide.Raw(() =>
-        new HttpRequestMessage(HttpMethod.Get, $"api/presentations/{id}"), doing);
+        new HttpRequestMessage(HttpMethod.Get, $"api/presentations/{id}"), doing, retry: true);
       if ((int)status is < 200 or >= 300)
       {
         throw editide.Failure(status, Json(body), body, doing, null);

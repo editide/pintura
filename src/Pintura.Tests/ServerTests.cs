@@ -1528,7 +1528,7 @@ public class ServerTests
     listener.Stop();
 
     // Assert
-    found.ShouldNotBeNull().Url.ShouldBe($"http://localhost:{port}");
+    found.ShouldNotBeNull().Url.ShouldBe($"http://127.0.0.1:{port}");
     other.ShouldBeNull();
   }
 
@@ -1562,7 +1562,54 @@ public class ServerTests
     server.WaitForExit();
 
     // Assert
-    url.ShouldBe($"http://localhost:{headlessPort}");
+    url.ShouldBe($"http://127.0.0.1:{headlessPort}");
+  }
+
+  [Fact]
+  public void A_preview_instance_uses_localhost_and_a_headless_one_uses_loopback_ip()
+  {
+    // Act
+    var preview = new ServerInstance(1, "/deck", 5000, Headless: false);
+    var headless = new ServerInstance(2, "/deck", 5001, Headless: true);
+
+    // Assert
+    preview.Url.ShouldBe("http://localhost:5000");
+    headless.Url.ShouldBe("http://127.0.0.1:5001");
+  }
+
+  [Fact]
+  public void Stop_does_not_kill_a_process_whose_start_time_does_not_match()
+  {
+    // Arrange
+    using var folder = new TempFolder();
+    var registry = new InstanceRegistry(folder.PathTo("servers"));
+    var stale = new ServerInstance(Environment.ProcessId, folder.Root, 5555, Headless: true, Build: "older",
+      Started: 1);
+    registry.Register(stale);
+
+    // Act
+    HeadlessServer.Stop(stale, registry);
+
+    // Assert: this process survived and the stale record was removed.
+    registry.Find(Environment.ProcessId).ShouldBeNull();
+  }
+
+  [Fact]
+  public void Viewers_retire_waits_for_active_requests_then_stops_immediately()
+  {
+    // Arrange
+    int stopped = 0;
+    using var viewers = new Viewers(TimeSpan.FromMinutes(5), () => stopped++);
+    IDisposable active = viewers.Connect();
+
+    // Act
+    viewers.Retire();
+    int whileActive = stopped;
+    active.Dispose();
+
+    // Assert
+    whileActive.ShouldBe(0);
+    stopped.ShouldBe(1);
   }
 
   [Fact]

@@ -87,6 +87,22 @@ public partial class Exporter
   /// </summary>
   public IReadOnlyList<string> DesignGaps { get; private set; } = [];
 
+  /// <summary>Whether the deck's theme and layouts are complete, so finished slides can be saved to resume from.
+  /// </summary>
+  public bool DesignReady { get; private set; }
+
+  private List<ExportedSlide> deckSlides = new List<ExportedSlide>();
+
+  /// <summary>Each slide currently in the session, in order; blank or half-written slides carry an empty hash so the
+  /// next incremental run deletes them while reusing the rest.</summary>
+  public IReadOnlyList<ExportedSlide> DeckState => deckSlides;
+
+  /// <summary>Where a failed export saves completed slides so the next run resumes incrementally.</summary>
+  public static string ResumePath(string file)
+  {
+    return $"{file}.partial.pptx";
+  }
+
   /// <summary>Each written or reused slide's gaps, by id.</summary>
   public Dictionary<string, IReadOnlyList<string>> SlideGaps { get; } =
     new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
@@ -132,6 +148,14 @@ public partial class Exporter
         "and export again");
     }
     string design = ExportManifest.DesignHash(deck, presentation.Root);
+    string resume = ResumePath(file);
+    ExportManifest? resumed = !fresh && only is null ? ExportManifest.Read(resume) : null;
+    bool fromResume = resumed?.Design == design;
+    if (fromResume)
+    {
+      previous = resumed;
+    }
+    string baseDeck = fromResume ? resume : file;
     // Hashed before anything is uploaded, so a picture replaced during the export is exported again next time.
     Dictionary<string, string> hashes = Items(deck["slides"]).OfType<JsonNode>().ToDictionary(
       slide => Text(Get(slide, "id"))!, slide => ExportManifest.SlideHash(slide, presentation.Root),
@@ -141,7 +165,7 @@ public partial class Exporter
       hashes[slide.Id] = slide.Hash;
     }
     bool incremental = previous?.Design == design;
-    if (incremental && Unchanged(deck, previous!, hashes))
+    if (incremental && !fromResume && Unchanged(deck, previous!, hashes))
     {
       return new ExportReport(file, deck["slides"]!.AsArray().Count, 0, watch.Elapsed,
         previous!.DesignGaps.Concat(previous.Slides.SelectMany(slide => slide.Gaps)).ToHashSet(StringComparer.Ordinal),
@@ -167,7 +191,7 @@ public partial class Exporter
       string start = Path.Combine(scratch.FullName, Path.GetFileName(file));
       if (incremental)
       {
-        File.Copy(file, start);
+        File.Copy(baseDeck, start);
       }
       else
       {
@@ -229,26 +253,38 @@ public partial class Exporter
         {
           Root = presentation.Root
         };
-        if (held is null)
+        try
         {
-          exporter.Translate(part);
+          if (held is null)
+          {
+            exporter.Translate(part);
+          }
+          else
+          {
+            exporter.Update(part, held, designGaps, kept);
+          }
+          if (index == 0)
+          {
+            reused = exporter.Reused;
+          }
+          calls += counting.Calls;
+          workarounds.UnionWith(exporter.Workarounds);
+          billed = new ExportBilling(billed.Slides + exporter.Billed.Slides, billed.Layouts + exporter.Billed.Layouts,
+            billed.Masters + exporter.Billed.Masters);
+          // Saved beside the scratch copy first, so a failed download leaves the last export and its manifest whole.
+          saved = Path.Combine(scratch.FullName, $"pass {index + 1}", Path.GetFileName(file));
+          Directory.CreateDirectory(Path.GetDirectoryName(saved)!);
+          session.Save(saved);
         }
-        else
+        catch (Exception exception)
         {
-          exporter.Update(part, held, designGaps, kept);
+          if (SavePartial(session, exporter, index > 0 ? saved : null, held, designGaps, design, resume, scratch))
+          {
+            throw new InvalidOperationException($"{exception.Message} (partial export saved; re-run to resume)",
+              exception);
+          }
+          throw;
         }
-        if (index == 0)
-        {
-          reused = exporter.Reused;
-        }
-        calls += counting.Calls;
-        workarounds.UnionWith(exporter.Workarounds);
-        billed = new ExportBilling(billed.Slides + exporter.Billed.Slides, billed.Layouts + exporter.Billed.Layouts,
-          billed.Masters + exporter.Billed.Masters);
-        // Saved beside the scratch copy first, so a failed download leaves the last export and its manifest whole.
-        saved = Path.Combine(scratch.FullName, $"pass {index + 1}", Path.GetFileName(file));
-        Directory.CreateDirectory(Path.GetDirectoryName(saved)!);
-        session.Save(saved);
         held = Items(part["slides"]).OfType<JsonNode>()
           .Select(slide => Text(Get(slide, "id"))!)
           .Where(exporter.SlideGaps.ContainsKey)
@@ -259,6 +295,7 @@ public partial class Exporter
       new ExportManifest("", design, designGaps, held!).Write(saved);
       string? aside = edited ? Free(file, "edited in PowerPoint") : null;
       Place(saved, file, aside);
+      ClearResume(resume);
       return new ExportReport(file, deck["slides"]!.AsArray().Count, calls, watch.Elapsed, exporter.Gaps, reused,
         workarounds)
       {
@@ -342,6 +379,9 @@ public partial class Exporter
   /// <paramref name="aside"/>. A deck that can't go there is kept beside it, as it has been billed.</summary>
   private static void Place(string saved, string file, string? aside)
   {
+    string manifest = ExportManifest.PathFor(file);
+    string pendingManifest = $"{manifest}.tmp";
+    File.Copy(ExportManifest.PathFor(saved), pendingManifest, true);
     try
     {
       if (aside is not null)
@@ -354,10 +394,88 @@ public partial class Exporter
     {
       string kept = Free(file, "exported");
       File.Move(saved, kept);
+      try
+      {
+        File.Move(pendingManifest, ExportManifest.PathFor(kept), true);
+      }
+      catch (Exception)
+      {
+        TryDelete(pendingManifest);
+      }
       throw new InvalidOperationException($"can't write {file} ({exception.Message}); the exported deck is at " +
         $"{kept}", exception);
     }
-    File.Move(ExportManifest.PathFor(saved), ExportManifest.PathFor(file), true);
+    try
+    {
+      File.Move(pendingManifest, manifest, true);
+    }
+    catch (Exception)
+    {
+      // Avoid leaving the old manifest beside the new deck, which would mark it as edited in PowerPoint.
+      TryDelete(manifest);
+      TryDelete(pendingManifest);
+      throw;
+    }
+  }
+
+  /// <summary>Best-effort save of whatever slides finished before an error, so the next export resumes incrementally.
+  /// </summary>
+  private static bool SavePartial(IToolSession session, Exporter exporter, string? previousPass,
+    IReadOnlyList<ExportedSlide>? previousSlides, IReadOnlyList<string> previousDesignGaps, string design,
+    string resume, DirectoryInfo scratch)
+  {
+    string staged = Path.Combine(scratch.FullName, "partial.pptx");
+    if (exporter.DesignReady && exporter.DeckState.Any(slide => slide.Hash.Length > 0))
+    {
+      try
+      {
+        session.Save(staged);
+        new ExportManifest("", design, exporter.DesignGaps, exporter.DeckState).Write(staged);
+        Place(staged, resume, null);
+        return true;
+      }
+      catch (Exception)
+      {
+        TryDelete(staged);
+        TryDelete(ExportManifest.PathFor(staged));
+      }
+    }
+    if (previousPass is not null && previousSlides is not null && File.Exists(previousPass))
+    {
+      try
+      {
+        File.Copy(previousPass, staged, true);
+        new ExportManifest("", design, previousDesignGaps, previousSlides).Write(staged);
+        Place(staged, resume, null);
+        return true;
+      }
+      catch (Exception)
+      {
+        TryDelete(staged);
+        TryDelete(ExportManifest.PathFor(staged));
+      }
+    }
+    return false;
+  }
+
+  private static void ClearResume(string resume)
+  {
+    TryDelete(resume);
+    TryDelete(ExportManifest.PathFor(resume));
+  }
+
+  private static void TryDelete(string path)
+  {
+    try
+    {
+      if (File.Exists(path))
+      {
+        File.Delete(path);
+      }
+    }
+    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+    {
+    }
   }
 
   /// <summary>A name beside <paramref name="file"/> no file has yet, labelled, and numbered past the first.</summary>
@@ -2492,8 +2610,10 @@ public partial class Exporter
       FixTables(address);
     }
     DesignGaps = gaps.ToList();
+    DesignReady = true;
 
     int count = Call("list_slides", new JsonObject()) is JsonArray existing ? existing.Count : 1;
+    deckSlides = Enumerable.Range(0, count).Select(_ => new ExportedSlide("", "", [])).ToList();
     foreach (JsonNode? slide in Items(deck["slides"]))
     {
       if (Loaded(slide!))
@@ -2504,6 +2624,10 @@ public partial class Exporter
     }
 
     Call("delete_slides", new JsonObject { ["slide_indices"] = new JsonArray(1) });
+    if (deckSlides.Count > 0)
+    {
+      deckSlides.RemoveAt(0);
+    }
     Call("delete_layout", new JsonObject { ["layout_name"] = kept, ["theme_name"] = themeName });
     Sections(deck, false);
   }
@@ -2519,6 +2643,8 @@ public partial class Exporter
     Design design = Prepare(deck);
     gaps.UnionWith(designGaps);
     DesignGaps = gaps.ToList();
+    DesignReady = true;
+    deckSlides = previous.ToList();
     List<JsonNode> slides = Items(deck["slides"]).OfType<JsonNode>().Where(Loaded).ToList();
     Dictionary<string, string> hashes = slides.ToDictionary(slide => Text(Get(slide, "id"))!,
       slide => ExportManifest.SlideHash(slide, Root), StringComparer.Ordinal);
@@ -2538,7 +2664,14 @@ public partial class Exporter
         ["slide_indices"] = Array(current.Select((id, index) => (id, index)).Where(slide => slide.id is null)
           .Select(slide => (JsonNode?)(slide.index + 1)))
       });
-      current.RemoveAll(id => id is null);
+      for (int remove = current.Count - 1; remove >= 0; remove--)
+      {
+        if (current[remove] is null)
+        {
+          current.RemoveAt(remove);
+          deckSlides.RemoveAt(remove);
+        }
+      }
     }
     for (int position = 0; position < slides.Count; position++)
     {
@@ -2559,6 +2692,9 @@ public partial class Exporter
         Call("move_slide", new JsonObject { ["from_index"] = at + 1, ["to_index"] = position + 1 });
         current.RemoveAt(at);
         current.Insert(position, id);
+        ExportedSlide moved = deckSlides[at];
+        deckSlides.RemoveAt(at);
+        deckSlides.Insert(position, moved);
       }
     }
     if (current.Count > slides.Count)
@@ -2568,6 +2704,7 @@ public partial class Exporter
         ["slide_indices"] = Array(Enumerable.Range(slides.Count + 1, current.Count - slides.Count)
           .Select(index => (JsonNode?)index))
       });
+      deckSlides.RemoveRange(slides.Count, current.Count - slides.Count);
     }
     Sections(deck, true);
   }
@@ -2635,6 +2772,8 @@ public partial class Exporter
         add["slide_index"] = index;
       }
       Call("add_slide", add);
+      int slot = Math.Min(index - 1, deckSlides.Count);
+      deckSlides.Insert(slot, new ExportedSlide("", "", []));
       JsonNode? read = Call("read_slide", new JsonObject { ["slide_index"] = index });
       List<JsonNode?> holders = Items(Get(read, "text_elements"))
         .Where(element => Truthy(Get(element, "is_placeholder"))).ToList();
@@ -2729,10 +2868,13 @@ public partial class Exporter
       Call("edit_slide", With(address, "slide", edit));
       Unclone(address, edit);
       FixTables(address);
+      string slideId = Text(Get(slide, "id"))!;
+      List<string> ownGaps = gaps.ToList();
+      SlideGaps[slideId] = ownGaps;
+      deckSlides[slot] = new ExportedSlide(slideId, ExportManifest.SlideHash(slide, Root), ownGaps);
     }
     finally
     {
-      SlideGaps[Text(Get(slide, "id"))!] = gaps.ToList();
       deckGaps.UnionWith(gaps);
       gaps = deckGaps;
     }

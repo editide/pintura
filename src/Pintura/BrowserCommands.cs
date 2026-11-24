@@ -235,19 +235,51 @@ public static class HeadlessServer
   /// <summary>The address of a server that can draw the presentation, starting one when none runs.</summary>
   public static async Task<string> Find(string root, InstanceRegistry registry)
   {
+    if (Running(root, registry) is string url)
+    {
+      return url;
+    }
+    using FileStream? startupLock = await AcquireLock(registry.LockPath(root));
+    if (Running(root, registry) is string raced)
+    {
+      return raced;
+    }
+    if (registry.Find(root, headless: true) is ServerInstance headless)
+    {
+      await RetireOrStop(headless, registry);
+    }
+    return await Start(root, registry);
+  }
+
+  private static string? Running(string root, InstanceRegistry registry)
+  {
     if (registry.Find(root) is ServerInstance preview && preview.Build == ServerInstance.CurrentBuild)
     {
       return preview.Url;
     }
-    if (registry.Find(root, headless: true) is ServerInstance headless)
+    if (registry.Find(root, headless: true) is ServerInstance headless &&
+      headless.Build == ServerInstance.CurrentBuild)
     {
-      if (headless.Build == ServerInstance.CurrentBuild)
-      {
-        return headless.Url;
-      }
-      Stop(headless);
+      return headless.Url;
     }
-    return await Start(root, registry);
+    return null;
+  }
+
+  private static async Task<FileStream?> AcquireLock(string path)
+  {
+    Stopwatch waited = Stopwatch.StartNew();
+    while (waited.Elapsed < StartTimeout)
+    {
+      try
+      {
+        return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+      }
+      catch (IOException)
+      {
+        await Task.Delay(Poll);
+      }
+    }
+    return null;
   }
 
   /// <summary>Runs in the child process: serves until idle, registered for the command that started it to find, and
@@ -284,8 +316,9 @@ public static class HeadlessServer
   {
     string assets = PreviewServer.InterfaceFolder();
     using var store = new PresentationStore(root, assets, TextWriter.Null);
+    long? started = ProcessStartTicks(Environment.ProcessId);
     var instance = new ServerInstance(Environment.ProcessId, root, PreviewServer.FreePort(), true,
-      ServerInstance.CurrentBuild);
+      ServerInstance.CurrentBuild, started);
     string url = $"http://127.0.0.1:{instance.Port}";
     WebApplication app = PreviewServer.Create(assets, url);
     using var requests = new Viewers(Idle, app.Lifetime.StopApplication);
@@ -295,6 +328,12 @@ public static class HeadlessServer
     {
       using IDisposable request = requests.Connect();
       await next(context);
+    });
+    app.MapPost("/api/retire", () =>
+    {
+      registry.Unregister(instance);
+      requests.Retire();
+      return Results.Ok();
     });
     await using var headless = new HeadlessBrowser(url);
     PreviewServer.Map(app, store, headless, null);
@@ -405,15 +444,57 @@ public static class HeadlessServer
     });
   }
 
-  private static void Stop(ServerInstance instance)
+  /// <summary>Asks an older headless server to unregister and stop once any active request finishes; falls back to
+  /// killing only if the PID still belongs to the process that registered it.</summary>
+  public static async Task RetireOrStop(ServerInstance instance, InstanceRegistry registry)
+  {
+    try
+    {
+      using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
+      using HttpResponseMessage response = await client.PostAsync($"{instance.Url}/api/retire", null);
+      if (response.IsSuccessStatusCode)
+      {
+        return;
+      }
+    }
+    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+    {
+    }
+    Stop(instance, registry);
+  }
+
+  public static void Stop(ServerInstance instance, InstanceRegistry registry)
   {
     try
     {
       using Process process = Process.GetProcessById(instance.ProcessId);
+      if (instance.Started is long expected)
+      {
+        long actual = process.StartTime.ToUniversalTime().Ticks;
+        if (Math.Abs(actual - expected) > TimeSpan.FromSeconds(2).Ticks)
+        {
+          registry.Unregister(instance);
+          return;
+        }
+      }
       process.Kill();
     }
     catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
     {
+    }
+    registry.Unregister(instance);
+  }
+
+  private static long? ProcessStartTicks(int processId)
+  {
+    try
+    {
+      using Process process = Process.GetProcessById(processId);
+      return process.StartTime.ToUniversalTime().Ticks;
+    }
+    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+    {
+      return null;
     }
   }
 
