@@ -405,11 +405,17 @@ public static partial class Differ
     }
     if (item.Chart is Chart chart)
     {
-      // Colors past the last series draw nothing.
+      // Colors past the last series draw nothing, and nor do those of the totals that end a stack, which show only
+      // their labels.
       if (asDrawn && values.TryGetValue("series_colors", out (string Display, string? Origin) colors))
       {
-        values["series_colors"] = (string.Join(", ", colors.Display.Trim('[', ']').Split(", ")
-          .Take(chart.Series.Count)), colors.Origin);
+        int colored = chart.Series.Count;
+        while (colored > 1 && chart.SeriesOptions.GetValueOrDefault(chart.Series[colored - 1].Name)?.Type == "total")
+        {
+          colored -= 1;
+        }
+        values["series_colors"] = (string.Join(", ", colors.Display.Trim('[', ']').Split(", ").Take(colored)),
+          colors.Origin);
       }
       string? data = chart.Origins.GetValueOrDefault("data")?.ToString();
       values["categories"] = (string.Join(", ", chart.Categories), data);

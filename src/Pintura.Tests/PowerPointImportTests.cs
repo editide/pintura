@@ -56,14 +56,14 @@ internal static class PowerPointFixtures
   {
     JsonObject reads = Reads(name);
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture($"{name}.pptx"), output.PathTo("media"));
-    ImportResult result = Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    ImportResult result = Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     return (PresentationLoader.Load(output.PathTo("imported")), [.. mapped.Findings, .. result.Findings]);
   }
 
   public static Presentation Imported(TempFolder output, JsonObject reads)
   {
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     return PresentationLoader.Load(output.PathTo("imported"));
   }
 
@@ -319,6 +319,32 @@ public class PowerPointImportTests
   }
 
   [Fact]
+  public void A_slant_imports_in_points_and_the_default_slant_states_none()
+  {
+    // Arrange
+    using var output = new TempFolder();
+    JsonObject reads = Reads();
+    JsonArray shapes = reads["slides"]![5]!["read"]!["shape_elements"]!.AsArray();
+    foreach ((int id, string type, double slant) in new[]
+      { (77, "parallelogram", 0.25), (78, "trapezoid", 0.5), (79, "parallelogram", 0.125) })
+    {
+      shapes.Add(JsonNode.Parse($$"""
+        { "id": {{id}}, "position": { "left": 100, "top": {{id}}, "z_index": {{id}} },
+          "size": { "width": 200, "height": 100 }, "shape_type": "{{type}}", "shape_adjustments": { "slant": {{slant}} },
+          "shape_style": { "fill": { "scheme": "accent1" } } }
+        """));
+    }
+
+    // Act
+    Presentation presentation = Imported(output, reads);
+
+    // Assert
+    Element[] slanted = presentation.Slides.SelectMany(slide => slide.Elements)
+      .Where(element => element.Shape is "parallelogram" or "trapezoid").ToArray();
+    slanted.Select(element => element.Adjust?["slant"]).ShouldBe([50, 50, null]);
+  }
+
+  [Fact]
   public void Each_layout_keeps_the_shapes_it_shows_with_a_picture_copied_once()
   {
     // Arrange
@@ -391,7 +417,7 @@ public class PowerPointImportTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, deck, output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     Presentation presentation = PresentationLoader.Load(output.PathTo("imported"));
 
     // Assert
@@ -435,7 +461,7 @@ public class PowerPointImportTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     Element logo = PresentationLoader.Load(output.PathTo("imported")).Theme.Layouts["content"].Elements
       .Single(element => element.Kind == "picture");
 

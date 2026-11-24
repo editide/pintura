@@ -101,6 +101,18 @@ public class ExporterTests
   }
 
   [Fact]
+  public void A_bullet_without_a_size_states_the_texts_so_it_cannot_take_the_paragraph_befores()
+  {
+    // Act
+    JsonObject result = Exporter.Bullet(Json("""{ "bullet": "–" }"""));
+
+    // Assert
+    ShouldMatch(result, """
+      { "type": "character", "character": "–", "font_size": 100, "font_size_is_percentage": true }
+      """);
+  }
+
+  [Fact]
   public void A_level_hangs_by_its_step_in_from_the_one_before_unless_it_sets_its_own_hanging()
   {
     // Arrange
@@ -137,6 +149,24 @@ public class ExporterTests
     // Assert
     result.Type.ShouldBe("round_rectangle");
     ((double)result.Adjustments["corner_radius"]!).ShouldBe(0.167, 0.001);
+  }
+
+  [Theory]
+  [InlineData("parallelogram", 0.25)]
+  [InlineData("trapezoid", 0.5)]
+  public void A_slant_in_points_becomes_a_proportion_of_the_largest_slant_the_box_allows(string shape, double handle)
+  {
+    // Arrange
+    JsonNode item = Json($$"""
+      { "properties": { "frame": [0, 0, 200, 100], "shape": "{{shape}}", "adjust.slant": 50 } }
+      """);
+
+    // Act
+    Exporter.Geometry result = NewExporter().Preset(item);
+
+    // Assert
+    result.Type.ShouldBe(shape);
+    ((double)result.Adjustments["slant"]!).ShouldBe(handle, 0.001);
   }
 
   [Fact]
@@ -1043,6 +1073,62 @@ public class ExporterTests
     // Assert
     cover.ShouldBe((683, 256));
     capped.ShouldBe((4096, 1536));
+  }
+
+  [Fact]
+  public void A_fresh_export_starts_from_a_blank_deck_of_one_layout_and_lists_its_layouts_once()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    var tools = new BlandTools();
+    using Stream blank = typeof(Exporter).Assembly.GetManifestResourceStream("Pintura.blank.pptx")!;
+    using var zip = new ZipArchive(blank);
+
+    // Act
+    Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
+
+    // Assert
+    zip.Entries.Count(entry => entry.FullName.StartsWith("ppt/slideLayouts/slideLayout")).ShouldBe(1);
+    tools.Calls.Count(call => call == "list_slide_layouts").ShouldBe(1);
+    tools.Calls.ShouldNotContain("list_slides");
+    tools.Calls.Count(call => call == "delete_layout").ShouldBe(1);
+  }
+
+  [Fact]
+  public void Leftover_runs_and_table_rows_are_fixed_in_one_read_and_one_edit_after_the_add()
+  {
+    // Arrange
+    using var fixture = new DeckFixture();
+    fixture.Write("deck/slides/two.yaml", """
+      layout: content
+      elements:
+        - id: note
+          text: "**Bold** then plain\n\nOne run"
+          frame: [60, 100, 400, 80]
+        - id: grid
+          table: grid
+          frame: [60, 300, 400, 80]
+      """);
+    fixture.Write("deck/tables/grid.yaml", "data: grid.csv");
+    fixture.Write("deck/tables/grid.csv", "a,b\nc,d");
+    var tools = new BlandTools
+    {
+      SlideRead = Json("""
+        { "text_elements": [{ "id": 8, "position": { "left": 60, "top": 100, "z_index": 0 } }],
+          "table_elements": [{ "id": 9, "position": { "left": 60, "top": 300, "z_index": 1 } }] }
+        """)
+    };
+
+    // Act
+    Exporter.Write(fixture.Load(), fixture.Folder.PathTo("out/deck.pptx"), tools);
+
+    // Assert
+    // The slide is read to place its placeholders, edited to add its elements, then read and edited once to fix them.
+    tools.Calls.Skip(tools.Calls.LastIndexOf("add_slide") + 1).TakeWhile(call => call != "delete_slides")
+      .ShouldBe(["read_slide", "edit_slide", "read_slide", "edit_slide"]);
+    JsonNode fix = tools.Inputs.Last(call => call.Tool == "edit_slide").Input["slide"]!;
+    ShouldMatch(fix["text_elements"]![0]!["id"], "8");
+    ShouldMatch(fix["table_elements"]![0]!["id"], "9");
   }
 
   [Fact]

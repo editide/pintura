@@ -812,7 +812,8 @@ public partial class Exporter
     return style;
   }
 
-  // A paragraph or a theme level: its bullet or number, in its own color and size when it sets them.
+  // A paragraph or a theme level: its bullet or number, in its own color when it sets one. The size is always stated,
+  // since the tools build a new paragraph from the one before it and an unstated size keeps that one's.
   public static JsonObject Bullet(JsonNode? paragraph)
   {
     string? character = Text(Get(paragraph, "bullet"));
@@ -827,11 +828,8 @@ public partial class Exporter
     {
       result["color"] = Color(Get(paragraph, "bulletColor"));
     }
-    if (Number(Get(paragraph, "bulletSize")) is double size and not 0)
-    {
-      result["font_size"] = Round(size * 100);
-      result["font_size_is_percentage"] = true;
-    }
+    result["font_size"] = Number(Get(paragraph, "bulletSize")) is double size and not 0 ? Round(size * 100) : 100;
+    result["font_size_is_percentage"] = true;
     return result;
   }
 
@@ -1031,15 +1029,13 @@ public partial class Exporter
       case "parallelogram":
         if (Adjust("slant") is double slant)
         {
-          adjustments["adjustment"] = Math.Min(1, slant / width);
-          Workaround("parallelogram slant: the tools' handle name unconfirmed");
+          adjustments["slant"] = Math.Min(1, slant / width);
         }
         break;
       case "trapezoid":
         if (Adjust("slant") is double trapezoidSlant)
         {
-          adjustments["adjustment"] = Math.Min(1, trapezoidSlant / (width / 2));
-          Workaround("trapezoid slant: the tools' handle name unconfirmed");
+          adjustments["slant"] = Math.Min(1, trapezoidSlant / (width / 2));
         }
         break;
       case "triangle":
@@ -2312,8 +2308,9 @@ public partial class Exporter
   }
 
   // The tools build each new paragraph by cloning the one before it, runs and all, and refuses runs_to_delete in the
-  // same add, so the clones' leftover runs come off in a second edit.
-  private void Unclone(JsonObject address, JsonObject edit)
+  // same add, so the clones' leftover runs come off in a second edit. Tables are found again by their z-index, the only
+  // thing an add lets the replay choose, and take the row settings an add ignores in the same edit.
+  private void FixUp(JsonObject address, JsonObject edit)
   {
     var extras = new Dictionary<int, JsonArray>();
     foreach (JsonNode? element in Items(edit["text_elements_to_add"]))
@@ -2338,50 +2335,46 @@ public partial class Exporter
         extras[(int)element["position"]!["z_index"]!] = deletes;
       }
     }
-    if (extras.Count == 0)
+    Dictionary<int, JsonArray> tables = new Dictionary<int, JsonArray>(tableFixes);
+    tableFixes.Clear();
+    if (extras.Count == 0 && tables.Count == 0)
     {
       return;
     }
-    Workaround("new paragraphs clone the previous paragraph's runs, and runs_to_delete in the same add drops the " +
-      "element, so leftover runs take a second edit");
+    if (extras.Count > 0)
+    {
+      Workaround("new paragraphs clone the previous paragraph's runs, and runs_to_delete in the same add drops the " +
+        "element, so leftover runs take a second edit");
+    }
     JsonNode? read = Call("read_slide", address.DeepClone().AsObject());
-    JsonArray fixes = Array(Items(Get(read, "text_elements"))
-      .Where(element => Get(element, "id") is not null &&
-        extras.ContainsKey((int)(Number(Get(Get(element, "position"), "z_index")) ?? -1)))
+    int Z(JsonNode? element) => (int)(Number(Get(Get(element, "position"), "z_index")) ?? -1);
+    JsonArray texts = Array(Items(Get(read, "text_elements"))
+      .Where(element => Get(element, "id") is not null && extras.ContainsKey(Z(element)))
       .Select(element => (JsonNode?)new JsonObject
       {
         ["id"] = element!["id"]!.DeepClone(),
-        ["text_component"] = new JsonObject
-        {
-          ["paragraph_list"] = extras[(int)Number(element["position"]!["z_index"])!].DeepClone()
-        }
+        ["text_component"] = new JsonObject { ["paragraph_list"] = extras[Z(element)].DeepClone() }
       }));
-    if (fixes.Count > 0)
-    {
-      Call("edit_slide", With(address, "slide", new JsonObject { ["text_elements"] = fixes }));
-    }
-  }
-
-  // Tables are found again by their z-index, the only thing an add lets the replay choose.
-  private void FixTables(JsonObject address)
-  {
-    if (tableFixes.Count == 0)
-    {
-      return;
-    }
-    JsonNode? read = Call("read_slide", address.DeepClone().AsObject());
-    JsonArray fixes = Array(Items(Get(read, "table_elements"))
-      .Where(element => tableFixes.ContainsKey((int)(Number(Get(Get(element, "position"), "z_index")) ?? -1)))
+    JsonArray grids = Array(Items(Get(read, "table_elements"))
+      .Where(element => tables.ContainsKey(Z(element)))
       .Select(element => (JsonNode?)new JsonObject
       {
         ["id"] = element!["id"]?.DeepClone(),
         ["side_effect_handling"] = "lazy",
-        ["rows"] = tableFixes[(int)Number(element["position"]!["z_index"])!].DeepClone()
+        ["rows"] = tables[Z(element)].DeepClone()
       }));
-    tableFixes.Clear();
+    var fixes = new JsonObject();
+    if (texts.Count > 0)
+    {
+      fixes["text_elements"] = texts;
+    }
+    if (grids.Count > 0)
+    {
+      fixes["table_elements"] = grids;
+    }
     if (fixes.Count > 0)
     {
-      Call("edit_slide", With(address, "slide", new JsonObject { ["table_elements"] = fixes }));
+      Call("edit_slide", With(address, "slide", fixes));
     }
   }
 
@@ -2465,18 +2458,10 @@ public partial class Exporter
     mastersWritten = 1;
     layoutsWritten = design.Layouts.Count;
     JsonNode theme = deck["theme"]!;
-    string themeName = Text(Call("list_slide_layouts", new JsonObject())![0]!["theme_name"])!;
-    // Office's layouts would collide with Pintura's names, so all but the first slide's go before any are made.
-    List<JsonNode?> office = Items(Call("list_slide_layouts", new JsonObject())![0]!["layouts"]);
-    string kept = Text(office.First(layout => Items(Get(layout, "slides")).Count > 0)!["name"])!;
-    foreach (JsonNode? layout in office.Where(candidate => Text(Get(candidate, "name")) != kept))
-    {
-      Call("delete_layout", new JsonObject
-      {
-        ["layout_name"] = Get(layout, "name")!.DeepClone(),
-        ["theme_name"] = themeName
-      });
-    }
+    // The blank deck holds one master and the one layout its one slide uses, which go once Pintura's are made.
+    JsonNode office = Call("list_slide_layouts", new JsonObject())![0]!;
+    string themeName = Text(office["theme_name"])!;
+    string kept = Text(Items(office["layouts"]).Single()!["name"])!;
 
     var colors = new JsonObject();
     foreach ((string name, JsonNode? hex) in Get(theme, "colors") as JsonObject ?? new JsonObject())
@@ -2566,13 +2551,12 @@ public partial class Exporter
       }
       var address = new JsonObject { ["layout_name"] = name, ["target"] = "layout" };
       Call("edit_slide", With(address, "slide", edit));
-      Unclone(address, edit);
-      FixTables(address);
+      FixUp(address, edit);
     }
     DesignGaps = gaps.ToList();
     DesignReady = true;
 
-    int count = Call("list_slides", new JsonObject()) is JsonArray existing ? existing.Count : 1;
+    int count = 1;
     deckSlides = Enumerable.Range(0, count).Select(_ => new ExportedSlide("", "", [])).ToList();
     foreach (JsonNode? slide in Items(deck["slides"]))
     {
@@ -2822,8 +2806,7 @@ public partial class Exporter
       }
       var address = new JsonObject { ["slide_index"] = index };
       Call("edit_slide", With(address, "slide", edit));
-      Unclone(address, edit);
-      FixTables(address);
+      FixUp(address, edit);
       string slideId = Text(Get(slide, "id"))!;
       List<string> ownGaps = gaps.ToList();
       SlideGaps[slideId] = ownGaps;

@@ -2307,7 +2307,11 @@ public partial class Importer
       case JsonValue value when value.TryGetValue(out string? text):
         return text;
       case JsonValue value:
-        return (double)value;
+        return value.GetValue<object>() switch
+        {
+          JsonElement element => element.GetDouble(),
+          object number => Convert.ToDouble(number, CultureInfo.InvariantCulture)
+        };
     }
     return null;
   }

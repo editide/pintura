@@ -35,7 +35,7 @@ public class PowerPointImportChartTableTests
         axis[auto] = false;
       }
       PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-      Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+      Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
       return File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
     }
 
@@ -62,7 +62,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -80,7 +80,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -101,7 +101,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -127,7 +127,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -153,7 +153,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -174,7 +174,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -197,7 +197,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -223,7 +223,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    ImportResult result = Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    ImportResult result = Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -248,7 +248,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    ImportResult result = Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    ImportResult result = Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -477,7 +477,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     Presentation imported = PresentationLoader.Load(output.PathTo("imported"));
 
     // Assert
@@ -511,7 +511,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     Presentation imported = PresentationLoader.Load(output.PathTo("imported"));
 
     // Assert
@@ -532,7 +532,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    ImportResult result = Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    ImportResult result = Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
     string chart = File.ReadAllText(Directory.GetFiles(output.PathTo("imported/charts"), "*.yaml").Single());
 
     // Assert
@@ -640,7 +640,7 @@ public class PowerPointImportChartTableTests
 
     // Act
     PowerPointDeck mapped = PowerPointMapping.Map(reads, Fixture("example.pptx"), output.PathTo("media"));
-    Importer.Import(mapped.Deck.ToJsonString(), mapped.Media, output.PathTo("imported"));
+    Importer.Import(mapped.Deck, mapped.Media, output.PathTo("imported"));
 
     // Assert
     File.ReadAllText(output.PathTo("imported/slides/q2-2026-board-update.yaml"))

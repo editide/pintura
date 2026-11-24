@@ -1164,6 +1164,13 @@ public partial class PowerPointMapping
           properties["adjust.corner"] = Math.Round(radius);
         }
         break;
+      case "parallelogram" or "trapezoid" when (double?)adjustments["slant"] is double slant:
+        double offset = Round(slant * (mapped.Shape == "parallelogram" ? width : width / 2));
+        if (Math.Abs(offset - shorter * 0.25) > 0.5)
+        {
+          properties["adjust.slant"] = Math.Round(offset);
+        }
+        break;
       case "chevron" or "home_plate" when (double?)adjustments["point_depth"] is double depth:
         Point(properties, depth * width, shorter);
         break;
