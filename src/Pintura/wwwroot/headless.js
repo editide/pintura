@@ -6,7 +6,7 @@
 
 const SHEET_WIDTH = 480;
 
-const root = document.getElementById('root');
+const root = typeof document !== 'undefined' ? document.getElementById('root') : null;
 
 // A base names a revision, drawn as the server reads it from git.
 async function fetchDeck(base) {
@@ -155,4 +155,9 @@ async function showCompare(id, base) {
   return null;
 }
 
-window.pintura = { showSlide, showSheet, showPrint, showCompare, measure };
+if (typeof window !== 'undefined') {
+  window.pintura = { showSlide, showSheet, showPrint, showCompare, measure };
+}
+if (typeof module !== 'undefined') {
+  module.exports = { families, showSheetOf };
+}

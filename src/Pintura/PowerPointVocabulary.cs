@@ -170,7 +170,7 @@ public static partial class PowerPointVocabulary
   ];
 
   public static readonly HashSet<string> ArrowMarkers =
-    new(PresentationLoader.Markers, StringComparer.Ordinal);
+    new(Element.Markers, StringComparer.Ordinal);
   public static readonly HashSet<string> ChartMarkerShapes = ["circle", "square", "diamond", "triangle"];
   public static readonly HashSet<string> ChartTypes =
     new(Chart.Types, StringComparer.Ordinal);

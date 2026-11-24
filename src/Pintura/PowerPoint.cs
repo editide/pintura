@@ -1118,7 +1118,7 @@ public partial class PowerPointMapping
     {
       if ((string?)style[read] is string head && head != "none")
       {
-        if (PresentationLoader.Markers.Contains(head))
+        if (Pintura.Element.Markers.Contains(head))
         {
           properties[key] = head;
         }
@@ -1741,13 +1741,13 @@ public partial class PowerPointMapping
         return null;
       }
       string kind = line ? "line" : type;
-      if (PresentationLoader.LabelPositionsFor(kind).Contains(position))
+      if (Pintura.Chart.LabelPositionsFor(kind).Contains(position))
       {
         return position;
       }
       findings.Add($"{where}: labels {position} on a {kind.Replace('_', ' ')} take its default position, " +
         "as PowerPoint draws them");
-      return PresentationLoader.DefaultLabelPosition(PresentationLoader.LabelPositionGroup(kind));
+      return Pintura.Chart.DefaultLabelPosition(Pintura.Chart.LabelPositionGroup(kind));
     }
 
     JsonObject Labels(JsonNode? label, bool line = false, bool total = false)

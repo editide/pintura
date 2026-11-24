@@ -136,6 +136,51 @@ public class ServerInstanceTests
   }
 
   [Fact]
+  public async Task Viewers_stops_after_grace_when_expected_page_never_connects()
+  {
+    // Arrange
+    var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var viewers = new Viewers(TimeSpan.FromMilliseconds(40), () => stopped.TrySetResult());
+
+    // Act
+    viewers.Expect();
+
+    // Assert
+    await stopped.Task.WaitAsync(TimeSpan.FromSeconds(5));
+  }
+
+  [Fact]
+  public async Task Viewers_stops_after_last_viewer_leaves_and_reconnect_cancels_the_countdown()
+  {
+    // Arrange
+    var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var viewers = new Viewers(TimeSpan.FromMilliseconds(80), () => stopped.TrySetResult());
+    IDisposable first = viewers.Connect();
+
+    // Act: disconnecting and reconnecting within grace keeps the server alive; double-disposing doesn't undercount.
+    first.Dispose();
+    first.Dispose();
+    IDisposable second = viewers.Connect();
+    await Task.Delay(120);
+    bool stoppedWhileConnected = stopped.Task.IsCompleted;
+    second.Dispose();
+
+    // Assert
+    stoppedWhileConnected.ShouldBeFalse();
+    await stopped.Task.WaitAsync(TimeSpan.FromSeconds(5));
+  }
+
+  [Fact]
+  public void Browser_picks_the_right_opener_for_each_platform()
+  {
+    // Assert
+    Browser.Openers(isWindows: true, isMacOs: false, wslDistro: null).ShouldBe(["explorer.exe"]);
+    Browser.Openers(isWindows: false, isMacOs: true, wslDistro: null).ShouldBe(["open"]);
+    Browser.Openers(isWindows: false, isMacOs: false, wslDistro: "Ubuntu").ShouldBe(["wslview", "explorer.exe"]);
+    Browser.Openers(isWindows: false, isMacOs: false, wslDistro: null).ShouldBe(["xdg-open"]);
+  }
+
+  [Fact]
   public async Task A_headless_server_that_stops_before_registering_names_its_log()
   {
     // Arrange

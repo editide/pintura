@@ -295,7 +295,7 @@ public class SceneBuilder
     {
       case "shape":
         Set("shape", element.Shape);
-        if (PresentationLoader.DirectionalShapes.Contains(element.Shape))
+        if (Pintura.Element.DirectionalShapes.Contains(element.Shape))
         {
           properties["direction"] = element.Direction is not null
             ? new Resolved(element.Direction, element.Origins["direction"])
@@ -896,7 +896,7 @@ public class SceneBuilder
 
   private static string DefaultLabelPosition(Chart chart)
   {
-    return PresentationLoader.DefaultLabelPosition(PresentationLoader.LabelPositionGroup(chart.Type)) ?? "center";
+    return Chart.DefaultLabelPosition(Chart.LabelPositionGroup(chart.Type)) ?? "center";
   }
 
   /// <summary>The text layers of a box: the base, <c>shape_text</c> in a shape, the bullet level when there is one,

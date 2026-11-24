@@ -315,17 +315,23 @@ public static class Browser
   }
 
   // WSL's own xdg-open usually has no browser to hand the page to, so the Windows side opens it.
-  private static IEnumerable<string> Openers()
+  internal static IEnumerable<string> Openers()
   {
-    if (OperatingSystem.IsWindows())
+    return Openers(OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(),
+      Environment.GetEnvironmentVariable("WSL_DISTRO_NAME"));
+  }
+
+  internal static IEnumerable<string> Openers(bool isWindows, bool isMacOs, string? wslDistro)
+  {
+    if (isWindows)
     {
       return ["explorer.exe"];
     }
-    if (OperatingSystem.IsMacOS())
+    if (isMacOs)
     {
       return ["open"];
     }
-    if (Environment.GetEnvironmentVariable("WSL_DISTRO_NAME") is not null)
+    if (wslDistro is not null)
     {
       return ["wslview", "explorer.exe"];
     }

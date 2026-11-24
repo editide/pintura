@@ -191,7 +191,7 @@ public class PictureTests
     using var folder = new TempFolder();
     folder.Write("drawn.png", "");
     File.WriteAllBytes(folder.PathTo("drawn.png"), pngs.Single());
-    Exporter.Intrinsic(folder.PathTo("drawn.png")).ShouldBe([200, 100]);
+    Pictures.Intrinsic(folder.PathTo("drawn.png")).ShouldBe([200, 100]);
     // Color type 6 is RGBA.
     pngs.Single()[25].ShouldBe((byte)6);
   }

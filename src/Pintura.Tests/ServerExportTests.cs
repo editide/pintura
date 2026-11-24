@@ -104,17 +104,28 @@ public class ServerExportTests
   public async Task Small_text_is_measured_at_its_true_width_rather_than_at_whole_pixel_glyph_advances()
   {
     // Arrange
-    // Only a font the theme ships shows it: Chromium on Linux sets installed fonts as fontconfig says, at fractions
-    // of a pixel. Elsewhere there's no fontconfig to find a font with, and the test has nothing to check.
-    string? font = FontFolders.Files().FirstOrDefault(file => Path.GetFileName(file) == "DejaVuSans.ttf");
-    if (font is null)
+    // Copy an installed TrueType font into theme/fonts so Chromium loads it as a theme font on every OS.
+    string? font = FontFolders.Files().FirstOrDefault(file => Path.GetFileName(file) == "DejaVuSans.ttf")
+      ?? FontFolders.Files().FirstOrDefault(file => file.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase));
+    using var deck = new DeckFixture();
+    Directory.CreateDirectory(deck.Folder.PathTo("theme/fonts"));
+    string family = "DejaVu Sans";
+    if (font is not null)
+    {
+      string copied = deck.Folder.PathTo($"theme/fonts/{Path.GetFileName(font)}");
+      File.Copy(font, copied);
+      FontFace? face = ThemeFonts.Read(deck.Folder.PathTo("theme/fonts")).FirstOrDefault();
+      if (face is null)
+      {
+        return;
+      }
+      family = face.Family;
+    }
+    else
     {
       return;
     }
-    using var deck = new DeckFixture();
-    Directory.CreateDirectory(deck.Folder.PathTo("theme/fonts"));
-    File.Copy(font, deck.Folder.PathTo("theme/fonts/DejaVuSans.ttf"));
-    deck.Write("theme/theme.yaml", DeckFixture.Theme.Replace("body: Arial", "body: DejaVu Sans"));
+    deck.Write("theme/theme.yaml", DeckFixture.Theme.Replace("body: Arial", $"body: {family}"));
     deck.Write("deck/slides/two.yaml", """
       layout: content
       title: Results

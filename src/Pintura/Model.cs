@@ -255,6 +255,18 @@ public class Placeholder
 
 public class Element
 {
+  public static readonly string[] Shapes =
+  [
+    "rectangle", "rounded_rectangle", "ellipse", "triangle", "right_triangle", "diamond", "parallelogram",
+    "trapezoid", "pentagon", "hexagon", "chevron", "home_plate", "arrow", "brace", "bracket", "callout"
+  ];
+
+  public static readonly string[] DirectionalShapes =
+    ["triangle", "right_triangle", "chevron", "home_plate", "arrow", "brace", "bracket"];
+
+  public static readonly string[] Markers = ["arrow", "triangle", "stealth", "diamond", "oval"];
+  public static readonly string[] MarkerShapes = ["circle", "square", "diamond", "triangle", "none"];
+
   public string Id { get; init; } = "";
   public string Kind { get; init; } = "";
   public Frame? Frame { get; init; }
@@ -637,6 +649,44 @@ public class Chart
     "clustered_column", "stacked_column", "percent_stacked_column", "clustered_bar", "stacked_bar",
     "percent_stacked_bar", "line", "stacked_line", "percent_stacked_line", "pie", "doughnut", "waterfall"
   ];
+
+  public static readonly Dictionary<string, string[]> LabelPositions = new Dictionary<string, string[]>
+  {
+    ["clustered"] = ["center", "inside", "inside_base", "outside"],
+    ["stacked"] = ["center", "inside", "inside_base"],
+    ["line"] = ["above", "below", "left", "right", "center"],
+    ["pie"] = ["center", "inside", "outside"],
+    ["doughnut"] = []
+  };
+
+  /// <summary>Where labels sit in a <paramref name="group"/> that names no position, or null for a doughnut, which
+  /// places them nowhere else.</summary>
+  public static string? DefaultLabelPosition(string group)
+  {
+    return group switch
+    {
+      "clustered" => "outside",
+      "line" => "above",
+      "pie" => "inside",
+      "doughnut" => null,
+      _ => "center"
+    };
+  }
+
+  /// <summary>Where a chart of <paramref name="type"/>, or a line series in one, can place its labels.</summary>
+  public static string[] LabelPositionsFor(string type)
+  {
+    return LabelPositions[LabelPositionGroup(type)];
+  }
+
+  public static string LabelPositionGroup(string type)
+  {
+    string family = FamilyOf(type);
+    return type == "doughnut" ? "doughnut"
+      : family is "pie" or "line" ? family
+      : GroupingOf(type) == "clustered" ? "clustered"
+      : "stacked";
+  }
 
   public string Id { get; init; } = "";
   public string Type { get; init; } = "";
