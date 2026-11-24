@@ -16,7 +16,7 @@
   <PropertyGroup Condition="'$(PublishTrimmed)' == 'true'">
     <PublishReadyToRun>true</PublishReadyToRun>
     <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
-    <NoWarn>$(NoWarn);IL2026</NoWarn>
+    <NoWarn>$(NoWarn);IL2026;IL2104</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
