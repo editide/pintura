@@ -264,7 +264,7 @@ try
   {
     viewers.Expect();
   }
-  await using var headless = new HeadlessBrowser(instance.Url);
+  await using var headless = new HeadlessBrowser(instance.Url, () => store.AssetVersion);
   PreviewServer.Map(app, store, headless, watched ? null : viewers);
 
   Console.WriteLine($"  {root}");

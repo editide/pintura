@@ -27,14 +27,24 @@ public record ExportManifest(string Deck, string Design, IReadOnlyList<string> D
   /// </summary>
   public static ExportManifest? Read(string deck)
   {
-    return Load(deck) is ExportManifest manifest && manifest.Deck == FileHash(deck) ? manifest : null;
+    return Inspect(deck).Manifest;
   }
 
   /// <summary>Whether <paramref name="deck"/> was saved since the export its manifest describes, such as in
   /// PowerPoint.</summary>
   public static bool Edited(string deck)
   {
-    return Load(deck) is ExportManifest manifest && manifest.Deck != FileHash(deck);
+    return Inspect(deck).Edited;
+  }
+
+  /// <summary>Reads the manifest and hashes <paramref name="deck"/> at most once.</summary>
+  public static (ExportManifest? Manifest, bool Edited) Inspect(string deck)
+  {
+    if (Load(deck) is not ExportManifest manifest)
+    {
+      return (null, false);
+    }
+    return manifest.Deck == FileHash(deck) ? (manifest, false) : (null, true);
   }
 
   /// <summary>The manifest beside <paramref name="deck"/>, or null when either is missing or the manifest is
@@ -73,16 +83,28 @@ public record ExportManifest(string Deck, string Design, IReadOnlyList<string> D
   /// <summary>Everything but the slides, with <see cref="DesignMapping"/>.</summary>
   public static string DesignHash(JsonObject deck, string root)
   {
-    JsonObject design = deck.DeepClone().AsObject();
-    design.Remove("slides");
+    var design = new JsonObject();
+    foreach ((string key, JsonNode? value) in deck)
+    {
+      if (key != "slides")
+      {
+        design[key] = value?.DeepClone();
+      }
+    }
     return Hash(design, root, DesignMapping);
   }
 
   /// <summary>A slide as the model has it, but for its number, which PowerPoint fills in where it lands.</summary>
   public static string SlideHash(JsonNode slide, string root)
   {
-    JsonObject hashed = slide.DeepClone().AsObject();
-    hashed.Remove("number");
+    var hashed = new JsonObject();
+    foreach ((string key, JsonNode? value) in slide.AsObject())
+    {
+      if (key != "number")
+      {
+        hashed[key] = value?.DeepClone();
+      }
+    }
     return Hash(hashed, root, "");
   }
 

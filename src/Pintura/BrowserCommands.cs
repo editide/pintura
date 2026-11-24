@@ -334,7 +334,7 @@ public static class HeadlessServer
       requests.Retire();
       return Results.Ok();
     });
-    await using var headless = new HeadlessBrowser(url);
+    await using var headless = new HeadlessBrowser(url, () => store.AssetVersion);
     PreviewServer.Map(app, store, headless, null);
     await app.StartAsync();
     registry.Register(instance);

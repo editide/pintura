@@ -387,6 +387,10 @@ public class LibretaReader : IBookReader
     T answer = parse(text);
     lock (gate)
     {
+      if (answers.Count >= 256)
+      {
+        answers.Clear();
+      }
       answers[entry] = ("", answer);
     }
     return answer;

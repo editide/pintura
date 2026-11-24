@@ -24,6 +24,12 @@ public class Presentation
   [JsonIgnore] public List<Comment> Comments { get; init; } = new List<Comment>();
   /// <summary>The picks waiting on the reviewer, from <c>picks.yaml</c>, in file order.</summary>
   [JsonIgnore] public List<Pick> Picks { get; init; } = new List<Pick>();
+  private List<Pick>? resolvedPicks;
+  [JsonIgnore] public List<Pick> ResolvedPicks
+  {
+    get => resolvedPicks ??= PickFile.LoadResolved(Root, Root, Files);
+    init => resolvedPicks = value;
+  }
   /// <summary>Each placed pick's variants after its first, which <see cref="Slides"/> draws in the pick's place.
   /// </summary>
   [JsonIgnore] public List<Slide> Variants { get; init; } = new List<Slide>();

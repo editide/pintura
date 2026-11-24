@@ -26,7 +26,7 @@ public sealed class Served : IAsyncDisposable
     string url = $"http://127.0.0.1:{PreviewServer.FreePort()}";
     var store = new PresentationStore(deck.Folder.PathTo("deck"), assets ?? deck.Folder.PathTo("deck"),
       TextWriter.Null, deck.Books, background);
-    var headless = new HeadlessBrowser(url);
+    var headless = new HeadlessBrowser(url, () => store.AssetVersion);
     WebApplication app = PreviewServer.Create(assets ?? deck.Folder.Root, url);
     PreviewServer.Map(app, store, headless, null);
     await app.StartAsync();

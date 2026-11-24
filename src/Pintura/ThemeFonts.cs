@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace Pintura;
@@ -9,6 +10,9 @@ public record FontFace(string Family, int Weight, bool Italic, string Path);
 /// <summary>Reads the faces in a theme's <c>fonts/</c> under the names PowerPoint and Windows know them by.</summary>
 public static class ThemeFonts
 {
+  private static readonly ConcurrentDictionary<(string Path, string Stamp),
+    (string Family, string? Typographic, int Weight, bool Bold, bool Italic)?> Cache = new();
+
   /// <summary>Each file answers to its family at its weight, and, for a weight beyond regular and bold, to the
   /// Windows family that names the weight, such as "IBM Plex Sans Medm", which a slide may write instead.</summary>
   public static List<FontFace> Read(string folder, IFiles? files = null)
@@ -18,7 +22,9 @@ public static class ThemeFonts
     foreach (string path in files.Files(folder, "*").Where(path => ContentType(path) is not null)
       .Order(StringComparer.Ordinal))
     {
-      if (Names(files.ReadAllBytes(path)) is not var (family, typographic, weight, bold, italic))
+      (string Family, string? Typographic, int Weight, bool Bold, bool Italic)? parsed =
+        Cache.GetOrAdd((path, files.Stamp(path)), _ => Names(files.ReadAllBytes(path)));
+      if (parsed is not var (family, typographic, weight, bold, italic))
       {
         continue;
       }

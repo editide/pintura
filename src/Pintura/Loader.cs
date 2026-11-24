@@ -219,6 +219,7 @@ public partial class PresentationLoader
       Tables = tables,
       Comments = CommentFile.Load(root, displayBase, files),
       Picks = picks,
+      ResolvedPicks = resolved!,
       Variants = variants,
       Root = root,
       Files = files,

@@ -69,14 +69,17 @@ public sealed class HeadlessBrowser : IAsyncDisposable
   private const int ThemeWidth = 1440;
 
   private readonly string url;
+  private readonly Func<long>? assetVersion;
   private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
   private IPlaywright? playwright;
   private IBrowser? browser;
   private IPage? page;
+  private long? loadedAssets;
 
-  public HeadlessBrowser(string url)
+  public HeadlessBrowser(string url, Func<long>? assetVersion = null)
   {
     this.url = url;
+    this.assetVersion = assetVersion;
   }
 
   /// <summary>One slide at twice its size in points, or with a null slide a contact sheet of them all.</summary>
@@ -200,8 +203,7 @@ public sealed class HeadlessBrowser : IAsyncDisposable
     gate.Dispose();
   }
 
-  /// <summary>The page is reloaded for every request, so an edit to the page's own files is always picked up.
-  /// </summary>
+  /// <summary>Reuses the loaded headless page until the browser closes or the page's own files change.</summary>
   private async Task<T> Use<T>(Func<IPage, Task<T>> action)
   {
     await gate.WaitAsync();
@@ -210,9 +212,15 @@ public sealed class HeadlessBrowser : IAsyncDisposable
       if (page is null || page.IsClosed || browser is not { IsConnected: true })
       {
         page = await Open();
+        loadedAssets = null;
       }
-      await page.GotoAsync($"{url}/headless.html");
-      await page.WaitForFunctionAsync("() => window.pintura");
+      long? currentAssets = assetVersion?.Invoke();
+      if (loadedAssets is null || (currentAssets is not null && loadedAssets != currentAssets))
+      {
+        await page.GotoAsync($"{url}/headless.html");
+        await page.WaitForFunctionAsync("() => window.pintura");
+        loadedAssets = currentAssets ?? 0;
+      }
       return await action(page);
     }
     finally
@@ -241,6 +249,34 @@ public sealed class HeadlessBrowser : IAsyncDisposable
     return (points / 72).ToString("0.######", CultureInfo.InvariantCulture) + "in";
   }
 
+  /// <summary>Rasterizes SVGs on this browser instance, avoiding a second browser launch inside a running server.
+  /// </summary>
+  public async Task<List<byte[]>> RasterizeAsync(IReadOnlyList<(byte[] Svg, int Width, int Height)> pictures)
+  {
+    await gate.WaitAsync();
+    try
+    {
+      if (browser is not { IsConnected: true })
+      {
+        page = await Open();
+        loadedAssets = null;
+      }
+      IPage scratch = await browser!.NewPageAsync();
+      try
+      {
+        return await RasterizeOn(scratch, pictures);
+      }
+      finally
+      {
+        await scratch.CloseAsync();
+      }
+    }
+    finally
+    {
+      gate.Release();
+    }
+  }
+
   /// <summary>Each SVG drawn as a PNG of the size asked, in pixels, with its transparency. An image draws the SVG,
   /// which runs none of its scripts and fetches nothing it links to.</summary>
   public static async Task<List<byte[]>> Rasterize(IReadOnlyList<(byte[] Svg, int Width, int Height)> pictures)
@@ -248,6 +284,12 @@ public sealed class HeadlessBrowser : IAsyncDisposable
     using IPlaywright playwright = await Playwright.CreateAsync();
     await using IBrowser browser = await Start(playwright);
     IPage page = await browser.NewPageAsync();
+    return await RasterizeOn(page, pictures);
+  }
+
+  private static async Task<List<byte[]>> RasterizeOn(IPage page,
+    IReadOnlyList<(byte[] Svg, int Width, int Height)> pictures)
+  {
     var pngs = new List<byte[]>();
     foreach ((byte[] svg, int width, int height) in pictures)
     {

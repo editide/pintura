@@ -126,14 +126,20 @@ public partial class Exporter
   /// <paramref name="only"/> writes just the slides it names: into a deck an earlier export wrote, alongside its
   /// other slides, left as they were, and refusing one it would have to replace.</summary>
   public static ExportReport Write(Presentation presentation, string output, IToolHost tools,
-    Action<double>? progress = null, bool fresh = false, SlideSelection? only = null)
+    Action<double>? progress = null, bool fresh = false, SlideSelection? only = null,
+    Func<IReadOnlyList<(byte[] Svg, int Width, int Height)>, List<byte[]>>? rasterize = null)
   {
     Stopwatch watch = Stopwatch.StartNew();
     string file = Path.GetFullPath(output);
     Directory.CreateDirectory(Path.GetDirectoryName(file)!);
     JsonObject deck = Model(presentation);
-    ExportManifest? previous = fresh ? null : ExportManifest.Read(file);
-    HashSet<string> kept = only is null ? [] : Narrow(deck, file, only, previous, presentation.Root);
+    string design = ExportManifest.DesignHash(deck, presentation.Root);
+    (ExportManifest? previous, bool edited) = ExportManifest.Inspect(file);
+    if (fresh)
+    {
+      previous = null;
+    }
+    HashSet<string> kept = only is null ? [] : Narrow(deck, file, only, previous, edited, design);
     if (deck["slides"]!.AsArray().Count == 0)
     {
       throw new InvalidOperationException("the presentation has no slides to export");
@@ -147,7 +153,6 @@ public partial class Exporter
       throw new InvalidOperationException($"{string.Join("; ", broken)}; fix {(broken.Count == 1 ? "it" : "them")} " +
         "and export again");
     }
-    string design = ExportManifest.DesignHash(deck, presentation.Root);
     string resume = ResumePath(file);
     ExportManifest? resumed = !fresh && only is null ? ExportManifest.Read(resume) : null;
     bool fromResume = resumed?.Design == design;
@@ -184,7 +189,6 @@ public partial class Exporter
     List<List<string>> passes = Passes(deck, incremental ? previous!.Slides : null, hashes, presentation.Root,
       tools.MostPictures);
     Writable(file);
-    bool edited = ExportManifest.Edited(file);
     DirectoryInfo scratch = Directory.CreateTempSubdirectory("pintura-export-");
     try
     {
@@ -203,7 +207,7 @@ public partial class Exporter
         Resize(start, Items(deck["size"]).Select(side => Number(side) ?? 0).ToArray());
       }
       Describe(start, presentation.Name);
-      Dictionary<string, string> drawn = DrawSvgs(deck, presentation.Root);
+      Dictionary<string, string> drawn = DrawSvgs(deck, presentation.Root, rasterize);
       foreach ((string picture, string source, string key) in pictures)
       {
         if (new FileInfo(drawn.GetValueOrDefault(key, source)).Length > MostPictureBytes)
@@ -261,7 +265,7 @@ public partial class Exporter
           }
           else
           {
-            exporter.Update(part, held, designGaps, kept);
+            exporter.Update(part, held, designGaps, kept, hashes);
           }
           if (index == 0)
           {
@@ -508,7 +512,7 @@ public partial class Exporter
   /// were. Refuses a deck it would have to replace: one edited since, one on a design that changed, or one Pintura
   /// didn't export.</summary>
   private static HashSet<string> Narrow(JsonObject deck, string file, SlideSelection only, ExportManifest? previous,
-    string root)
+    bool edited, string design)
   {
     HashSet<string> named = [.. only.Pick(Items(deck["slides"]), slide => Text(Get(slide, "id"))).Select(slide =>
       Text(Get(slide, "id"))!)];
@@ -516,7 +520,7 @@ public partial class Exporter
     if (File.Exists(file))
     {
       string name = Path.GetFileName(file);
-      if (ExportManifest.Edited(file))
+      if (edited)
       {
         throw new InvalidOperationException($"{name} was edited in PowerPoint since its export, which --slides would " +
           "lose; export to a new file, or bring the edits in first, as --diff lists them");
@@ -526,7 +530,7 @@ public partial class Exporter
         throw new InvalidOperationException($"Pintura didn't export {name}, so --slides would replace it; export to " +
           "a new file");
       }
-      if (previous.Design != ExportManifest.DesignHash(deck, root))
+      if (previous.Design != design)
       {
         throw new InvalidOperationException($"the theme or layouts changed since {name}'s export, so its other " +
           "slides can't stay as they were; export every slide, or to a new file");
@@ -617,16 +621,16 @@ public partial class Exporter
       {
         if (value is not null)
         {
-          clean[key] = Clean(value.DeepClone());
+          clean[key] = Clean(value);
         }
       }
       return clean;
     }
     if (node is JsonArray array)
     {
-      return Array(array.Select(item => item is null ? null : Clean(item.DeepClone())));
+      return Array(array.Select(item => item is null ? null : Clean(item)));
     }
-    return node;
+    return node.DeepClone();
   }
 
   #region Values
@@ -1281,7 +1285,8 @@ public partial class Exporter
   /// <summary>Each SVG picture in each of its fills, keyed by <see cref="Drawing"/>, with a PNG of it, drawn by the
   /// headless browser, since an SVG can carry script and the tools take none. PNGs are kept under the temp folder by
   /// the SVG's hash, fill, and size, so only a new or changed SVG starts the browser.</summary>
-  private static Dictionary<string, string> DrawSvgs(JsonObject deck, string root)
+  private static Dictionary<string, string> DrawSvgs(JsonObject deck, string root,
+    Func<IReadOnlyList<(byte[] Svg, int Width, int Height)>, List<byte[]>>? rasterize = null)
   {
     string cache = Temporary.Folder("pictures");
     var drawn = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -1308,8 +1313,11 @@ public partial class Exporter
     }
     if (missing.Count > 0)
     {
-      List<byte[]> pngs = HeadlessBrowser.Rasterize(missing.Select(picture => (picture.Svg, picture.Width,
-        picture.Height)).ToList()).GetAwaiter().GetResult();
+      List<(byte[] Svg, int Width, int Height)> requests = missing
+        .Select(picture => (picture.Svg, picture.Width, picture.Height)).ToList();
+      List<byte[]> pngs = rasterize is not null
+        ? rasterize(requests)
+        : HeadlessBrowser.Rasterize(requests).GetAwaiter().GetResult();
       Directory.CreateDirectory(cache);
       foreach (((string png, _, _, _), byte[] bytes) in missing.Zip(pngs))
       {
@@ -1418,9 +1426,10 @@ public partial class Exporter
     (string name, string source) = media(Text(Get(properties, "picture"))!, fill);
     double[] frame = Items(Get(properties, "frame")).Select(side => Number(side) ?? 0).ToArray();
     string? fit = Text(Get(properties, "fit"));
+    double[]? intrinsic = Intrinsic(source);
     if (fit == "contain")
     {
-      frame = Contain(frame, Intrinsic(source));
+      frame = Contain(frame, intrinsic);
     }
     gaps.UnionWith(ExportGaps.Picture(fit == "cover", Truthy(Get(properties, "crop")), Truthy(Get(properties, "alt")),
       Truthy(Get(properties, "link")), Get(properties, "opacity") is not null));
@@ -1430,7 +1439,7 @@ public partial class Exporter
       ["uri"] = name,
       ["position"] = placed["position"]!.DeepClone(),
       ["size"] = placed["size"]!.DeepClone(),
-      ["lock_aspect_ratio"] = LocksAspect(frame, Intrinsic(source))
+      ["lock_aspect_ratio"] = LocksAspect(frame, intrinsic)
     };
     var style = new JsonObject();
     Border(style, properties);
@@ -2638,7 +2647,7 @@ public partial class Exporter
   /// <paramref name="kept"/> names those to leave as they were, whatever their hash.
   /// </summary>
   public void Update(JsonObject deck, IReadOnlyList<ExportedSlide> previous, IReadOnlyList<string> designGaps,
-    IReadOnlySet<string>? kept = null)
+    IReadOnlySet<string>? kept = null, IReadOnlyDictionary<string, string>? precomputedHashes = null)
   {
     Design design = Prepare(deck);
     gaps.UnionWith(designGaps);
@@ -2646,11 +2655,16 @@ public partial class Exporter
     DesignReady = true;
     deckSlides = previous.ToList();
     List<JsonNode> slides = Items(deck["slides"]).OfType<JsonNode>().Where(Loaded).ToList();
-    Dictionary<string, string> hashes = slides.ToDictionary(slide => Text(Get(slide, "id"))!,
-      slide => ExportManifest.SlideHash(slide, Root), StringComparer.Ordinal);
-    foreach (ExportedSlide slide in previous.Where(slide => kept?.Contains(slide.Id) == true))
+    Dictionary<string, string> hashes = precomputedHashes is not null
+      ? new Dictionary<string, string>(precomputedHashes, StringComparer.Ordinal)
+      : slides.ToDictionary(slide => Text(Get(slide, "id"))!,
+          slide => ExportManifest.SlideHash(slide, Root), StringComparer.Ordinal);
+    if (precomputedHashes is null)
     {
-      hashes[slide.Id] = slide.Hash;
+      foreach (ExportedSlide slide in previous.Where(slide => kept?.Contains(slide.Id) == true))
+      {
+        hashes[slide.Id] = slide.Hash;
+      }
     }
     // The deck's slides as they stand, by id, with a null for one that changed or went.
     List<string?> current = previous

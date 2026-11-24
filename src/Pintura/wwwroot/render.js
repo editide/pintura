@@ -63,11 +63,17 @@ async function useFonts(faces = []) {
     }
   }
   await Promise.all([...themeFaces.values()].map((face) => face.load().catch(() => {})));
+  availableFonts.clear();
 }
+
+const availableFonts = new Map();
 
 // A missing family falls back to a generic one; a family that is there changes the width of the sample against at
 // least one of the three. document.fonts.check can't tell, since it answers true for any family it has no face for.
 function fontAvailable(family) {
+  if (availableFonts.has(family)) {
+    return availableFonts.get(family);
+  }
   const probe = element('span', null, document.body);
   probe.style.font = '40px monospace';
   probe.style.position = 'absolute';
@@ -79,6 +85,7 @@ function fontAvailable(family) {
   const available = ['monospace', 'serif', 'sans-serif']
     .some((generic) => width(`${fontFamily(family)}, ${generic}`) !== width(generic));
   probe.remove();
+  availableFonts.set(family, available);
   return available;
 }
 

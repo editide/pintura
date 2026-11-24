@@ -257,7 +257,7 @@ public static partial class PreviewServer
         {
           return Refused($"{string.Join(", ", broken)} doesn't load; fix it first", StatusCodes.Status409Conflict);
         }
-        (byte[] bytes, ExportReport report) = await Task.Run(() => Pptx(presentation, name, progress));
+        (byte[] bytes, ExportReport report) = await Task.Run(() => Pptx(presentation, name, headless, progress));
         Findings(context, [.. PickFile.Warnings(presentation), .. report.Gaps]);
         return Results.File(bytes, PptxType, name);
       }
@@ -315,7 +315,7 @@ public static partial class PreviewServer
   /// <summary>Exports over the presentation's last export, kept in the temporary folder, so pressing Export again
   /// rewrites only the slides that changed. One export runs at a time.</summary>
   private static (byte[] Bytes, ExportReport Report) Pptx(Presentation presentation, string name,
-    ExportProgress progress)
+    HeadlessBrowser headless, ExportProgress progress)
   {
     string root = Path.GetFullPath(presentation.Root);
     string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(root)))[..12].ToLowerInvariant();
@@ -326,7 +326,8 @@ public static partial class PreviewServer
       try
       {
         ExportReport report = Exporter.Write(presentation, deck, ToolHosts.Default(),
-          fraction => progress.Fraction = fraction);
+          fraction => progress.Fraction = fraction,
+          rasterize: pictures => headless.RasterizeAsync(pictures).GetAwaiter().GetResult());
         return (File.ReadAllBytes(report.File), report);
       }
       finally

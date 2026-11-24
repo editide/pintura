@@ -300,7 +300,7 @@ public static class PayloadBuilder
         .Where(pick => presentation.Slides.Any(slide => slide.Pick == pick.Id))
         .Select(pick => new PickPayload(pick.Id, pick.By, pick.Date, pick.Variants))
         .ToList(),
-      Resolved = PickFile.LoadResolved(presentation.Root, presentation.Root)
+      Resolved = presentation.ResolvedPicks
         .GroupBy(pick => pick.Id)
         .Select(group => group.Last())
         .Select(pick => new PickResolvedPayload(pick.Id, pick.Resolved!.Chosen, pick.Resolved.Why, pick.Resolved.Shown))

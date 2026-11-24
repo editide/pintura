@@ -76,9 +76,14 @@ public partial class Importer
   /// pictures read from <paramref name="source"/>, the folder the JSON's picture paths are relative to.</summary>
   public static ImportResult Import(string json, string source, string folder)
   {
+    return Import(JsonNode.Parse(json)!.AsObject(), source, folder);
+  }
+
+  /// <summary>Imports a parsed model <paramref name="deck"/> into <paramref name="folder"/>.</summary>
+  public static ImportResult Import(JsonObject deck, string source, string folder)
+  {
     string target = Path.GetFullPath(folder);
     RefuseUnlessEmpty(target);
-    JsonObject deck = JsonNode.Parse(json)!.AsObject();
     // The import rewrites its folder on every pass, so it works beside the destination and moves in once it loads.
     string scratch = Scratch(target);
     try
@@ -1598,11 +1603,15 @@ public partial class Importer
 
   private void Write()
   {
-    if (Directory.Exists(folder))
-    {
-      Directory.Delete(folder, true);
-    }
     Directory.CreateDirectory(folder);
+    foreach (string sub in new[] { "theme", "slides", "charts", "tables" })
+    {
+      string path = Path.Combine(folder, sub);
+      if (Directory.Exists(path))
+      {
+        Directory.Delete(path, true);
+      }
+    }
     WriteFile("presentation.yaml", YamlWriter.Write(Presentation()));
     WriteFile("theme/theme.yaml", YamlWriter.Write(ThemeFile()));
     WriteFile("theme/styles.yaml", YamlWriter.Write(StylesFile()));
@@ -1629,8 +1638,11 @@ public partial class Importer
       if (File.Exists(from))
       {
         string target = Path.Combine(folder, written);
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        File.Copy(from, target);
+        if (!File.Exists(target))
+        {
+          Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+          File.Copy(from, target);
+        }
       }
     }
   }
@@ -2349,7 +2361,7 @@ public static class ImportCommand
     string? media = null;
     try
     {
-      string json;
+      JsonObject model;
       string pictures;
       if (Path.GetExtension(source).ToLowerInvariant() is ".pptx" or ".potx")
       {
@@ -2361,22 +2373,21 @@ public static class ImportCommand
           reads["slides"] = new JsonArray(picked.Select(slide => slide!.DeepClone()).ToArray());
         }
         PowerPointDeck mapped = PowerPointMapping.Map(reads, source, media, wholeTheme: themeOnly);
-        json = mapped.Deck.ToJsonString();
+        model = mapped.Deck;
         pictures = mapped.Media;
         findings.AddRange(mapped.Findings);
       }
       else
       {
-        json = File.ReadAllText(source);
+        model = JsonNode.Parse(File.ReadAllText(source))!.AsObject();
         pictures = Path.GetDirectoryName(source)!;
-        if (only is not null && JsonNode.Parse(json) is JsonObject model)
+        if (only is not null)
         {
           List<JsonNode?> picked = only.Pick(model["slides"]!.AsArray().ToList(), slide => (string?)slide?["id"]);
           model["slides"] = new JsonArray(picked.Select(slide => slide!.DeepClone()).ToArray());
-          json = model.ToJsonString();
         }
       }
-      findings.AddRange(Importer.Import(json, pictures, written).Findings);
+      findings.AddRange(Importer.Import(model, pictures, written).Findings);
       Presentation presentation = PresentationLoader.Load(written);
       if (themeOnly)
       {
