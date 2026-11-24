@@ -135,9 +135,12 @@ public class ExportBuilder
     ExportItem? title = layout.TitleRemoved || layout.Title is null
       ? null
       : Placeholder(layout.Id, "title", "title", [theme.Title, layout.Title]);
-    List<ExportItem> placeholders = theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct()
-      .Select(name => Placeholder(layout.Id, name, "placeholder",
-        [theme.Placeholders.GetValueOrDefault(name), layout.Placeholders.GetValueOrDefault(name)]))
+    List<ExportItem> placeholders = theme.PlaceholderNames(layout)
+      .Select(name =>
+      {
+        (Placeholder? themeLevel, Placeholder? layoutLevel) = theme.PlaceholderLevels(layout, name);
+        return Placeholder(layout.Id, name, "placeholder", [themeLevel, layoutLevel]);
+      })
       .ToList();
     return new ExportLayout(
       layout.Id,
@@ -147,8 +150,7 @@ public class ExportBuilder
       title,
       placeholders,
       layout.Elements.Select(element => Element(layout.Id, element, "layout")).ToList(),
-      theme.Areas.Concat(layout.Areas).GroupBy(pair => pair.Key)
-        .ToDictionary(group => group.Key, group => group.Last().Value.Rect));
+      theme.AreasOf(layout).ToDictionary(entry => entry.Name, entry => entry.Area.Rect));
   }
 
   private ExportSlide Slide(Slide slide)

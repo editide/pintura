@@ -1330,11 +1330,8 @@ public partial class PresentationLoader
       throw layoutNode.Error($"unknown layout {layoutId}; the theme's layouts are " +
         string.Join(", ", theme.Layouts.Keys), "layouts");
     }
-    Dictionary<string, Area> areas = new Dictionary<string, Area>(theme.Areas, StringComparer.Ordinal);
-    foreach ((string key, Area area) in layout.Areas)
-    {
-      areas[key] = area;
-    }
+    Dictionary<string, Area> areas = theme.AreasOf(layout)
+      .ToDictionary(entry => entry.Name, entry => entry.Area, StringComparer.Ordinal);
 
     Color? background = null;
     Origin? backgroundOrigin = null;
@@ -1347,15 +1344,14 @@ public partial class PresentationLoader
     Placeholder? title = null;
     if (map.Take("title") is Node titleNode)
     {
-      if (layout.TitleRemoved || (layout.Title is null && theme.Title is null))
+      if (!theme.HasTitle(layout))
       {
         throw titleNode.Error($"layout {layoutId} has no title", "layouts");
       }
       title = ReadPlaceholder(titleNode, areas, true);
     }
 
-    var available = new HashSet<string>(theme.Placeholders.Keys.Concat(layout.Placeholders.Keys),
-      StringComparer.Ordinal);
+    var available = new HashSet<string>(theme.PlaceholderNames(layout), StringComparer.Ordinal);
     var placeholders = new Dictionary<string, Placeholder>(StringComparer.Ordinal);
     if (map.Take("placeholders") is Node placeholdersNode)
     {
@@ -1420,7 +1416,7 @@ public partial class PresentationLoader
     {
       owned[element.Id] = $"layout {layoutId}";
     }
-    if (!layout.TitleRemoved && (layout.Title ?? theme.Title) is not null)
+    if (theme.HasTitle(layout))
     {
       owned["title"] = "the title";
     }

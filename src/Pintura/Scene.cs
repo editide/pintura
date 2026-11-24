@@ -144,14 +144,10 @@ public class SceneBuilder
     {
       words.Add(Placeholder("title", "title", [theme.Title, layout.Title, slide.Title]));
     }
-    IEnumerable<string> names = theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct();
-    foreach (string name in names.Where(slide.Placeholders.ContainsKey))
+    foreach (string name in theme.PlaceholderNames(layout).Where(slide.Placeholders.ContainsKey))
     {
-      words.Add(Placeholder(name, "placeholder", [
-        theme.Placeholders.GetValueOrDefault(name),
-        layout.Placeholders.GetValueOrDefault(name),
-        slide.Placeholders[name]
-      ]));
+      (Placeholder? themeLevel, Placeholder? layoutLevel) = theme.PlaceholderLevels(layout, name);
+      words.Add(Placeholder(name, "placeholder", [themeLevel, layoutLevel, slide.Placeholders[name]]));
     }
     items.AddRange(words.Where(item => !slide.Stacked.Any(entry => entry.Id == item.Id)));
     for (int index = 0; index <= slide.Elements.Count; index++)

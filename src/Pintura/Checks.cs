@@ -814,14 +814,10 @@ public static class Checks
     foreach (SceneItem item in scene.Items
       .Where(item => item.Element?.Decorative != true))
     {
-      string owner = item.Role switch
-      {
-        null => item.Owner,
-        _ when (item.Role == "title" ? slide.Title : slide.Placeholders[item.Id])?.Frame is not null => "slide",
-        _ when (item.Role == "title" ? layout.Title : layout.Placeholders.GetValueOrDefault(item.Id))?.Frame
-          is not null => "layout",
-        _ => "theme"
-      };
+      string owner = item.Role is null
+        ? item.Owner
+        : presentation.Theme.PlaceholderFrame(layout, item.Role == "title" ? "title" : item.Id,
+          item.Role == "title" ? slide.Title : slide.Placeholders[item.Id]).Owner;
       string name = item.Role == "title" ? "the title" : item.Id;
       if (item.Properties.TryGetValue("from", out Resolved? from))
       {
@@ -925,9 +921,8 @@ public static class Checks
   private static List<Placed> Areas(Theme theme, Slide slide)
   {
     Layout layout = theme.Layouts[slide.Layout];
-    return theme.Areas.Keys.Concat(layout.Areas.Keys).Distinct()
-      .Select(name => new Placed(name, $"the {name} area", "area",
-        (layout.Areas.GetValueOrDefault(name) ?? theme.Areas[name]).Rect))
+    return theme.AreasOf(layout)
+      .Select(entry => new Placed(entry.Name, $"the {entry.Name} area", "area", entry.Area.Rect))
       .ToList();
   }
 
@@ -1064,15 +1059,11 @@ public static class Checks
   {
     Theme theme = presentation.Theme;
     Layout layout = theme.Layouts[slide.Layout];
-    var placed = new List<(string Id, string Name, Placeholder? Own, Placeholder? Layout, Placeholder? Theme)>
+    var placed = new List<(string Id, string Name, Placeholder? Own)> { ("title", "the title", slide.Title) };
+    placed.AddRange(slide.Placeholders.Select(pair => (pair.Key, pair.Key, (Placeholder?)pair.Value)));
+    foreach ((string id, string name, Placeholder? own) in placed)
     {
-      ("title", "the title", slide.Title, layout.Title, theme.Title)
-    };
-    placed.AddRange(slide.Placeholders.Select(pair => (pair.Key, pair.Key, (Placeholder?)pair.Value,
-      layout.Placeholders.GetValueOrDefault(pair.Key), theme.Placeholders.GetValueOrDefault(pair.Key))));
-    foreach ((string id, string name, Placeholder? own, Placeholder? layoutLevel, Placeholder? themeLevel) in placed)
-    {
-      Frame? inherited = layoutLevel?.Frame ?? themeLevel?.Frame;
+      Frame? inherited = theme.PlaceholderFrame(layout, id).Frame;
       if (own?.Frame is not { } frame || inherited is null || frame.Rect.SequenceEqual(inherited.Rect))
       {
         continue;

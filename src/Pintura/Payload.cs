@@ -379,11 +379,8 @@ public static class PayloadBuilder
 
   private static IEnumerable<ItemPayload> StageAreas(Theme theme, Layout layout)
   {
-    foreach (string name in theme.Areas.Keys.Concat(layout.Areas.Keys).Distinct())
+    foreach ((string name, Area area, string owner) in theme.AreasOf(layout))
     {
-      (Area area, string owner) = layout.Areas.TryGetValue(name, out Area? own)
-        ? (own, "layout")
-        : (theme.Areas[name], "theme");
       yield return new ItemPayload
       {
         Id = name,
@@ -423,33 +420,27 @@ public static class PayloadBuilder
     Layout layout = theme.Layouts[slide.Layout];
     var guides = new List<GuidePayload>();
     HashSet<string> framed = slide.Elements.Select(element => element.Frame?.Area).OfType<string>().ToHashSet();
-    foreach (string name in theme.Areas.Keys.Concat(layout.Areas.Keys).Distinct())
+    foreach ((string name, Area area, string owner) in theme.AreasOf(layout))
     {
-      (Area area, string owner) = layout.Areas.TryGetValue(name, out Area? own)
-        ? (own, "layout")
-        : (theme.Areas[name], "theme");
       guides.Add(new GuidePayload("area", name, owner, area.Rect, framed.Contains(name)));
     }
 
-    void Placeholder(string name, Placeholder? themeLevel, Placeholder? layoutLevel, bool used)
+    void Placeholder(string name, bool used)
     {
-      (Frame? frame, string owner) = layoutLevel?.Frame is not null
-        ? (layoutLevel.Frame, "layout")
-        : (themeLevel?.Frame, "theme");
+      (Frame? frame, string owner) = theme.PlaceholderFrame(layout, name);
       if (frame is not null)
       {
         guides.Add(new GuidePayload("placeholder", name, owner, frame.Rect, used));
       }
     }
 
-    if (!layout.TitleRemoved)
+    if (theme.HasTitle(layout))
     {
-      Placeholder("title", theme.Title, layout.Title, slide.Title is not null);
+      Placeholder("title", slide.Title is not null);
     }
-    foreach (string name in theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct())
+    foreach (string name in theme.PlaceholderNames(layout))
     {
-      Placeholder(name, theme.Placeholders.GetValueOrDefault(name), layout.Placeholders.GetValueOrDefault(name),
-        slide.Placeholders.ContainsKey(name));
+      Placeholder(name, slide.Placeholders.ContainsKey(name));
     }
     return guides;
   }

@@ -117,6 +117,55 @@ public class Theme
   /// </summary>
   [JsonIgnore] public string Display { get; init; } = "";
   [JsonIgnore] public Dictionary<string, Origin> Origins { get; init; } = new Dictionary<string, Origin>();
+
+  /// <summary>Effective areas on <paramref name="layout"/>: the theme's with the layout's over them, each with the
+  /// level that owns it.</summary>
+  public IEnumerable<(string Name, Area Area, string Owner)> AreasOf(Layout layout)
+  {
+    foreach (string name in Areas.Keys.Concat(layout.Areas.Keys).Distinct())
+    {
+      yield return layout.Areas.TryGetValue(name, out Area? own)
+        ? (name, own, "layout")
+        : (name, Areas[name], "theme");
+    }
+  }
+
+  /// <summary>Effective placeholder names on <paramref name="layout"/>: the theme's followed by the layout's own.
+  /// </summary>
+  public IEnumerable<string> PlaceholderNames(Layout layout)
+  {
+    return Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct();
+  }
+
+  /// <summary>Whether <paramref name="layout"/> has a title (neither removed nor absent from both levels).</summary>
+  public bool HasTitle(Layout layout)
+  {
+    return !layout.TitleRemoved && (layout.Title ?? Title) is not null;
+  }
+
+  /// <summary>The theme and layout levels of the title or a named placeholder on <paramref name="layout"/>.</summary>
+  public (Placeholder? Theme, Placeholder? Layout) PlaceholderLevels(Layout layout, string name)
+  {
+    return name == "title"
+      ? (Title, layout.Title)
+      : (Placeholders.GetValueOrDefault(name), layout.Placeholders.GetValueOrDefault(name));
+  }
+
+  /// <summary>The effective frame and owning level of the title or a named placeholder, optionally including a slide's
+  /// own override.</summary>
+  public (Frame? Frame, string Owner) PlaceholderFrame(Layout layout, string name, Placeholder? own = null)
+  {
+    if (own?.Frame is Frame slideFrame)
+    {
+      return (slideFrame, "slide");
+    }
+    (Placeholder? themeLevel, Placeholder? layoutLevel) = PlaceholderLevels(layout, name);
+    return layoutLevel?.Frame is Frame layoutFrame
+      ? (layoutFrame, "layout")
+      : (themeLevel?.Frame, "theme");
+  }
+
+
 }
 
 /// <summary>Thresholds <c>--check</c> reads from the theme; a missing one leaves its check off.</summary>

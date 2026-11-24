@@ -203,14 +203,13 @@ public static class ThemeView
   /// <summary>A slide on the layout naming each of its placeholders in its words.</summary>
   public static Slide Specimen(Theme theme, Layout layout)
   {
-    IEnumerable<string> placeholders = theme.Placeholders.Keys.Concat(layout.Placeholders.Keys).Distinct();
     return new Slide
     {
       Id = layout.Id,
       Layout = layout.Id,
       Section = "Section",
-      Title = layout.TitleRemoved ? null : Words("Title"),
-      Placeholders = placeholders.ToDictionary(name => name, Words)
+      Title = theme.HasTitle(layout) ? Words("Title") : null,
+      Placeholders = theme.PlaceholderNames(layout).ToDictionary(name => name, Words)
     };
   }
 
