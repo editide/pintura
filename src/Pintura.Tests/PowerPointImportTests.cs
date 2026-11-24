@@ -91,6 +91,7 @@ public class PowerPointImportTests
   [InlineData("example")]
   [InlineData("default-theme")]
   [InlineData("balance-sheet")]
+  [InlineData("board-update")]
   public void Each_fixtures_stored_deck_imports_as_the_fixture(string name)
   {
     // Arrange

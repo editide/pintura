@@ -1344,12 +1344,20 @@ public partial class PowerPointMapping
     {
       return;
     }
-    // The box takes what most of its paragraphs share, so a big figure under its label doesn't restyle the label.
+    // The box takes what most of its paragraphs share, so a big figure under its label doesn't restyle the label. A
+    // bullet that has what its level gives it shares nothing with the box, since the box's keys would cover the level
+    // for every paragraph, an empty one included.
     List<Paragraph> worded = paragraphs.Where(paragraph => paragraph.Runs.Any(run => run.Text.Trim().Length > 0))
       .DefaultIfEmpty(paragraphs[0]).ToList();
+    JsonNode? Own(Paragraph paragraph, string key)
+    {
+      JsonNode? value = paragraph.Properties[key];
+      return value is not null && levels.TryGetValue(LevelFor(paragraph), out JsonObject? level) &&
+        JsonNode.DeepEquals(value, level["properties"]?[key]) ? null : value;
+    }
     foreach (string key in new[] { "font", "size", "color", "align", "space_before", "space_after", "line_spacing" })
     {
-      JsonNode? value = Mode(worded.Select(paragraph => ((JsonNode?)(paragraph.Properties[key] ?? ""), 1.0)));
+      JsonNode? value = Mode(worded.Select(paragraph => ((JsonNode?)(Own(paragraph, key) ?? ""), 1.0)));
       if (value is not null && (value as JsonValue)?.ToString() != "")
       {
         properties[key] = value.DeepClone();
