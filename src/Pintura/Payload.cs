@@ -197,7 +197,8 @@ public record ChartPayload
 public record SeriesPayload(string Name, List<double?> Values, string Type, bool Secondary, LabelsPayload? Labels,
   MarkersPayload? Markers, List<TracePayload>? Traces = null, List<string?>? Colors = null,
   List<MarkersPayload?>? PointMarkers = null, List<LabelsPayload?>? PointLabels = null, string? Dash = null,
-  StrokePayload? Outline = null, List<StrokePayload?>? Outlines = null);
+  StrokePayload? Outline = null, List<StrokePayload?>? Outlines = null, List<string?>? SpelledLabels = null,
+  List<double[]?>? Bars = null);
 
 /// <summary>A null fill is the line's color.</summary>
 public record MarkersPayload(string Shape, double Size, string? Fill);
@@ -210,7 +211,7 @@ public record LabelsPayload(string Show, string Position, FormatPayload? Format,
 }
 
 public record ValueAxisPayload(bool Visible, double Min, double Max, double Step, FormatPayload? Format,
-  bool Gridlines, bool Reverse = false);
+  bool Gridlines, bool Reverse = false, List<string>? TickLabels = null);
 
 /// <summary>A date axis's pattern, and its step between labels; a null step is for the page to choose.</summary>
 public record DateAxisPayload(string Pattern, int? StepCount, string? StepUnit);
@@ -639,12 +640,62 @@ public static class PayloadBuilder
     }
     ValueAxisPayload? Axis(string name)
     {
-      return Value($"{name}.visible") is not bool visible
-        ? null
-        : new ValueAxisPayload(visible, Convert.ToDouble(Value($"{name}.min")), Convert.ToDouble(Value($"{name}.max")),
-          Convert.ToDouble(Value($"{name}.step")), Format(Value($"{name}.format") as string, theme),
-          Value($"{name}.gridlines") as bool? ?? false, Value($"{name}.reverse") as bool? ?? false);
+      if (Value($"{name}.visible") is not bool visible)
+      {
+        return null;
+      }
+      double min = Convert.ToDouble(Value($"{name}.min"));
+      double max = Convert.ToDouble(Value($"{name}.max"));
+      double step = Convert.ToDouble(Value($"{name}.step"));
+      string? formatName = Value($"{name}.format") as string;
+      NumberFormat? format = formatName is not null && theme.Styles.Formats.TryGetValue(formatName, out NumberFormat? found)
+        ? found
+        : null;
+      List<string>? tickLabels = format is null ? null : SpellTicks(min, max, step, format);
+      return new ValueAxisPayload(visible, min, max, step, Format(formatName, theme),
+        Value($"{name}.gridlines") as bool? ?? false, Value($"{name}.reverse") as bool? ?? false, tickLabels);
     }
+    List<string?>? SpellSeriesLabels(ChartSeries series, string prefix)
+    {
+      if (chart.Family == "pie")
+      {
+        return null;
+      }
+      var spelled = new List<string?>(series.Values.Count);
+      bool any = false;
+      for (int point = 0; point < series.Values.Count; point++)
+      {
+        if (series.Values[point] is not double raw)
+        {
+          spelled.Add(null);
+          continue;
+        }
+        string pointPrefix = point < chart.Categories.Count ? $"{prefix}points.{chart.Categories[point]}." : "";
+        bool hasPoint = pointPrefix.Length > 0 && properties.ContainsKey($"{pointPrefix}data_labels.show");
+        string show = (hasPoint ? Value($"{pointPrefix}data_labels.show") : Value($"{prefix}data_labels.show")) as string
+          ?? "none";
+        if (show != "value")
+        {
+          spelled.Add(null);
+          continue;
+        }
+        string? formatName = (hasPoint ? Value($"{pointPrefix}data_labels.format") : Value($"{prefix}data_labels.format"))
+          as string;
+        if (formatName is not null && theme.Styles.Formats.TryGetValue(formatName, out NumberFormat? format))
+        {
+          spelled.Add(format.Spell(raw));
+          any = true;
+        }
+        else
+        {
+          spelled.Add(null);
+        }
+      }
+      return any ? spelled : null;
+    }
+    List<double[]?>? waterfallBars = chart.Type == "waterfall"
+      ? chart.Bars().Select(bar => bar is (double from, double to) ? new[] { from, to } : null).ToList()
+      : null;
     return new ChartPayload
     {
       Type = chart.Type,
@@ -659,10 +710,12 @@ public static class PayloadBuilder
           : chart.SeriesIn == "columns"
             ? chart.Lines!.Select(line => new TracePayload(book, line, chart.Columns![index])).ToList()
             : chart.Columns!.Select(column => new TracePayload(book, chart.Lines![index], column)).ToList();
+        List<double[]?>? bars = index == 0 ? waterfallBars : null;
         if (!chart.SeriesOptions.ContainsKey(series.Name))
         {
           return new SeriesPayload(series.Name, series.Values, chart.Family, false, Labels(""),
-            chart.Family == "line" ? Markers("") : null, traces);
+            chart.Family == "line" ? Markers("") : null, traces, SpelledLabels: SpellSeriesLabels(series, ""),
+            Bars: bars);
         }
         string prefix = $"series.{series.Name}.";
         List<string?> colors = chart.Categories
@@ -691,7 +744,7 @@ public static class PayloadBuilder
           pointMarkers.Any(markers => markers is not null) ? pointMarkers : null,
           pointLabels.Any(labels => labels is not null) ? pointLabels : null,
           Value($"{prefix}dash") is string dash and not "solid" ? dash : null, outline,
-          pointOutlines ? outlines : null);
+          pointOutlines ? outlines : null, SpellSeriesLabels(series, prefix), bars);
       }).ToList(),
       Colors = ((List<Color>)Value("series_colors")!).Select(color => Hex(color, theme)).ToList(),
       ValueAxis = Axis("value_axis"),
@@ -717,6 +770,25 @@ public static class PayloadBuilder
       AxisWidth = Value("category_axis.stroke.width") as double? ?? 0.75,
       EdgeColor = theme.Colors["light1"]
     };
+  }
+
+  private static List<string> SpellTicks(double min, double max, double step, NumberFormat format)
+  {
+    if (!((max - min) / step <= 100))
+    {
+      return [format.Spell(min), format.Spell(max)];
+    }
+    var labels = new List<string>();
+    for (int index = 0; ; index++)
+    {
+      double tick = min + index * step;
+      if (tick > max + step * 1e-9)
+      {
+        break;
+      }
+      labels.Add(format.Spell(Math.Abs(tick) < step * 1e-9 ? 0 : tick));
+    }
+    return labels;
   }
 
   private static FormatPayload? Format(string? name, Theme theme)

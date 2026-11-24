@@ -266,7 +266,7 @@ function openStyles(button, item) {
         color: style.hex
       });
       // The list is white like a slide, so text meant for a dark band sits on the theme's dark color.
-      if (lightness(style.hex) > 0.8) {
+      if (contrast(style.hex, '#FFFFFF') < 2) {
         choice.style.background = paintHex('dark1');
       }
       choice.addEventListener('click', () => {
@@ -275,11 +275,6 @@ function openStyles(button, item) {
       });
     }
   });
-}
-
-function lightness(hex) {
-  const [red, green, blue] = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255);
-  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 
 function paintHex(name) {
