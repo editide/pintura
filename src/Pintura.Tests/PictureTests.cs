@@ -177,6 +177,7 @@ public class PictureTests
   }
 
   [Fact]
+  [Trait("Needs", "browser")]
   public async Task An_svg_is_drawn_as_a_png_of_the_size_asked_keeping_its_transparency()
   {
     // Arrange

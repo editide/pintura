@@ -293,15 +293,14 @@ public class PickTests
   }
 
   [Theory]
+  [Trait("Needs", "git")]
   [InlineData("waterfall", "Resolved the pick on slide 2")]
   [InlineData(null, "Resolved the pick on slide 2")]
   public void A_draft_says_a_pick_was_resolved_rather_than_its_variants_added_and_removed(string? keep, string draft)
   {
     // Arrange
     using DeckFixture deck = Offering();
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", ".");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "offered");
+    GitHelper.Commit(deck.Folder.Root, "offered");
     (_, Dictionary<string, string?> wrote) = PickFile.Apply(deck.Load(), new PickChange("p4kx", keep, "Says it best"),
       "Daniel", Now, Seen);
     foreach ((string path, string? before) in wrote)
@@ -408,14 +407,12 @@ public class PickTests
   {
     // Arrange
     using DeckFixture deck = Offering();
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", ".");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "offered");
+    GitHelper.Commit(deck.Folder.Root, "offered");
     string root = deck.Folder.PathTo("deck");
     var seen = new Snapshot(Revisions.Run(root, "rev-parse", "HEAD").Output.Trim(), false, new HashSet<string>());
     PickFile.Apply(deck.Load(), new PickChange("p4kx", null, "No"), "Daniel", Now, seen);
-    RevisionTests.Git(deck.Folder.Root, "add", ".");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "rejected");
+    GitHelper.Git(deck.Folder.Root, "add", ".");
+    GitHelper.Git(deck.Folder.Root, "commit", "-q", "-m", "rejected");
     if (edited)
     {
       File.AppendAllText(Path.Combine(root, "slides/two.yaml"), "hide: [page]\n");
@@ -444,14 +441,13 @@ public class PickTests
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void Choosing_again_reopens_a_pick_kept_none_of_from_the_commit_it_was_resolved_at()
   {
     // Arrange
     using DeckFixture deck = Offering();
     deck.Write("deck/comments.yaml", "- id: c1\n  slide: waterfall\n  at: [0, 0]\n  text: Too busy");
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", ".");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "offered");
+    GitHelper.Commit(deck.Folder.Root, "offered");
     string root = deck.Folder.PathTo("deck");
     string[] files = ["presentation.yaml", "picks.yaml", "slides/two.yaml", "slides/stacked.yaml",
       "slides/waterfall.yaml"];

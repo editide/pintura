@@ -288,7 +288,7 @@ public class PatcherTests
       Paragraphs: [""]));
 
     // Assert
-    Patcher.SourceAt(patched, "elements.note.text").ShouldNotContain("lead");
+    Patcher.SourceAt(patched, "elements.note.text").ShouldNotBeNull().ShouldNotContain("lead");
   }
 
   [Fact]

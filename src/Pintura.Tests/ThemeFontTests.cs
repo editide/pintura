@@ -89,7 +89,7 @@ public class ThemeFontTests
     // Arrange
     using var deck = new DeckFixture();
     Ship(deck, "Plex-Regular.ttf", TestFont.Bytes("Plex", 400));
-    string assets = Path.Combine(LoaderTests.RepositoryRoot(), "src", "Pintura", "wwwroot");
+    string assets = Path.Combine(Repository.Root, "src", "Pintura", "wwwroot");
 
     // Act
     string html = HtmlExport.Build(deck.Load(), assets);

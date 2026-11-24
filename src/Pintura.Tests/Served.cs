@@ -36,7 +36,7 @@ public sealed class Served : IAsyncDisposable
   /// <summary>The page's own files, from the source folder.</summary>
   public static string Interface()
   {
-    return Path.Combine(LoaderTests.RepositoryRoot(), "src", "Pintura", "wwwroot");
+    return Path.Combine(Repository.Root, "src", "Pintura", "wwwroot");
   }
 
   public Task Stop()

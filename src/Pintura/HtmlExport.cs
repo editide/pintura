@@ -383,8 +383,12 @@ public static class HtmlExport
       return null;
     }
     using SKPixmap pixmap = bitmap.PeekPixels();
-    using SKData lossless = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossless, 25));
-    using SKData lossy = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossy, 80));
+    using SKData? lossless = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossless, 25));
+    using SKData? lossy = pixmap.Encode(new SKWebpEncoderOptions(SKWebpEncoderCompression.Lossy, 80));
+    if (lossless is null || lossy is null)
+    {
+      return (lossless ?? lossy)?.ToArray();
+    }
     return (lossless.Size <= 2 * lossy.Size ? lossless : lossy).ToArray();
   }
 

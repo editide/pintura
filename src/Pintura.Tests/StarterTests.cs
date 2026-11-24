@@ -19,10 +19,10 @@ public class StarterTests
     Presentation presentation = PresentationLoader.Load(created);
     presentation.Slides.ShouldAllBe(slide => slide.Error == null);
     Checks.Structure(presentation).ShouldBeEmpty();
-    foreach (string file in Directory.GetFiles(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "default"), "*",
+    foreach (string file in Directory.GetFiles(Path.Combine(Repository.Root, "themes", "default"), "*",
       SearchOption.AllDirectories))
     {
-      string relative = Path.GetRelativePath(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "default"), file);
+      string relative = Path.GetRelativePath(Path.Combine(Repository.Root, "themes", "default"), file);
       File.ReadAllText(Path.Combine(created, "theme", relative)).ShouldBe(File.ReadAllText(file));
     }
   }

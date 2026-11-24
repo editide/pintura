@@ -6,13 +6,12 @@ namespace Pintura.Tests;
 public class DiffTests
 {
   [Fact]
+  [Trait("Needs", "git")]
   public void Slides_narrow_a_diff_against_a_revision_to_the_slides_named()
   {
     // Arrange
     using var deck = new DeckFixture();
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", ".");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: Changed");
     deck.Write("deck/slides/two.yaml", "layout: content\ntitle: Changed too");
     var output = new StringWriter();
@@ -454,15 +453,14 @@ public class DiffTests
   }
 
   [Fact]
+  [Trait("Needs", "git")]
   public void The_listing_names_a_renamed_slide_with_the_name_it_had()
   {
     // Arrange
     using var deck = new DeckFixture();
-    deck.Write("deck/slides/two.yaml", RevisionTests.Body("Results"));
-    RevisionTests.Git(deck.Folder.Root, "init", "-q");
-    RevisionTests.Git(deck.Folder.Root, "add", ".");
-    RevisionTests.Git(deck.Folder.Root, "commit", "-q", "-m", "first");
-    RevisionTests.Rename(deck, "two", "results", "Retitled");
+    deck.Write("deck/slides/two.yaml", GitHelper.Body("Results"));
+    GitHelper.Commit(deck.Folder.Root);
+    GitHelper.Rename(deck, "two", "results", "Retitled");
     var output = new StringWriter();
 
     // Act

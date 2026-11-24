@@ -1,9 +1,10 @@
 using Shouldly;
 using Xunit;
-using static Pintura.Tests.RevisionTests;
+using static Pintura.Tests.GitHelper;
 
 namespace Pintura.Tests;
 
+[Trait("Needs", "git")]
 public class SaveTests
 {
   private static readonly string Restyled = DeckFixture.Styles.Replace("title: { font: heading, size: 28 }",
@@ -14,9 +15,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     deck.Write("notes.txt", "elsewhere");
     Git(deck.Folder.Root, "add", ".");
     Git(deck.Folder.Root, "commit", "-q", "-m", "unrelated");
@@ -38,9 +37,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     SaveStatus clean = Saves.Status(root);
     deck.Write("deck/comments.yaml", "- { id: a1, slide: two, at: [0, 0], text: Hi }");
@@ -61,9 +58,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
     deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: An agent's");
@@ -89,9 +84,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     deck.Write("deck/slides/two.yaml", "layout: content\ntitle: An agent's");
 
@@ -108,9 +101,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     string slide = File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml"));
     Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
@@ -129,9 +120,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     Edit(deck, "deck/slides/one.yaml", "layout: cover\ntitle: Mine");
     string? alone = Saves.Mixed(root, deck.Load());
@@ -153,9 +142,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     string slide = File.ReadAllText(deck.Folder.PathTo("deck/slides/two.yaml"));
     deck.Write("deck/slides/two.yaml", "# A note\n" + slide.TrimEnd() + "\n\n");
@@ -175,9 +162,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
     Edit(deck, "theme/styles.yaml", DeckFixture.Styles + "\ncaption: { size: 9 }");
@@ -201,9 +186,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     deck.Write("deck/slides/one.yaml", "layout: cover\ntitle: An agent's");
     Git(deck.Folder.Root, "commit", "-q", "-am", "Retitle the cover\n\nCo-Authored-By: An agent <agent@example.com>");
@@ -225,9 +208,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     deck.Write("deck/comments.yaml", "- { id: a1, slide: two, at: [0, 0], text: Hi, done: Said hi }");
     Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Hi");
@@ -271,9 +252,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     Edit(deck, "deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nslides: [one]");
     Edit(deck, "deck/slides/two.yaml", null);
@@ -290,9 +269,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
     Edit(deck, "deck/slides/one.yaml", "layout: cover\ntitle: Half done");
@@ -317,9 +294,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     Edit(deck, "deck/slides/one.yaml", "layout: cover\ntitle: Half done");
     Edit(deck, "deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nslides: [one]");
@@ -342,9 +317,7 @@ public class SaveTests
     deck.Write("deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nslides: [one, pick: p4kx]");
     deck.Write("deck/picks.yaml", "- id: p4kx\n  variants:\n    - slide: two\n    - slide: three");
     deck.Write("deck/slides/three.yaml", "layout: content\ntitle: Three");
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     string root = deck.Folder.PathTo("deck");
     Edit(deck, "deck/presentation.yaml", "name: Test deck\ntheme: ../theme\nslides: [one, two]");
     Edit(deck, "deck/picks.yaml", null);
@@ -393,9 +366,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
 
     // Act
     Action save = () => Saves.Save(deck.Folder.PathTo("deck"), "Again");
@@ -409,9 +380,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     Edit(deck, "deck/presentation.yaml", """
       name: Test deck
       theme: ../theme
@@ -447,9 +416,7 @@ public class SaveTests
   {
     // Arrange
     using var deck = new DeckFixture();
-    Git(deck.Folder.Root, "init", "-q");
-    Git(deck.Folder.Root, "add", ".");
-    Git(deck.Folder.Root, "commit", "-q", "-m", "first");
+    GitHelper.Commit(deck.Folder.Root);
     Edit(deck, "deck/slides/one.yaml", "layout: cover\ntitle: Hi\nplaceholders:\n  subtitle: ${footer}");
     Edit(deck, "deck/slides/two.yaml", "layout: content\ntitle: Changed");
     Edit(deck, "theme/styles.yaml", DeckFixture.Styles.Replace("title: { font: heading, size: 28 }",

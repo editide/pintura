@@ -269,7 +269,7 @@ public class CheckTests
   public void Each_seeded_fault_yields_its_finding_and_nothing_else()
   {
     // Arrange
-    string repository = LoaderTests.RepositoryRoot();
+    string repository = Repository.Root;
     Presentation presentation = PresentationLoader.Load(Path.Combine(repository, "src", "Pintura.Tests", "fixtures",
       "faults"), repository);
 
@@ -375,7 +375,7 @@ public class CheckTests
   public void Every_presentation_comes_back_clean()
   {
     // Arrange
-    string repository = LoaderTests.RepositoryRoot();
+    string repository = Repository.Root;
     string[] roots = [.. Directory.GetDirectories(Path.Combine(repository, "presentations")),
       Path.Combine(repository, "src", "Pintura.Tests", "fixtures", "charts")];
 

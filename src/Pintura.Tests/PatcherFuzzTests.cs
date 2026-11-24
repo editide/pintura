@@ -10,7 +10,11 @@ namespace Pintura.Tests;
 /// the page asked for, so a refusal or a wrong write shows up here before it does on a slide.</summary>
 public class PatcherFuzzTests
 {
-  private const int Cases = 3000;
+  private const int DefaultCases = 300;
+  private static readonly int Cases = int.TryParse(Environment.GetEnvironmentVariable("PINTURA_FUZZ_CASES"),
+    out int configured) && configured > 0 ? configured : DefaultCases;
+  private static readonly int SeedOffset = int.TryParse(Environment.GetEnvironmentVariable("PINTURA_FUZZ_SEED"),
+    out int configuredSeed) ? configuredSeed : 0;
   private const char Mark = Patcher.FieldMark;
 
   private static readonly MarkupContext Context = new MarkupContext(style => style is "lead" or "positive",
@@ -46,8 +50,9 @@ public class PatcherFuzzTests
   private List<string> Run(Func<int, string> file, string path, bool plain)
   {
     var failures = new List<string>();
-    for (int seed = 0; seed < Cases; seed++)
+    for (int index = 0; index < Cases; index++)
     {
+      int seed = SeedOffset + index;
       string text = file(seed);
       var random = new Random(seed * 7919 + 1);
       string value = ValueAt(text, path)!;

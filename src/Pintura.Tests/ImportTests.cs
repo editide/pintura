@@ -16,7 +16,7 @@ public class ImportTests
   public void A_presentation_written_from_its_model_loads_unchanged(string relative)
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), relative);
+    string root = Path.Combine(Repository.Root, relative);
     JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
     using var output = new TempFolder();
     string folder = output.PathTo("imported");
@@ -34,7 +34,7 @@ public class ImportTests
   public void A_title_drawn_over_an_element_survives_import()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example");
+    string root = Path.Combine(Repository.Root, "presentations", "example");
     JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
     JsonObject slide = before["slides"]!.AsArray().Select(node => node!.AsObject())
       .First(candidate => candidate["items"]!.AsArray().Any(item => (string?)item!["role"] == "title") &&
@@ -60,7 +60,7 @@ public class ImportTests
   public void A_table_cells_empty_paragraph_with_formatting_of_its_own_imports()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example");
+    string root = Path.Combine(Repository.Root, "presentations", "example");
     JsonObject deck = Importer.Snapshot(PresentationLoader.Load(root));
     JsonNode table = deck["slides"]!.AsArray().SelectMany(slide => slide!["items"]!.AsArray())
       .First(item => (string?)item!["kind"] == "table")!;
@@ -83,7 +83,7 @@ public class ImportTests
   public void An_element_the_format_cant_hold_is_left_out_with_a_finding_and_the_rest_imports()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
     JsonObject chart = before["slides"]!.AsArray().SelectMany(slide => slide!["items"]!.AsArray())
       .Select(item => item!.AsObject()).First(item => (string?)item["kind"] == "chart");
@@ -106,7 +106,7 @@ public class ImportTests
   public void Bullets_survive_import_from_a_deck_whose_theme_states_no_levels()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
     before["theme"]!["levels"] = new JsonObject();
     int bulleted = Levels(before).Count(level => level > 0);
@@ -126,7 +126,7 @@ public class ImportTests
   public void A_theme_whose_levels_skip_one_keeps_each_it_states_and_fills_the_gap()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
     JsonObject first = before["theme"]!["levels"]!["1"]!.AsObject();
     JsonObject third = first.DeepClone().AsObject();
@@ -154,7 +154,7 @@ public class ImportTests
   public void A_paragraph_without_a_bullet_that_starts_like_one_survives_import_as_written()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
     List<JsonObject> plain = before["slides"]!.AsArray().SelectMany(slide => slide!["items"]!.AsArray())
       .Where(item => (string?)item!["kind"] == "text" && item["role"] is null)
@@ -185,7 +185,7 @@ public class ImportTests
   public void A_paragraph_that_reads_like_a_style_line_survives_import_as_written()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     JsonObject before = Importer.Snapshot(PresentationLoader.Load(root));
     JsonObject plain = before["slides"]!.AsArray().SelectMany(slide => slide!["items"]!.AsArray())
       .Where(item => (string?)item!["kind"] == "text" && item["role"] is null)
@@ -211,11 +211,11 @@ public class ImportTests
   {
     // Arrange
     using var source = new TempFolder();
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "default"), source.PathTo("themes/default"));
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme"),
+    CopyFolder(Path.Combine(Repository.Root, "themes", "default"), source.PathTo("themes/default"));
+    CopyFolder(Path.Combine(Repository.Root, "presentations", "default-theme"),
       source.PathTo("presentations/default-theme"));
     Directory.CreateDirectory(source.PathTo("themes/default/media"));
-    File.Copy(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "acme", "media", "logo.svg"),
+    File.Copy(Path.Combine(Repository.Root, "themes", "acme", "media", "logo.svg"),
       source.PathTo("themes/default/media/logo.svg"));
     foreach (string layout in new[] { "content", "section" })
     {
@@ -241,8 +241,8 @@ public class ImportTests
   {
     // Arrange
     using var source = new TempFolder();
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "default"), source.PathTo("themes/default"));
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme"),
+    CopyFolder(Path.Combine(Repository.Root, "themes", "default"), source.PathTo("themes/default"));
+    CopyFolder(Path.Combine(Repository.Root, "presentations", "default-theme"),
       source.PathTo("presentations/default-theme"));
     File.AppendAllText(source.PathTo("themes/default/layouts/content.yaml"),
       "\n  - { id: band, shape: rectangle, frame: [0, 0, 960, 20], decorative: true }\n");
@@ -272,8 +272,8 @@ public class ImportTests
   {
     // Arrange
     using var source = new TempFolder();
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "default"), source.PathTo("themes/default"));
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme"),
+    CopyFolder(Path.Combine(Repository.Root, "themes", "default"), source.PathTo("themes/default"));
+    CopyFolder(Path.Combine(Repository.Root, "presentations", "default-theme"),
       source.PathTo("presentations/default-theme"));
     string file = inBase ? "themes/default/styles.yaml" : "presentations/default-theme/slides/operating-income-bridge.yaml";
     string text = File.ReadAllText(source.PathTo(file));
@@ -300,8 +300,8 @@ public class ImportTests
   {
     // Arrange
     using var source = new TempFolder();
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "default"), source.PathTo("themes/default"));
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme"),
+    CopyFolder(Path.Combine(Repository.Root, "themes", "default"), source.PathTo("themes/default"));
+    CopyFolder(Path.Combine(Repository.Root, "presentations", "default-theme"),
       source.PathTo("presentations/default-theme"));
     string table = source.PathTo("presentations/default-theme/tables/income-statement.yaml");
     File.WriteAllText(table, File.ReadAllText(table)
@@ -328,8 +328,8 @@ public class ImportTests
   {
     // Arrange
     using var source = new TempFolder();
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "default"), source.PathTo("themes/default"));
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme"),
+    CopyFolder(Path.Combine(Repository.Root, "themes", "default"), source.PathTo("themes/default"));
+    CopyFolder(Path.Combine(Repository.Root, "presentations", "default-theme"),
       source.PathTo("presentations/default-theme"));
     string table = source.PathTo("presentations/default-theme/tables/income-statement.yaml");
     string underline = "border_bottom: { color: dark1, width: 0.75 }";
@@ -363,7 +363,7 @@ public class ImportTests
   public void An_import_refuses_a_folder_holding_something_else()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     string json = Importer.Snapshot(PresentationLoader.Load(root)).ToJsonString();
     using var output = new TempFolder();
     output.Write("notes.md", "Mine");
@@ -380,7 +380,7 @@ public class ImportTests
   public void An_import_refuses_a_folder_holding_a_presentation_and_leaves_it_alone()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     string json = Importer.Snapshot(PresentationLoader.Load(root)).ToJsonString();
     using var output = new TempFolder();
     string folder = output.PathTo("imported");
@@ -400,7 +400,7 @@ public class ImportTests
   public void A_failed_import_leaves_nothing_behind()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     JsonObject deck = Importer.Snapshot(PresentationLoader.Load(root));
     deck["slides"]![1]!["layout"] = "missing";
     using var output = new TempFolder();
@@ -418,7 +418,7 @@ public class ImportTests
   public void Importing_a_theme_refuses_a_folder_holding_one_and_leaves_nothing_behind()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     using var output = new TempFolder();
     output.Write("deck.json", Importer.Snapshot(PresentationLoader.Load(root)).ToJsonString());
     output.Write("theme/theme.yaml", "name: Mine");
@@ -437,7 +437,7 @@ public class ImportTests
   public void Importing_slides_writes_those_alone_with_the_whole_theme()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "default-theme");
+    string root = Path.Combine(Repository.Root, "presentations", "default-theme");
     using var output = new TempFolder();
     output.Write("deck.json", Importer.Snapshot(PresentationLoader.Load(root)).ToJsonString());
     Presentation source = PresentationLoader.Load(root);
@@ -456,11 +456,11 @@ public class ImportTests
   public void Importing_with_theme_writes_the_theme_alone()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example");
+    string root = Path.Combine(Repository.Root, "presentations", "example");
     using var output = new TempFolder();
     output.Write("presentations/example/deck.json", Importer.Snapshot(PresentationLoader.Load(root)).ToJsonString());
     // The JSON's pictures are relative to its folder, so a copy of the theme sits where they point.
-    CopyFolder(Path.Combine(LoaderTests.RepositoryRoot(), "themes", "acme"), output.PathTo("themes/acme"));
+    CopyFolder(Path.Combine(Repository.Root, "themes", "acme"), output.PathTo("themes/acme"));
     string theme = output.PathTo("imported");
 
     // Act

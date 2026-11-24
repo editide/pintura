@@ -9,7 +9,7 @@ namespace Pintura.Tests;
 
 public class HtmlExportTests
 {
-  private static readonly string Assets = Path.Combine(LoaderTests.RepositoryRoot(), "src", "Pintura", "wwwroot");
+  private static readonly string Assets = Path.Combine(Repository.Root, "src", "Pintura", "wwwroot");
 
   /// <summary>A book's page as Libreta exports it, holding the script elements a real one does.</summary>
   private sealed class PagedBooks : IBookReader
@@ -42,14 +42,14 @@ public class HtmlExportTests
   {
     // Arrange
     Presentation presentation = PresentationLoader.Load(
-      Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example"));
+      Path.Combine(Repository.Root, "presentations", "example"));
 
     // Act
     string html = HtmlExport.Build(presentation, Assets);
 
     // Assert
     html.ShouldNotContain("api/");
-    html.ShouldNotContain(LoaderTests.RepositoryRoot());
+    html.ShouldNotContain(Repository.Root);
     html.ShouldNotContain("<script src=");
     html.ShouldNotContain("<link ");
     JsonElement deck = Deck(html);
@@ -64,7 +64,7 @@ public class HtmlExportTests
   {
     // Arrange
     Presentation presentation = PresentationLoader.Load(
-      Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example"));
+      Path.Combine(Repository.Root, "presentations", "example"));
 
     // Act
     string html = HtmlExport.Build(presentation, Assets);
@@ -325,7 +325,7 @@ public class HtmlExportTests
   {
     // Arrange
     Presentation presentation = PresentationLoader.Load(
-      Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example"));
+      Path.Combine(Repository.Root, "presentations", "example"));
 
     // Act
     string html = HtmlExport.Build(presentation, Assets);
@@ -347,7 +347,7 @@ public class HtmlExportTests
   {
     // Arrange
     Presentation presentation = PresentationLoader.Load(
-      Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example"));
+      Path.Combine(Repository.Root, "presentations", "example"));
 
     // Act
     string html = HtmlExport.Build(presentation, Assets);

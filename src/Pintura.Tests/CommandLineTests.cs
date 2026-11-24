@@ -267,7 +267,7 @@ public class CommandLineTests
   public void Element_prints_each_property_beside_the_line_that_set_it()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "presentations", "example");
+    string root = Path.Combine(Repository.Root, "presentations", "example");
     var output = new StringWriter();
 
     // Act

@@ -106,7 +106,7 @@ public class OutlineTests
   public void Outline_spells_a_series_on_the_secondary_axis_in_its_own_format()
   {
     // Arrange
-    string root = Path.Combine(LoaderTests.RepositoryRoot(), "src", "Pintura.Tests", "fixtures", "charts");
+    string root = Path.Combine(Repository.Root, "src", "Pintura.Tests", "fixtures", "charts");
     var output = new StringWriter();
 
     // Act

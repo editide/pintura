@@ -23,6 +23,16 @@ public class TempFolder : IDisposable
     File.WriteAllText(path, content.EndsWith('\n') ? content : $"{content}\n");
   }
 
+  public void Git(params string[] arguments)
+  {
+    GitHelper.Git(Root, arguments);
+  }
+
+  public void Commit(string message = "first", params string[] paths)
+  {
+    GitHelper.Commit(Root, message, paths);
+  }
+
   public void Dispose()
   {
     GitObjects.Close(Root);
