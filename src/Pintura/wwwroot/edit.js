@@ -915,11 +915,11 @@ function deleteKey(event) {
   const kept = items.filter((item) => !item.edit.delete);
   if (kept.length > 0 && state.layout) {
     notice(`${kept.map(elementName).join(', ')} ${kept.length > 1 ? 'stay' : 'stays'}: only elements are deleted ` +
-      'here; remove the rest in the file');
+      'here, and the rest come from the layout or theme');
   } else if (kept.length > 0) {
     notice(kept.length > 1
       ? `${kept.map(elementName).join(', ')} stay: the layout or theme gives them`
-      : kept[0].edit.locked || `${kept[0].id} is a placeholder the layout gives; empty it in the file`);
+      : kept[0].edit.locked || `${kept[0].id} is a placeholder the layout gives, so it can't be deleted; empty its text instead`);
   }
   const deleted = items.filter((item) => item.edit.delete);
   if (deleted.length === 0) {
@@ -1035,6 +1035,11 @@ function paragraphText(node) {
   return text.replace(/​/g, '');
 }
 
+// The fields left in the text, in the order their marks stand in its paragraphs, so the file keeps those the page kept.
+function fieldNames(flow) {
+  return [...flow.querySelectorAll('.paragraph [data-field]')].map((span) => span.dataset.field);
+}
+
 // A paragraph's last <br> draws no line; the browser leaves one to hold open a paragraph whose words are deleted.
 function paragraphTexts(flow) {
   return [...flow.querySelectorAll('.paragraph')].map((paragraph) => {
@@ -1123,8 +1128,7 @@ function textKey(event) {
     notice(lockedField(locked));
   } else if (event.key === 'Enter' && !event.isComposing) {
     event.preventDefault();
-    // A field's value is one line in presentation.yaml.
-    if (caretField('inherit')) {
+    if (!stepOutOfField()) {
       return;
     }
     // The title and placeholders are a paragraph each, so Enter breaks the line there.
@@ -1242,23 +1246,51 @@ function breakLine() {
   selection.collapse(holder, 1);
 }
 
-// The spaces where a line breaks would only trail one line or lead the next.
+// The spaces where a line breaks would only trail one line or lead the next, in whichever runs hold them, though not in
+// a field, whose text is its value.
 function dropSpaces(range) {
-  const node = range.startContainer;
-  if (node.nodeType !== Node.TEXT_NODE) {
+  const paragraph = caretParagraph(range);
+  if (!paragraph) {
     return;
   }
-  let start = range.startOffset;
-  let end = start;
-  while (start > 0 && node.data[start - 1] === ' ') {
-    start--;
+  const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+  const before = [];
+  const after = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node === range.startContainer) {
+      before.unshift(node);
+      after.push(node);
+    } else if (range.comparePoint(node, 0) < 0) {
+      before.unshift(node);
+    } else {
+      after.push(node);
+    }
   }
-  while (end < node.data.length && node.data[end] === ' ') {
-    end++;
-  }
-  node.deleteData(start, end - start);
-  range.setStart(node, start);
-  range.collapse(true);
+  // From the caret outward, past the zero-width spaces that hold a caret beside a field.
+  const trim = (nodes, forward) => {
+    for (const node of nodes) {
+      if (node.parentElement.closest('[data-field], .bullet')) {
+        return;
+      }
+      let at = node === range.startContainer ? range.startOffset : forward ? 0 : node.length;
+      while (forward ? at < node.length : at > 0) {
+        const index = forward ? at : at - 1;
+        if (node.data[index] === ' ') {
+          node.deleteData(index, 1);
+        } else if (node.data[index] !== '\u200B') {
+          return;
+        } else if (forward) {
+          at++;
+        }
+        if (!forward) {
+          at--;
+        }
+      }
+    }
+  };
+  trim(before, false);
+  trim(after, true);
 }
 
 function caretParagraph(range) {
@@ -1426,6 +1458,29 @@ function fieldOffset(span, container, offset, start) {
   return between.toString().replace(/\u200B/g, '') === '' ? (start ? 0 : length) : null;
 }
 
+// A caret at either end of a field moves just outside it, so a break typed there leaves the field whole; false, with a
+// notice, when the caret is inside the field, whose value is one line.
+function stepOutOfField() {
+  const field = caretField('false') ?? caretField('inherit');
+  if (!field) {
+    return true;
+  }
+  const selection = getSelection();
+  const at = selection.isCollapsed ? fieldOffset(field, selection.focusNode, selection.focusOffset, true) : null;
+  if (at !== 0 && at !== fieldText(field).length) {
+    notice(`${fieldText(field)} is one value, so a line can't break inside it`);
+    return false;
+  }
+  const range = document.createRange();
+  if (at === 0) {
+    range.setStartBefore(field);
+  } else {
+    range.setStartAfter(field);
+  }
+  selection.collapse(range.startContainer, range.startOffset);
+  return true;
+}
+
 // The field the caret is in, among those taking no typing ('false') or those that do ('inherit').
 function caretField(editable) {
   const node = getSelection().focusNode;
@@ -1471,7 +1526,7 @@ function finishText(commit) {
   if (commit && changed) {
     const formats = armedFormats(editor.flow);
     edits.unshift({ path: editor.item.edit.text.path, source: editor.item.edit.text.source, paragraphs: after,
-      ...(formats.length > 0 && { formats }) });
+      fields: fieldNames(editor.flow), ...(formats.length > 0 && { formats }) });
   }
   if (edits.length > 0) {
     return sendRewording(editor.slide, edits);
@@ -1671,7 +1726,7 @@ async function formatText(mark) {
   editing.text = null;
   hideFormatBar();
   const edit = { path: item.edit.text.path, source: item.edit.text.source, paragraphs: paragraphTexts(editor.flow),
-    formats: [...armedFormats(editor.flow), { mark, on, ranges }] };
+    fields: fieldNames(editor.flow), formats: [...armedFormats(editor.flow), { mark, on, ranges }] };
   editor.flow.contentEditable = 'false';
   await sendRewording(editor.slide, [edit]);
   const fresh = currentSlide().id === editor.slide &&

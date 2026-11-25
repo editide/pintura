@@ -369,6 +369,41 @@ public class PatcherTests
     Changed(Slide, patched).ShouldBe([@"      - Up **33%** on 2024 \[\*\] \${slide}"]);
   }
 
+  [Theory]
+  [InlineData("slide", "      **${slide}** of bookings")]
+  [InlineData("date", "      ${date} of bookings")]
+  public void Deleting_a_line_and_joining_the_next_keeps_the_field_the_page_kept(string kept, string line)
+  {
+    // Arrange
+    const string slide = "elements:\n  - id: box\n    text: |\n      Titles are ${date}\n      **${slide}** of bookings\n";
+    string source = Patcher.SourceAt(slide, "elements.box.text")!;
+
+    // Act
+    string patched = Apply(slide, new ValueEdit("elements.box.text", source, Paragraphs: ["￼ of bookings"],
+      Fields: [kept]));
+
+    // Assert
+    patched.ShouldBe($"elements:\n  - id: box\n    text: |\n{line}\n");
+  }
+
+  [Theory]
+  [InlineData("￼ of revenue")]
+  [InlineData("\n￼ of revenue")]
+  public void Deleting_a_line_whose_field_is_bold_keeps_the_next_line_s_field(string text)
+  {
+    // Arrange
+    const string slide = "elements:\n  - id: box\n    text: |\n      Nearly **${date} million** units\n"
+      + "      **${slide}** of revenue\n";
+    string source = Patcher.SourceAt(slide, "elements.box.text")!;
+
+    // Act
+    string patched = Apply(slide, new ValueEdit("elements.box.text", source, Paragraphs: [.. text.Split('\n')],
+      Fields: ["slide"]));
+
+    // Assert
+    patched.ShouldEndWith("      **${slide}** of revenue\n");
+  }
+
   [Fact]
   public void Moving_words_from_one_side_of_a_field_to_the_other_keeps_the_field()
   {
@@ -1120,13 +1155,13 @@ public class PatcherTests
   }
 
   [Fact]
-  public void Unbolding_text_its_style_makes_bold_is_refused_with_a_style_that_would_turn_it_off()
+  public void Unbolding_text_its_style_makes_bold_is_refused_as_set_by_its_style()
   {
     // Act
     PatchException exception = Should.Throw<PatchException>(() => Apply(Slide, Format("bold", false, 0, 0, 7)));
 
     // Assert
-    exception.Message.ShouldContain("regular: { bold: false }");
+    exception.Message.ShouldBe("that text is bold by its style, so bold can't be turned off here");
   }
 
   [Fact]

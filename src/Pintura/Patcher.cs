@@ -23,14 +23,14 @@ public class PatchException : Exception
 /// <summary>One value a mouse edit writes: its key path in the slide's file, or in <paramref name="File"/> where it
 /// names the theme's or a layout's as origins name them, its source as the page drew it or null where the key was
 /// absent, and either numbers to a hundredth of a point, for a frame or a point, each paragraph's text with
-/// <see cref="Patcher.FieldMark"/> where a field sits, a scalar <paramref name="Value"/> such as a color or a width, or
-/// the source to restore, as an undo writes back. A delete removes the element at the path; a restore without a
+/// <see cref="Patcher.FieldMark"/> where a field sits and <paramref name="Fields"/> naming each in turn, a scalar
+/// <paramref name="Value"/> such as a color or a width, or the source to restore, as an undo writes back. A delete removes the element at the path; a restore without a
 /// source puts one back after the element named by <paramref name="After"/>, or first. Formats apply in turn to the
 /// paragraphs once reworded.
 /// </summary>
 public record ValueEdit(string Path, string? Source, double[]? Numbers = null, List<string>? Paragraphs = null,
   string? Restore = null, bool Delete = false, string? After = null, List<TextFormat>? Formats = null, string? Value = null,
-  string? File = null);
+  string? File = null, List<string>? Fields = null);
 
 /// <summary>Bold, italic, or underline turned on or off over stretches of paragraphs, in characters of the text the
 /// page reads back, with <see cref="Patcher.FieldMark"/> for a field.</summary>
@@ -177,7 +177,7 @@ public static partial class Patcher
     bool element = path.StartsWith("elements.", StringComparison.Ordinal) && (was ?? now) is YamlMappingNode;
     if (!element)
     {
-      throw new PatchException($"{path} was {(was is null ? "added" : "removed")} since; revert it in the file");
+      throw new PatchException($"{path} was {(was is null ? "added" : "removed")} since, so this can't be undone here");
     }
     if (now is not null)
     {
@@ -267,7 +267,7 @@ public static partial class Patcher
       Expect(text, node, edit);
       if (!OneLine(node))
       {
-        throw new PatchException($"{edit.Path} is written across lines; change it in the file");
+        throw new PatchException($"{edit.Path} is written across lines, so it can't be changed here");
       }
       return First(edit, Written, Splice(text, node, value), Splice(text, node, DoubleQuoted(value)));
     }
@@ -312,7 +312,7 @@ public static partial class Patcher
           [.. Candidates(entry => Splice(text, scalar, $"{{ text: {source}, {entry} }}")),
             .. Candidates(entry => Splice(text, scalar, $"{{ text: {DoubleQuoted(scalar.Value ?? "")}, {entry} }}"))]);
       case YamlScalarNode when words:
-        throw new PatchException($"{holder} is written across lines; give it a {missing[0]} in the file");
+        throw new PatchException($"{holder} is written across lines, so it can't take a {missing[0]} here");
       case YamlScalarNode { Value: "none" } none when OneLine(none):
         return First(edit, written, Candidates(entry => Splice(text, none, $"{{ {entry} }}")));
       case YamlMappingNode { Style: MappingStyle.Flow } map:
@@ -336,9 +336,9 @@ public static partial class Patcher
           int start = Node.Extent(text, first).Start;
           return First(edit, written, Candidates(entry => Splice(text, start, start, $"{entry}\n{Indent(first)}")));
         }
-        throw new PatchException($"there's no line to write {missing[0]} after; add it in the file");
+        throw new PatchException($"there's no line to write {missing[0]} after, so it can't be added here");
       default:
-        throw new PatchException($"{holder} isn't a map; give it a {missing[0]} in the file");
+        throw new PatchException($"{holder} isn't a map, so it can't take a {missing[0]} here");
     }
   }
 
@@ -424,7 +424,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow)
     {
-      throw new PatchException("elements is written as a flow list; delete the element in the file");
+      throw new PatchException("elements is written as a flow list, so an element can't be deleted here");
     }
     List<string?> ids = Ids(root);
     ids.RemoveAt(index);
@@ -540,7 +540,7 @@ public static partial class Patcher
     int start = LineStart(text, dash);
     if (dash < 0 || text[dash] != '-' || text[start..dash].Trim().Length > 0)
     {
-      throw new PatchException("the entry doesn't start its own line; change it in the file");
+      throw new PatchException("the entry doesn't start its own line, so it can't be changed here");
     }
     // A block scalar ends where the next line's indentation does.
     int end = Node.Extent(text, entry).End;
@@ -600,7 +600,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow)
     {
-      throw new PatchException("slides is written as a flow list; reorder it in the file");
+      throw new PatchException("slides is written as a flow list, so slides can't be reordered here");
     }
     int anchor = -1;
     if (move.To is not null)
@@ -612,7 +612,7 @@ public static partial class Patcher
       }
       if (entries.LastIndexOf(move.To) != anchor)
       {
-        throw new PatchException($"two sections are named {move.To.Section}; move {move.Slide} in the file");
+        throw new PatchException($"two sections are named {move.To.Section}, so {move.Slide} can't be moved into one here");
       }
     }
     List<ListEntry?> order = [.. entries];
@@ -657,7 +657,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow)
     {
-      throw new PatchException("slides is written as a flow list; delete the slide in the file");
+      throw new PatchException("slides is written as a flow list, so a slide can't be deleted here");
     }
     (int start, int end) = EntryLines(text, list.Children[index]);
     string removed = string.Concat(text[..start], text[end..]);
@@ -681,7 +681,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow || list.Children.Count == 0)
     {
-      throw new PatchException($"slides is written as a flow list; add {move.Slide} back in the file");
+      throw new PatchException($"slides is written as a flow list, so {move.Slide} can't be added back here");
     }
     int anchor = -1;
     if (move.To is not null)
@@ -736,7 +736,7 @@ public static partial class Patcher
     }
     if (list.Style == SequenceStyle.Flow)
     {
-      throw new PatchException($"slides is written as a flow list; change {named} in the file");
+      throw new PatchException($"slides is written as a flow list, so {named} can't be changed here");
     }
     (int start, int end) = EntryLines(text, list.Children[index]);
     string indent = text[start..text.IndexOf('-', start)];
@@ -746,7 +746,7 @@ public static partial class Patcher
     if (Parse(written) is not YamlMappingNode after || Value(after, "slides") is not YamlSequenceNode afterList ||
       afterList.Children.Count != list.Children.Count || Entry(afterList.Children[index]) != expected)
     {
-      throw new PatchException($"couldn't rewrite {named} cleanly; change it in presentation.yaml");
+      throw new PatchException($"couldn't rewrite {named} cleanly, so it wasn't changed");
     }
     return written;
   }
@@ -772,7 +772,7 @@ public static partial class Patcher
 
   private static PatchException MoveConflict(SlideMove move)
   {
-    return new PatchException($"slides changed in the file since the sidebar was drawn, so moving {move.Slide} was " +
+    return new PatchException($"slides changed since the sidebar was drawn, so moving {move.Slide} was " +
       "dropped", true);
   }
 
@@ -802,7 +802,7 @@ public static partial class Patcher
     {
       paragraphs.RemoveAt(paragraphs.Count - 1);
     }
-    string updated = Reword(value, paragraphs, plain, context);
+    string updated = Reword(value, paragraphs, edit.Fields, plain, context);
     if (edit.Formats is { Count: > 0 } formats)
     {
       if (plain)
@@ -847,7 +847,8 @@ public static partial class Patcher
 
   /// <summary>The value with each changed paragraph's changed stretch replaced in its line, so formatting and
   /// fields outside the stretch stay as written.</summary>
-  private static string Reword(string value, List<string> paragraphs, bool plain, MarkupContext context)
+  private static string Reword(string value, List<string> paragraphs, List<string>? fields, bool plain,
+    MarkupContext context)
   {
     bool trailing = !plain && value.EndsWith('\n');
     string body = trailing ? value[..^1] : value;
@@ -860,27 +861,32 @@ public static partial class Patcher
     }
     if (parsed.Count != paragraphs.Count)
     {
-      return Regroup(body, parsed, paragraphs, context) + (trailing ? "\n" : "");
+      return Regroup(body, parsed, paragraphs, fields, context) + (trailing ? "\n" : "");
     }
+    int named = 0;
     for (int index = 0; index < parsed.Count; index++)
     {
       Paragraph paragraph = parsed[index];
       List<(char Character, int Start, int End, string? Field)> old = Characters(paragraph);
       string before = new string(old.Select(character => character.Character).ToArray());
       string after = paragraphs[index];
-      if (before == after)
+      List<string>? drawn = fields?.Skip(named).Take(after.Count(character => character == FieldMark)).ToList();
+      named += drawn?.Count ?? 0;
+      if (before == after && (drawn is null || drawn.SequenceEqual(old.Where(character => character.Field is not null)
+        .Select(character => character.Field!))))
       {
         continue;
       }
       List<Wrapper> wrappers = plain ? [] : Wrappers(lines[paragraph.Line], paragraph.Start);
       var line = new Tagged(lines[paragraph.Line], wrappers);
       // From the end back, so each stretch's offsets still hold when it is replaced.
-      foreach ((int start, int end, string typed) in Hunks(before, after).AsEnumerable().Reverse())
+      foreach ((int start, int end, string typed) in Hunks(before, after, old.Select(character => character.Field),
+        drawn).AsEnumerable().Reverse())
       {
         List<(char Character, int Start, int End, string? Field)> removed = old[start..end];
         if (typed.Contains(FieldMark))
         {
-          throw new PatchException("a field can't be typed on the slide; write it in the file");
+          throw new PatchException("a field can't be added or split on the slide");
         }
         int from;
         int to;
@@ -904,13 +910,14 @@ public static partial class Patcher
     bool same = reread.Count == parsed.Count && reread.Select((paragraph, index) =>
       Plain(paragraph) == paragraphs[index] && paragraph.Level == parsed[index].Level &&
       paragraph.Style == parsed[index].Style).All(match => match);
-    return same ? updated : throw new PatchException("that text would read as markup; write it in the file");
+    return same ? updated : throw new PatchException("that text would read as formatting, so it wasn't saved");
   }
 
   /// <summary>The value with paragraphs split or joined: the paragraphs read as one text with a newline between
   /// each, and each changed stretch replaced in the value, so that a newline typed into a paragraph starts another at
   /// its level and in its style.</summary>
-  private static string Regroup(string body, List<Paragraph> parsed, List<string> paragraphs, MarkupContext context)
+  private static string Regroup(string body, List<Paragraph> parsed, List<string> paragraphs, List<string>? fields,
+    MarkupContext context)
   {
     string[] lines = body.Split('\n');
     var starts = new int[lines.Length];
@@ -943,13 +950,13 @@ public static partial class Patcher
       })).ToList();
     string before = new string(old.Select(character => character.Character).ToArray());
     var text = new Tagged(body, wrappers);
-    foreach ((int start, int end, string typed) in Hunks(before, string.Join('\n', paragraphs)).AsEnumerable()
-      .Reverse())
+    foreach ((int start, int end, string typed) in Hunks(before, string.Join('\n', paragraphs),
+      old.Select(character => character.Field), fields).AsEnumerable().Reverse())
     {
       List<(char Character, int Start, int End, string? Field)> removed = old[start..end];
       if (typed.Contains(FieldMark))
       {
-        throw new PatchException("a field can't be typed on the slide; write it in the file");
+        throw new PatchException("a field can't be added or split on the slide");
       }
       int from;
       int to;
@@ -1008,7 +1015,7 @@ public static partial class Patcher
     List<Paragraph> reread = Parse(updated, false, context);
     bool same = reread.Count == paragraphs.Count &&
       reread.Select((paragraph, index) => Plain(paragraph) == paragraphs[index]).All(match => match);
-    return same ? updated : throw new PatchException("that text would read as markup; write it in the file");
+    return same ? updated : throw new PatchException("that text would read as formatting, so it wasn't saved");
   }
 
   /// <summary>Bold, italic, a link or a span: where its content starts and ends on its line, and the markup on either
@@ -1311,7 +1318,7 @@ public static partial class Patcher
       List<Paragraph> parsed = Parse(body, false, context);
       if (range.Paragraph < 0 || range.Paragraph >= parsed.Count)
       {
-        throw new PatchException("the text changed in the file since it was selected");
+        throw new PatchException("the text changed since it was selected");
       }
       Paragraph paragraph = parsed[range.Paragraph];
       List<(char Character, int Start, int End, string? Field)> characters = Characters(paragraph);
@@ -1336,9 +1343,7 @@ public static partial class Patcher
       bool marked = before[start..end].All(character => Toggled(character, format.Mark, true) == character);
       if (!format.On && !marked && format.Mark != "underline")
       {
-        string off = format.Mark == "bold" ? "regular: { bold: false }" : "upright: { italic: false }";
-        throw new PatchException($"that text is {format.Mark} by its style; change the style in the file, or add " +
-          $"one that only turns {format.Mark} off, such as {off}, and use it on the text");
+        throw new PatchException($"that text is {format.Mark} by its style, so {format.Mark} can't be turned off here");
       }
       if (wanted.SequenceEqual(before))
       {
@@ -1356,8 +1361,8 @@ public static partial class Patcher
         lines[paragraph.Line] = candidate;
         return string.Join('\n', lines);
       }).FirstOrDefault(candidate => Reads(candidate, parsed, range.Paragraph, wanted, context));
-      body = written ?? throw new PatchException($"that {format.Mark} crosses formatting, such as a span or a link; " +
-        "make it in the file");
+      body = written ?? throw new PatchException($"that {format.Mark} crosses formatting, such as a span or a link, so it can't be " +
+        "made here");
     }
     return body + (trailing ? "\n" : "");
   }
@@ -1475,15 +1480,37 @@ public static partial class Patcher
   /// it was, and a break stays a break rather than reading as typed inside a link.</summary>
   internal static List<(int Start, int End, string Typed)> Hunks(string before, string after)
   {
+    return Hunks(before, after, null, null);
+  }
+
+  /// <summary>As <see cref="Hunks(string, string)"/>, with the fields of <paramref name="before"/> named at each
+  /// <see cref="FieldMark"/> and those of <paramref name="after"/> named in turn, so a field matches only itself: with
+  /// two left on a line of which the page kept one, the one deleted goes. Without names, any field matches any other.
+  /// </summary>
+  private static List<(int Start, int End, string Typed)> Hunks(string before, string after,
+    IEnumerable<string?>? beforeFields, List<string>? afterFields)
+  {
     int rows = before.Length;
     int columns = after.Length;
+    string?[] left = afterFields is null ? new string?[rows] : beforeFields!.ToArray();
+    var right = new string?[columns];
+    int named = 0;
+    for (int column = 0; column < columns && afterFields is not null; column++)
+    {
+      right[column] = after[column] == FieldMark && named < afterFields.Count ? afterFields[named++] : null;
+    }
+    bool Same(int row, int column)
+    {
+      return before[row] == after[column] && left[row] == right[column];
+    }
+
     long field = rows + 1;
     var common = new long[rows + 1, columns + 1];
     for (int row = rows - 1; row >= 0; row--)
     {
       for (int column = columns - 1; column >= 0; column--)
       {
-        common[row, column] = before[row] == after[column]
+        common[row, column] = Same(row, column)
           ? common[row + 1, column + 1] + (before[row] is FieldMark or '\n' ? field : 1)
           : Math.Max(common[row + 1, column], common[row, column + 1]);
       }
@@ -1504,7 +1531,7 @@ public static partial class Patcher
     }
     while (i < rows || j < columns)
     {
-      if (i < rows && j < columns && before[i] == after[j])
+      if (i < rows && j < columns && Same(i, j))
       {
         Flush();
         i++;
@@ -1838,7 +1865,7 @@ public static partial class Patcher
   private static PatchException Conflict(ValueEdit edit)
   {
     string changed = edit.Path.Length == 0 ? "the slide" : edit.Path;
-    return new PatchException($"{changed} changed in the file since the slide was drawn, so the edit was dropped",
+    return new PatchException($"{changed} changed since the slide was drawn, so the edit was dropped",
       true);
   }
 
@@ -1891,7 +1918,7 @@ public static partial class Patcher
       {
       }
     }
-    throw new PatchException($"{edit.Path} can't be written back as it was edited; change it in the file");
+    throw new PatchException($"{edit.Path} can't be written back as it was edited, so the edit was dropped");
   }
 
   #endregion
