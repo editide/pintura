@@ -386,6 +386,24 @@ public class PatcherTests
     patched.ShouldBe($"elements:\n  - id: box\n    text: |\n{line}\n");
   }
 
+  [Theory]
+  [InlineData("￼ of revenue")]
+  [InlineData("\n￼ of revenue")]
+  public void Deleting_a_line_whose_field_is_bold_keeps_the_next_line_s_field(string text)
+  {
+    // Arrange
+    const string slide = "elements:\n  - id: box\n    text: |\n      Nearly **${date} million** units\n"
+      + "      **${slide}** of revenue\n";
+    string source = Patcher.SourceAt(slide, "elements.box.text")!;
+
+    // Act
+    string patched = Apply(slide, new ValueEdit("elements.box.text", source, Paragraphs: [.. text.Split('\n')],
+      Fields: ["slide"]));
+
+    // Assert
+    patched.ShouldEndWith("      **${slide}** of revenue\n");
+  }
+
   [Fact]
   public void Moving_words_from_one_side_of_a_field_to_the_other_keeps_the_field()
   {
